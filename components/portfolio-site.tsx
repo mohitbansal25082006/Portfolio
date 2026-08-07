@@ -126,16 +126,22 @@ function TechSphere({ items }: { items: string[] }) {
     return () => cancelAnimationFrame(animId)
   }, [])
 
-  const handleMouseMove = (e: React.MouseEvent) => {
-    const rect = e.currentTarget.getBoundingClientRect()
+  // Shared math for both mouse and touch pointers: rotates the sphere
+  // based on how far the pointer is from the container's center.
+  const updateRotationFromPoint = (clientX: number, clientY: number, rect: DOMRect) => {
     const centerX = rect.left + rect.width / 2
     const centerY = rect.top + rect.height / 2
-    const deltaX = e.clientX - centerX
-    const deltaY = e.clientY - centerY
+    const deltaX = clientX - centerX
+    const deltaY = clientY - centerY
     target.current.y = (deltaX / (rect.width / 2)) * 40
     target.current.x = -(deltaY / (rect.height / 2)) * 40 - 10
   }
-  
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    const rect = e.currentTarget.getBoundingClientRect()
+    updateRotationFromPoint(e.clientX, e.clientY, rect)
+  }
+
   const handleMouseEnter = () => { 
     isHovering.current = true 
     target.current.y = current.current.y % 360
@@ -147,12 +153,43 @@ function TechSphere({ items }: { items: string[] }) {
     target.current.x = -10
   }
 
+  // Touch equivalents so the sphere responds to finger drags on mobile,
+  // where onMouseMove/onMouseEnter/onMouseLeave never fire.
+  const handleTouchStart = (e: React.TouchEvent) => {
+    isHovering.current = true
+    target.current.y = current.current.y % 360
+    target.current.x = current.current.x
+    const touch = e.touches[0]
+    if (touch) {
+      const rect = e.currentTarget.getBoundingClientRect()
+      updateRotationFromPoint(touch.clientX, touch.clientY, rect)
+    }
+  }
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    const touch = e.touches[0]
+    if (!touch) return
+    const rect = e.currentTarget.getBoundingClientRect()
+    updateRotationFromPoint(touch.clientX, touch.clientY, rect)
+  }
+
+  const handleTouchEnd = () => {
+    isHovering.current = false
+    target.current.y = current.current.y % 360
+    target.current.x = -10
+  }
+
   return (
     <div 
       className="sphere-container"
       onMouseMove={handleMouseMove}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchEnd}
+      style={{ touchAction: 'none' }}
     >
       <div className="sphere-glow" />
       <div className="sphere-rings">
