@@ -430,7 +430,14 @@ export function PortfolioSite() {
         <div className="marquee flex min-w-max gap-8 font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
           {Array.from({ length: 2 }).map((_, index) => (
             <span key={index} className="flex items-center gap-8">
-              System Design <b className="text-primary">✳</b> Full Stack Development <b className="text-primary">✳</b> Generative AI <b className="text-primary">✳</b> RAG Pipelines <b className="text-primary">✳</b> Product Engineering <b className="text-primary">✳</b> React & Next.js <b className="text-primary">✳</b>
+              AI Engineering <b className="text-primary">✳</b>
+              Full-Stack Development <b className="text-primary">✳</b>
+              Mobile Development <b className="text-primary">✳</b>
+              AI Agents <b className="text-primary">✳</b>
+              LLM Applications <b className="text-primary">✳</b>
+              React & Next.js <b className="text-primary">✳</b>
+              React Native <b className="text-primary">✳</b>
+              Product Development <b className="text-primary">✳</b>
             </span>
           ))}
         </div>
@@ -484,7 +491,7 @@ export function PortfolioSite() {
               </h2>
             </div>
             <p className="mt-4 max-w-xs text-sm text-muted-foreground md:mt-0 md:text-right">
-              A snapshot of the code, tools, and products built over the last year.
+              A snapshot of the projects, code, and milestones that reflect my journey as a developer.
             </p>
           </div>
         </Reveal>
@@ -863,7 +870,7 @@ export function PortfolioSite() {
                 The long<br /><span className="text-muted-foreground">version.</span>
               </h2>
               <p className="mt-6 max-w-md text-sm leading-6 text-muted-foreground">
-                A condensed PDF with my skills, projects, education, and the rest of the noise. Updated regularly.
+                A concise overview of my skills, projects, experience, and education—all in one place. Updated regularly.
               </p>
               <div className="mt-8 flex flex-wrap gap-3">
                 <a href={siteConfig.resumeUrl} download className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 font-mono text-[11px] tracking-[0.12em] text-primary-foreground uppercase transition-transform hover:-translate-y-0.5">
@@ -902,7 +909,7 @@ export function PortfolioSite() {
                   Let&apos;s make<br />something <span className="text-background/50">real.</span>
                 </h2>
                 <p className="mt-8 max-w-md text-sm leading-6 opacity-80">
-                  Open to internships, freelance projects, and good conversations about AI, product, and the web. I usually reply within a day.
+                  Open to internships, collaborations, and freelance opportunities. Whether you have a project, an idea, or just want to connect, I'd love to hear from you.
                 </p>
                 <div className="mt-8 space-y-3">
                   <button type="button" onClick={copyEmail} className="group flex items-center gap-3 border-b border-primary-foreground/40 pb-3 font-mono text-xs tracking-[0.12em] uppercase transition-colors hover:border-primary-foreground">

@@ -8,9 +8,9 @@ export const siteConfig = {
   firstName: 'Mohit',
   lastName: 'Bansal',
   initials: 'MB',
-  title: 'Full Stack Developer · AI Engineer · GenAI Enthusiast',
+  title: 'Full-Stack Developer · AI Engineer · Mobile Developer',
   oneLiner:
-    'I build scalable web applications, AI-powered products, and modern user experiences using React, Next.js, Node.js, and Generative AI.',
+    'I build scalable full-stack applications, AI-powered products, and intelligent mobile experiences using modern web technologies and Generative AI.',
   location: 'Jaipur, India',
   availability: 'Open to Internships & Collaborations',
   resumeUrl: '/resume.pdf',
@@ -38,35 +38,35 @@ export const about = {
   currentYear: '3rd Year · B.Tech CSE',
 
   paragraphs: [
-    "I'm Mohit Bansal, a Computer Science student at JECRC College passionate about building scalable full-stack applications and AI-powered products that solve real-world problems.",
+    "I'm Mohit Bansal, a full-stack and AI developer passionate about creating intelligent software, seamless digital experiences, and products that make a real impact.",
 
-    "My interests lie at the intersection of software engineering, Generative AI, and modern web technologies. I enjoy turning complex ideas into intuitive, high-performance applications while continuously exploring emerging technologies.",
+    "My interests lie in software engineering, Generative AI, and modern application development. I enjoy building scalable web, mobile, and AI-powered products that solve real-world problems.",
 
-    "My goal is to build impactful software and grow into a world-class Software Engineer.",
+    "My goal is to build innovative software that makes technology more useful and accessible."
   ],
 
   interests: [
-    'Generative AI',
-    'Full-Stack Development',
-    'Mobile Development',
-    'Open Source',
-  ],
+  'AI Engineering',
+  'Full-Stack Development',
+  'Mobile Development',
+  'Product Development',
+],
 
   pillars: [
     {
       num: '01',
       label: 'Build',
-      text: 'Create scalable, performant, and user-focused applications that solve real problems.',
+      text: 'Create products that solve real problems with thoughtful design and reliable engineering.',
     },
     {
       num: '02',
-      label: 'Learn',
-      text: 'Continuously explore new technologies, AI advancements, and software engineering best practices.',
+      label: 'Innovate',
+      text: 'Leverage AI and modern technologies to build intelligent, practical solutions.',
     },
     {
       num: '03',
-      label: 'Improve',
-      text: 'Write clean code, embrace challenges, and grow through consistent learning and execution.',
+      label: 'Grow',
+      text: 'Keep learning, embrace challenges, and improve through every project I build.',
     },
   ],
 }
