@@ -10,7 +10,6 @@ export const metadata: Metadata = {
   title: 'Mohit Bansal — Full Stack Developer & AI Engineer',
   description:
     'Mohit Bansal is a Computer Science student and full stack developer building scalable web applications, AI-powered products, and modern user experiences with React, Next.js, Node.js, and Generative AI.',
-  generator: 'v0.app',
 }
 
 export const viewport: Viewport = {

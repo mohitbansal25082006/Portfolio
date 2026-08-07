@@ -8,10 +8,11 @@ import {
   Users, Wrench, X,
 } from 'lucide-react'
 import {
-  about, contactInfo, githubStats, navItems, projectFilters, projects,
+  about, contactInfo, githubConfig, navItems, projectFilters, projects,
   projects as allProjects, siteConfig, skillGroups, stats, techStack,
   themes, timeline,
 } from '@/lib/content'
+import { GitHubSection } from '@/components/github-section'
 
 /* ---------------- Custom Brand Icons (SVG) ---------------- */
 const GithubIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -694,130 +695,8 @@ export function PortfolioSite() {
         </div>
       </section>
 
-      {/* GITHUB */}
-      <section id="github" className="mx-auto max-w-350 px-5 py-24 md:px-10 md:py-36 lg:px-14">
-        <Reveal>
-          <p className="eyebrow">Open source</p>
-          <h2 className="mt-4 max-w-xl text-4xl font-medium tracking-[-0.05em] md:text-6xl">
-            Code in<br /><span className="text-muted-foreground">the open.</span>
-          </h2>
-        </Reveal>
-        <div className="mt-14 grid gap-6 md:grid-cols-3">
-          {[
-            { label: 'Repositories', value: githubStats.repos, icon: BookOpen },
-            { label: 'Stars earned', value: githubStats.stars, icon: Star },
-            { label: 'Followers', value: githubStats.followers, icon: Users },
-          ].map((s, i) => (
-            <Reveal key={s.label} delay={i * 60}>
-              <div className="flex items-center gap-4 rounded-2xl border border-border bg-muted/30 p-6 backdrop-blur-sm">
-                <span className="grid size-11 place-items-center rounded-full bg-primary/10 text-primary">
-                  <s.icon className="size-5" />
-                </span>
-                <div>
-                  <div className="text-3xl font-semibold"><CountUp end={s.value} /></div>
-                  <p className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">{s.label}</p>
-                </div>
-              </div>
-            </Reveal>
-          ))}
-        </div>
-
-        <Reveal delay={80}>
-          <div className="mt-6 rounded-2xl border border-border bg-muted/30 p-6 backdrop-blur-sm md:p-8">
-            <div className="flex items-center justify-between">
-              <p className="font-mono text-[11px] tracking-[0.14em] uppercase">Contribution activity</p>
-              <a href={githubStats.url} target="_blank" rel="noreferrer" className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase hover:text-foreground">
-                @{githubStats.username} ↗
-              </a>
-            </div>
-            <div className="mt-5 flex gap-[3px] overflow-x-auto pb-2">
-              {Array.from({ length: 52 }).map((_, week) => (
-                <div key={week} className="flex flex-col gap-[3px]">
-                  {Array.from({ length: 7 }).map((_, day) => {
-                    const idx = week * 7 + day
-                    const level = githubStats.contributionData[idx] || 0
-                    return (
-                      <span
-                        key={day}
-                        className="size-[10px] rounded-[2px]"
-                        style={{ background: level === 0 ? 'var(--muted)' : `oklch(${0.5 + level * 0.12} 0.18 130)` }}
-                        title={`${level} contributions`}
-                      />
-                    )
-                  })}
-                </div>
-              ))}
-            </div>
-            <div className="mt-3 flex items-center justify-end gap-2 font-mono text-[9px] tracking-[0.14em] text-muted-foreground uppercase">
-              <span>Less</span>
-              {[0, 1, 2, 3, 4].map((l) => (
-                <span key={l} className="size-[10px] rounded-[2px]" style={{ background: l === 0 ? 'var(--muted)' : `oklch(${0.5 + l * 0.12} 0.18 130)` }} />
-              ))}
-              <span>More</span>
-            </div>
-          </div>
-        </Reveal>
-
-        <div className="mt-6 grid gap-6 md:grid-cols-3">
-          <Reveal>
-            <div className="h-full rounded-2xl border border-border bg-muted/30 p-6 backdrop-blur-sm md:p-8">
-              <p className="font-mono text-[11px] tracking-[0.14em] uppercase">Top languages</p>
-              <div className="mt-5 flex h-2.5 overflow-hidden rounded-full">
-                {githubStats.topLanguages.map((l) => (
-                  <div key={l.name} style={{ width: `${l.pct}%`, background: l.color }} />
-                ))}
-              </div>
-              <div className="mt-5 space-y-2">
-                {githubStats.topLanguages.map((l) => (
-                  <div key={l.name} className="flex items-center justify-between text-xs">
-                    <span className="flex items-center gap-2 text-foreground/80">
-                      <span className="size-2.5 rounded-full" style={{ background: l.color }} /> {l.name}
-                    </span>
-                    <span className="font-mono text-muted-foreground">{l.pct}%</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </Reveal>
-          <Reveal delay={80}>
-            <div className="h-full rounded-2xl border border-border bg-muted/30 p-6 backdrop-blur-sm md:p-8">
-              <p className="font-mono text-[11px] tracking-[0.14em] uppercase">Pinned repositories</p>
-              <div className="mt-5 space-y-3">
-                {githubStats.pinnedRepos.map((r) => (
-                  <a key={r.name} href={githubStats.url} target="_blank" rel="noreferrer" className="block rounded-xl border border-border p-4 transition-colors hover:border-primary/50">
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium">{r.name}</span>
-                      <span className="flex items-center gap-1 font-mono text-[10px] text-muted-foreground">
-                        <Star className="size-3" /> {r.stars}
-                      </span>
-                    </div>
-                    <p className="mt-1 text-xs text-muted-foreground">{r.desc}</p>
-                    <span className="mt-2 inline-flex items-center gap-1.5 font-mono text-[10px] text-muted-foreground">
-                      <span className="size-2 rounded-full bg-primary" /> {r.language}
-                    </span>
-                  </a>
-                ))}
-              </div>
-            </div>
-          </Reveal>
-          <Reveal delay={160}>
-            <div className="h-full rounded-2xl border border-border bg-muted/30 p-6 backdrop-blur-sm md:p-8">
-              <p className="font-mono text-[11px] tracking-[0.14em] uppercase">Recent activity</p>
-              <div className="mt-5 space-y-4">
-                {githubStats.recentActivity.map((a, i) => (
-                  <div key={i} className="flex gap-3">
-                    <span className="mt-1 size-1.5 shrink-0 rounded-full bg-primary" />
-                    <div>
-                      <p className="text-xs leading-5 text-foreground/80">{a.text}</p>
-                      <p className="mt-0.5 font-mono text-[10px] text-muted-foreground uppercase">{a.time}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </Reveal>
-        </div>
-      </section>
+      {/* GITHUB — now fully live, powered by GitHub's GraphQL API */}
+      <GitHubSection username={githubConfig.username} />
 
       {/* TIMELINE - Redesigned Theme Cards */}
       <section id="timeline" className="border-y border-border bg-secondary">

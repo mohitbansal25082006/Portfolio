@@ -325,37 +325,16 @@ export const timeline = [
   },
 ]
 
-export const githubStats = {
-  username: 'mohitbansal',
-  url: 'https://github.com/',
-  repos: 42,
-  stars: 180,
-  followers: 85,
-  contributions: 1000,
-  topLanguages: [
-    { name: 'TypeScript', pct: 45, color: 'oklch(0.72 0.16 250)' },
-    { name: 'Python', pct: 25, color: 'oklch(0.75 0.15 70)' },
-    { name: 'JavaScript', pct: 15, color: 'oklch(0.85 0.18 95)' },
-    { name: 'C++', pct: 10, color: 'oklch(0.6 0.2 280)' },
-    { name: 'Other', pct: 5, color: 'oklch(0.65 0.02 280)' },
-  ],
-  pinnedRepos: [
-    { name: 'MannSahay', desc: 'AI-powered career guidance platform', stars: 45, language: 'TypeScript' },
-    { name: 'DeepDive-AI', desc: 'Conversational research companion', stars: 38, language: 'Python' },
-    { name: 'TeamScript', desc: 'Real-time collaborative code editor', stars: 22, language: 'TypeScript' },
-    { name: 'ai-image-editor', desc: 'Browser-based generative image editor', stars: 18, language: 'TypeScript' },
-  ],
-  recentActivity: [
-    { type: 'commit', text: 'Pushed 12 commits to MannSahay', time: '2h ago' },
-    { type: 'star', text: 'Starred vercel/next.js', time: '5h ago' },
-    { type: 'repo', text: 'Created ai-image-editor', time: '1d ago' },
-    { type: 'pr', text: 'Opened PR #42 in TeamScript', time: '3d ago' },
-  ],
-  // deterministic placeholder contribution intensities (0-4)
-  contributionData: Array.from({ length: 52 * 7 }, (_, i) => {
-    const v = Math.sin(i * 0.45) * Math.cos(i * 0.13)
-    return Math.max(0, Math.min(4, Math.floor((v + 1) * 2.2)))
-  }),
+// ============================================================================
+//  GitHub — LIVE DATA CONFIG
+//  The GitHub section (components/github-section.tsx) fetches real-time
+//  profile, contribution, language, pinned-repo, and activity data straight
+//  from the GitHub GraphQL + REST APIs via app/api/github/route.ts and
+//  lib/github.ts. Nothing below is mock data — this is just the username
+//  used to query the API. See GITHUB_INTEGRATION_GUIDE.md for full setup.
+// ============================================================================
+export const githubConfig = {
+  username: 'mohitbansal25082006',
 }
 
 export const themes = [
