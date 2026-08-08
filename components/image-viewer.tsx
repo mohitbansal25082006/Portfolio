@@ -14,19 +14,12 @@ const MAX_ZOOM = 4
 const DOUBLE_TAP_ZOOM = 2
 
 export interface ImageViewerProps {
-  /** Full list of image URLs in this set. */
   images: string[]
-  /** Index of the currently active image (controlled). */
   index: number
-  /** Called with the new index whenever the viewer navigates. */
   onIndexChange: (index: number) => void
-  /** Whether the viewer is open. */
   open: boolean
-  /** Called when the viewer should close (Esc, backdrop click, × button). */
   onClose: () => void
-  /** Base alt text — the viewer appends "screenshot N of M". */
   alt?: string
-  /** Optional per-image captions, same length/order as `images`. */
   captions?: string[]
 }
 
@@ -40,45 +33,80 @@ export function ImageViewer({ images, index, onIndexChange, open, onClose, alt =
   const total = images.length
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState({ x: 0, y: 0 })
-  const [isDragging, setIsDragging] = useState(false)
+  const [isGesturing, setIsGesturing] = useState(false)
 
   const dragStart = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null)
   const pinchStart = useRef<{ dist: number; zoom: number } | null>(null)
   const swipeStart = useRef<{ x: number; y: number } | null>(null)
   const lastTapRef = useRef(0)
   const dragHappened = useRef(false)
-  const containerRef = useRef<HTMLDivElement>(null)
   
-  // Use refs to track current zoom/pan inside non-reactive native event listeners
+  const containerRef = useRef<HTMLDivElement>(null)
+  const imageRef = useRef<HTMLImageElement>(null)
+  
+  // Refs to track current values inside non-reactive native event listeners
   const zoomRef = useRef(zoom)
   const panRef = useRef(pan)
 
   useEffect(() => { zoomRef.current = zoom }, [zoom])
   useEffect(() => { panRef.current = pan }, [pan])
 
+  // Helper to apply transforms directly to the DOM for 60fps smoothness (bypasses React render cycle)
+  const applyTransform = useCallback(() => {
+    if (imageRef.current) {
+      imageRef.current.style.transform = `translate(${panRef.current.x}px, ${panRef.current.y}px) scale(${zoomRef.current})`
+    }
+  }, [])
+
   const goTo = useCallback((i: number) => {
     if (total === 0) return
     const next = ((i % total) + total) % total
     onIndexChange(next)
+    zoomRef.current = 1
+    panRef.current = { x: 0, y: 0 }
+    applyTransform()
     setZoom(1)
     setPan({ x: 0, y: 0 })
-  }, [total, onIndexChange])
+  }, [total, onIndexChange, applyTransform])
 
   const next = useCallback(() => goTo(index + 1), [goTo, index])
   const prev = useCallback(() => goTo(index - 1), [goTo, index])
 
-  const resetZoom = useCallback(() => { setZoom(1); setPan({ x: 0, y: 0 }) }, [])
-  const zoomIn = useCallback(() => setZoom((z) => Math.min(MAX_ZOOM, +(z + 0.5).toFixed(2))), [])
-  const zoomOut = useCallback(() => setZoom((z) => {
-    const nz = Math.max(MIN_ZOOM, +(z - 0.5).toFixed(2))
-    if (nz === 1) setPan({ x: 0, y: 0 })
-    return nz
-  }), [])
+  const resetZoom = useCallback(() => {
+    zoomRef.current = 1
+    panRef.current = { x: 0, y: 0 }
+    applyTransform()
+    setZoom(1)
+    setPan({ x: 0, y: 0 })
+  }, [applyTransform])
+
+  const zoomIn = useCallback(() => {
+    zoomRef.current = Math.min(MAX_ZOOM, +(zoomRef.current + 0.5).toFixed(2))
+    if (zoomRef.current === 1) panRef.current = { x: 0, y: 0 }
+    applyTransform()
+    setZoom(zoomRef.current)
+    setPan(panRef.current)
+  }, [applyTransform])
+
+  const zoomOut = useCallback(() => {
+    zoomRef.current = Math.max(MIN_ZOOM, +(zoomRef.current - 0.5).toFixed(2))
+    if (zoomRef.current === 1) panRef.current = { x: 0, y: 0 }
+    applyTransform()
+    setZoom(zoomRef.current)
+    setPan(panRef.current)
+  }, [applyTransform])
 
   const handleDoubleClick = useCallback(() => {
-    if (zoomRef.current > 1) resetZoom()
-    else setZoom(DOUBLE_TAP_ZOOM)
-  }, [resetZoom])
+    if (zoomRef.current > 1) {
+      zoomRef.current = 1
+      panRef.current = { x: 0, y: 0 }
+    } else {
+      zoomRef.current = DOUBLE_TAP_ZOOM
+    }
+    applyTransform()
+    setZoom(zoomRef.current)
+    setPan(panRef.current)
+  }, [applyTransform])
 
   // Lock the body completely while open
   useEffect(() => {
@@ -104,8 +132,7 @@ export function ImageViewer({ images, index, onIndexChange, open, onClose, alt =
     body.style.width = '100%'
     body.style.overflow = 'hidden'
 
-    setZoom(1)
-    setPan({ x: 0, y: 0 })
+    resetZoom()
 
     return () => {
       body.style.position = prev.position
@@ -122,7 +149,7 @@ export function ImageViewer({ images, index, onIndexChange, open, onClose, alt =
         html.style.scrollBehavior = prev.scrollBehavior
       })
     }
-  }, [open])
+  }, [open, resetZoom])
 
   // Keyboard controls
   useEffect(() => {
@@ -141,19 +168,21 @@ export function ImageViewer({ images, index, onIndexChange, open, onClose, alt =
 
   // Global mouse listeners for robust dragging
   useEffect(() => {
-    if (!isDragging) return
+    if (!isGesturing) return
 
     const onMouseMove = (e: MouseEvent) => {
       if (!dragStart.current) return
       const dx = e.clientX - dragStart.current.x
       const dy = e.clientY - dragStart.current.y
       if (Math.abs(dx) > 3 || Math.abs(dy) > 3) dragHappened.current = true
-      setPan({ x: dragStart.current.panX + dx, y: dragStart.current.panY + dy })
+      panRef.current = { x: dragStart.current.panX + dx, y: dragStart.current.panY + dy }
+      applyTransform()
     }
 
     const onMouseUp = () => {
-      setIsDragging(false)
+      setIsGesturing(false)
       dragStart.current = null
+      setPan(panRef.current) // Sync state on release
     }
 
     window.addEventListener('mousemove', onMouseMove)
@@ -163,10 +192,9 @@ export function ImageViewer({ images, index, onIndexChange, open, onClose, alt =
       window.removeEventListener('mousemove', onMouseMove)
       window.removeEventListener('mouseup', onMouseUp)
     }
-  }, [isDragging])
+  }, [isGesturing, applyTransform])
 
-  // Native non-passive touch & wheel listeners to prevent body scroll and handle gestures
-  // We MUST include `open` in the dependency array so the listeners attach when the modal mounts.
+  // Native non-passive touch & wheel listeners
   useEffect(() => {
     if (!open) return
     const container = containerRef.current
@@ -179,19 +207,21 @@ export function ImageViewer({ images, index, onIndexChange, open, onClose, alt =
         const newDist = distanceBetweenTouches(e.touches)
         const scale = newDist / (pinchStart.current.dist || 1)
         const nextZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, pinchStart.current.zoom * scale))
-        setZoom(nextZoom)
-        if (nextZoom === 1) setPan({ x: 0, y: 0 })
+        zoomRef.current = nextZoom
+        if (nextZoom === 1) panRef.current = { x: 0, y: 0 }
+        applyTransform()
         return
       }
       
-      // Drag to pan (only if zoomed in)
+      // Drag to pan
       if (e.touches.length === 1 && dragStart.current && zoomRef.current > 1) {
         e.preventDefault()
         const t = e.touches[0]
         const dx = t.clientX - dragStart.current.x
         const dy = t.clientY - dragStart.current.y
         if (Math.abs(dx) > 3 || Math.abs(dy) > 3) dragHappened.current = true
-        setPan({ x: dragStart.current.panX + dx, y: dragStart.current.panY + dy })
+        panRef.current = { x: dragStart.current.panX + dx, y: dragStart.current.panY + dy }
+        applyTransform()
       }
     }
 
@@ -202,7 +232,8 @@ export function ImageViewer({ images, index, onIndexChange, open, onClose, alt =
         else zoomOut()
       } else if (zoomRef.current > 1) {
         e.preventDefault()
-        setPan((p) => ({ x: p.x - e.deltaX, y: p.y - e.deltaY }))
+        panRef.current = { x: panRef.current.x - e.deltaX, y: panRef.current.y - e.deltaY }
+        applyTransform()
       }
     }
 
@@ -213,7 +244,7 @@ export function ImageViewer({ images, index, onIndexChange, open, onClose, alt =
       container.removeEventListener('touchmove', onTouchMove)
       container.removeEventListener('wheel', onWheel)
     }
-  }, [open, zoomIn, zoomOut])
+  }, [open, applyTransform, zoomIn, zoomOut])
 
   if (!open) return null
 
@@ -225,37 +256,30 @@ export function ImageViewer({ images, index, onIndexChange, open, onClose, alt =
     if (zoom <= 1) return
     e.preventDefault()
     dragHappened.current = false
-    setIsDragging(true)
+    setIsGesturing(true)
     dragStart.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y }
   }
 
   /* ---------------- Touch handlers (mobile swipe / pinch / pan) ---------------- */
   const handleTouchStart = (e: React.TouchEvent) => {
+    setIsGesturing(true)
+    dragHappened.current = false
+
     if (e.touches.length === 2) {
       pinchStart.current = { dist: distanceBetweenTouches(e.touches), zoom: zoomRef.current }
-      dragStart.current = null // Stop dragging if we start pinching
+      dragStart.current = null
       swipeStart.current = null
       return
     }
     if (e.touches.length === 1) {
       const t = e.touches[0]
       if (zoomRef.current > 1) {
-        dragHappened.current = false
         dragStart.current = { x: t.clientX, y: t.clientY, panX: panRef.current.x, panY: panRef.current.y }
         swipeStart.current = null
       } else {
         swipeStart.current = { x: t.clientX, y: t.clientY }
         dragStart.current = null
       }
-
-      // Double tap detection
-      const now = Date.now()
-      if (now - lastTapRef.current < 300) {
-        handleDoubleClick()
-        swipeStart.current = null
-        dragStart.current = null
-      }
-      lastTapRef.current = now
     }
   }
 
@@ -274,26 +298,44 @@ export function ImageViewer({ images, index, onIndexChange, open, onClose, alt =
     // Pinch ended (all fingers lifted)
     if (pinchStart.current && e.touches.length === 0) {
       pinchStart.current = null
+      setIsGesturing(false)
+      setZoom(zoomRef.current)
+      setPan(panRef.current)
       return
     }
 
     // Drag ended
     if (dragStart.current && e.touches.length === 0) {
       dragStart.current = null
+      setIsGesturing(false)
+      setPan(panRef.current)
       return
     }
 
-    // Swipe ended (only counts if we were at 100% zoom)
+    // Swipe / Tap ended (only counts if we were at 100% zoom)
     if (swipeStart.current && zoomRef.current <= 1 && e.touches.length === 0) {
       const endX = e.changedTouches[0]?.clientX ?? swipeStart.current.x
       const endY = e.changedTouches[0]?.clientY ?? swipeStart.current.y
       const dx = endX - swipeStart.current.x
       const dy = endY - swipeStart.current.y
+      
       if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+        // It was a swipe
         dragHappened.current = true
         dx > 0 ? prev() : next()
+      } else {
+        // It was a tap. Check for double tap.
+        const now = Date.now()
+        if (now - lastTapRef.current < 300) {
+          // Double tap detected!
+          handleDoubleClick()
+          lastTapRef.current = 0 // Reset to prevent triple-tap triggering it again
+        } else {
+          lastTapRef.current = now
+        }
       }
       swipeStart.current = null
+      setIsGesturing(false)
     }
   }
 
@@ -301,7 +343,9 @@ export function ImageViewer({ images, index, onIndexChange, open, onClose, alt =
     pinchStart.current = null
     dragStart.current = null
     swipeStart.current = null
-    setIsDragging(false)
+    setIsGesturing(false)
+    setZoom(zoomRef.current)
+    setPan(panRef.current)
   }
 
   const handleBackdropClick = (e: React.MouseEvent) => {
@@ -387,18 +431,20 @@ export function ImageViewer({ images, index, onIndexChange, open, onClose, alt =
         onTouchEnd={handleTouchEnd}
         onTouchCancel={handleTouchCancel}
         style={{ 
-          // 'none' is required so the browser doesn't hijack pinch/double-tap 
           touchAction: 'none', 
-          cursor: zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default' 
+          cursor: zoom > 1 ? (isGesturing ? 'grabbing' : 'grab') : 'default' 
         }}
       >
         <img
+          ref={imageRef}
           src={images[index]}
           alt={currentAlt}
           draggable={false}
-          className={`h-full w-full object-contain ${isDragging ? '' : 'transition-transform duration-200'}`}
+          // Disable transition entirely while gesturing to prevent elastic jitter
+          className={`h-full w-full object-contain ${isGesturing ? '' : 'transition-transform duration-200'}`}
           style={{
             transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+            transformOrigin: 'center center',
           }}
         />
 

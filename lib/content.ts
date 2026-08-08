@@ -121,7 +121,6 @@ export const projects = [
   {
     number: '01',
     name: 'DeepDive AI',
-    mark: 'D',
     year: '2026',
     category: 'ai',
 
@@ -171,8 +170,8 @@ export const projects = [
     metrics:
       '58+ development parts · 500+ files · 58+ database migrations',
 
-    live: '#',
-    github: '#',
+    live: 'deepdive.website',
+    github: 'https://github.com/mohitbansal25082006/deepdive-app',
     caseStudy: '#',
 
     images: [
