@@ -121,58 +121,66 @@ export const projects = [
   {
     number: '01',
     name: 'DeepDive AI',
+    mark: 'D',
     year: '2026',
     category: 'ai',
 
     theme: 'project-deepdive',
 
     short:
-      'Autonomous deep-research AI that searches, analyzes, verifies, and transforms complex queries into structured reports, podcasts, presentations, and debates.',
+      'A full-scale autonomous research platform — a multi-agent AI system that searches, analyzes, fact-checks, and transforms any query into structured reports, podcasts, voice debates, slide decks, and academic papers, wrapped in real-time collaborative workspaces and a production credit/payments system.',
 
     problem:
-      'Research is time-consuming and fragmented across search, analysis, fact-checking, writing, and content creation. DeepDive AI automates the entire research workflow through a multi-agent AI system.',
+      'Deep research is slow and fragmented — search, cross-referencing, fact-checking, writing, and turning findings into shareable formats (documents, slides, audio) are all separate manual steps. DeepDive AI collapses this entire workflow into one pipeline: a coordinated multi-agent system plans the research, searches and scores sources for trust, analyzes and verifies findings, then generates the report — and from that single report can autonomously produce a podcast, a moderated AI debate, a slide deck, or a publication-ready academic paper, all groundable in the same verified source data.',
 
     features: [
-      'Autonomous Multi-Agent Research',
-      'Deep Web Search & Source Trust Scoring',
-      'AI Research Reports',
-      'RAG-Powered Research Assistant',
-      'Personal AI Knowledge Base',
-      'AI Academic Papers',
-      'AI Podcasts & Voice Debates',
-      'AI Presentation Generation',
-      'Knowledge Graphs & Infographics',
-      'Real-Time Team Workspaces',
-      'Realtime Team Chat',
-      'Offline Research & Export',
-      'Social Research Feed',
-      'Razorpay Credit System',
-      'Google & GitHub OAuth',
+      'Autonomous Multi-Agent Research Pipeline (Planner → Searcher → Analyst → Fact-Checker → Reporter)',
+      'Deep Web Search with Source Trust Scoring (120+ curated domains, credibility & bias tiers)',
+      'Streaming AI Research Reports with Knowledge Graphs & Infographics',
+      'RAG-Powered Research Assistant (7 modes) + Personal Cross-Report AI Knowledge Base',
+      'AI Academic Paper Generator with full in-app editor, citation manager, and DOCX/PDF export',
+      'AI Podcast Studio — multi-voice scripts, real TTS audio, video podcast mode, series & chapters',
+      'AI Voice Debate Engine — 6 parallel perspective agents + moderator synthesis, cinematic audio player',
+      'AI Slide Generator with a full canvas editor (drag positioning, AI rewrite tools, 22 templates)',
+      'Real-Time Team Workspaces — roles/permissions, comments, presence, activity feed, shared content',
+      'Full Realtime Team Chat (Stream Chat) with reactions, polls, GIFs, threads, and a RAG-powered AI bot',
+      'Social Layer — follow system, public profiles, research feed, explore/discover',
+      'Public Web Report Pages (SSR, SEO, embedded AI chat) on a dedicated Next.js app',
+      'Admin Dashboard (Next.js) — user management, credit ledger, abuse detection, audit log',
+      'Unlimited Offline Mode — full offline viewers, caching, and export for every content type',
+      'Razorpay Credit & Payments System with secure token-based checkout',
+      'App-Wide Theme Engine — 6 themes × light/dark/system, synced across all three apps',
+      'Google & GitHub OAuth, unified push notification system, referral & analytics dashboards',
     ],
 
     stack: [
       'React Native',
       'Expo',
       'TypeScript',
-      'Supabase',
-      'PostgreSQL',
+      'Expo Router',
+      'Supabase (PostgreSQL, Auth, Storage, Realtime, Edge Functions)',
       'pgvector',
-      'OpenAI',
-      'Tavily',
+      'OpenAI (GPT-4.1, Whisper, TTS)',
+      'Tavily Search API',
+      'Pexels API',
       'Stream Chat',
       'Next.js',
       'Razorpay',
+      'GIPHY API',
+      'Firebase Cloud Messaging',
+      'react-native-reanimated',
+      'pptxgenjs',
+      'docx',
     ],
 
     challenges:
-      'Designing and coordinating a large multi-agent AI pipeline while supporting streaming responses, RAG, real-time collaboration, offline caching, cross-device media, and reliable AI-generated exports.',
+      'Coordinating a large multi-agent AI pipeline that had to support token-by-token streaming, RAG retrieval, and real-time collaboration simultaneously, without the different systems stepping on each other. Keeping generated content (reports, podcasts, debates, slides) reliably exportable and fully usable offline meant building a custom asset-caching and re-hydration layer. Real-time features (chat, presence, shared content, activity feeds) needed to stay in sync across a mobile app, an admin dashboard, and a public web app that all read from the same Supabase backend — while a credit-metered payment system had to fail fast and never silently lose a transaction.',
 
     metrics:
-      '58+ development parts · 500+ files · 58+ database migrations',
+      '58+ development parts · 500+ files · 58+ database migrations · 200,000+ lines of code · 3 integrated applications (mobile app, admin dashboard, public web)',
 
     live: 'deepdive.website',
     github: 'https://github.com/mohitbansal25082006/deepdive-app',
-    caseStudy: '#',
 
     images: [
       '/deepdive/deepdive1.jpeg',
@@ -199,18 +207,64 @@ export const projects = [
     ],
   },
   {
-    number: '02', name: 'MannSahay', mark: 'M', year: '2024', category: 'ai',
-    theme: 'project-deepdive',
-    short: 'Conversational research companion that turns long documents into dialogue.',
-    problem: 'Long-form documents are slow to navigate and easy to abandon.',
-    features: ['RAG Pipeline', 'Vector Search', 'Citations', 'Chat History', 'Source Upload'],
-    stack: ['LangChain', 'OpenAI', 'Pinecone', 'Next.js', 'Node.js'],
-    challenges: 'Keeping retrieval accurate across large document sets.',
-    metrics: '10k+ docs processed',
-    live: '#', github: '#', caseStudy: '#',
+    number: '02', name: 'MannSahay', mark: 'M', year: '2025', category: 'ai',
+    theme: 'project-MannSahay',
+    short:
+      'AI-powered digital mental health companion for Indian students — an empathetic multilingual chatbot, counselor booking, and an anonymous peer-support forum, built for Smart India Hackathon 2025.',
+
+    problem:
+      '60%+ of Indian university students report moderate-to-severe anxiety, depression, or burnout, yet fewer than 15% seek help — blocked by stigma, a 1:500 counselor-to-student ratio, and mental-health apps that are English-only and culturally Western. MannSahay closes that gap with a culturally aware, 10-language platform that pairs an empathetic AI chatbot with real counselor access and anonymous peer support, so institutions can offer proactive, data-informed care instead of reactive, stigma-limited access.',
+
+    features: [
+      'AI Mental Health Chatbot with Crisis Detection',
+      '5 Indian Languages, Culturally Aware',
+      'Mood Tracking & Recommendations',
+      'Smart Counselor Booking & Scheduling',
+      'Anonymous Peer Support Forum',
+      'Multilingual Resource Library',
+      'Admin Analytics Dashboard',
+      'Progress Tracking & Insights',
+      'Privacy-First, Zero-PII Architecture',
+      'GitHub & Google OAuth',
+    ],
+
+    stack: [
+      'Next.js 14',
+      'React 18',
+      'TypeScript',
+      'Tailwind CSS',
+      'shadcn/ui',
+      'Neon PostgreSQL',
+      'Prisma ORM',
+      'NextAuth.js',
+      'OpenAI GPT-4o',
+      'Anthropic Claude 3 Sonnet',
+      'Cloudflare R2',
+      'Vercel Blob',
+      'Nodemailer / Resend',
+      'Google Calendar API',
+    ],
+
+    challenges:
+      'Balancing AI autonomy with safety in a mental-health context — the chatbot needed real-time crisis detection and a human-in-the-loop escalation path without becoming a bottleneck or a liability. Supporting 5 Indian languages meant more than translation: responses had to stay culturally and emotionally appropriate, not just linguistically correct. The forum needed anonymous posting robust enough that even the platform couldn\'t link identity to content, while still allowing AI moderation to catch harmful posts before they spread — all on a zero-PII data model built to satisfy GDPR and India\'s DPDP Act.',
+
+    metrics:
+      'Built for Smart India Hackathon 2025 (Problem Statement SIH25092, Govt. of Jammu & Kashmir) · 5 core modules · 10 languages supported · 6-member team',
+
+    live: 'https://mannsahay.vercel.app/',
+    github: 'https://github.com/mohitbansal25082006/MannSahay',
     images: [
-      'https://images.unsplash.com/photo-1677442136019-21780ecad995?q=80&w=2070&auto=format&fit=crop',
-      'https://images.unsplash.com/photo-1620712943543-bcc4688e7485?q=80&w=2065&auto=format&fit=crop',
+        '/mannsahay/mannsahay1.png',
+        '/mannsahay/mannsahay2.png',
+        '/mannsahay/mannsahay3.png',
+        '/mannsahay/mannsahay4.png',
+        '/mannsahay/mannsahay5.png',
+        '/mannsahay/mannsahay6.png',
+        '/mannsahay/mannsahay7.png',
+        '/mannsahay/mannsahay8.png',
+        '/mannsahay/mannsahay9.png',
+        '/mannsahay/mannsahay10.png',
+        '/mannsahay/mannsahay11.png',
     ],
   },
   {

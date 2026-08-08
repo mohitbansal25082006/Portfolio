@@ -128,8 +128,6 @@ function TechSphere({ items }: { items: string[] }) {
     return () => cancelAnimationFrame(animId)
   }, [])
 
-  // Shared math for both mouse and touch pointers: rotates the sphere
-  // based on how far the pointer is from the container's center.
   const updateRotationFromPoint = (clientX: number, clientY: number, rect: DOMRect) => {
     const centerX = rect.left + rect.width / 2
     const centerY = rect.top + rect.height / 2
@@ -155,8 +153,6 @@ function TechSphere({ items }: { items: string[] }) {
     target.current.x = -10
   }
 
-  // Touch equivalents so the sphere responds to finger drags on mobile,
-  // where onMouseMove/onMouseEnter/onMouseLeave never fire.
   const handleTouchStart = (e: React.TouchEvent) => {
     isHovering.current = true
     target.current.y = current.current.y % 360
@@ -238,14 +234,7 @@ const skillIcons: Record<string, typeof Code2> = {
   'AI / ML': Cpu, Mobile: Smartphone, Tools: Wrench,
 }
 
-/* ---------------- Project Gallery (Multi-Screenshot Carousel) ----------------
-   - Left / right arrow navigation (click, keyboard, swipe)
-   - Slide counter + progress dots (dots collapse to a scrollable strip
-     when there are many screenshots, so it never overflows on mobile)
-   - Lightbox for a full-screen zoomed look at the active screenshot
-   - Fully responsive: arrows sit inside the frame on mobile so they
-     never get clipped, thumbnails scroll horizontally
-------------------------------------------------------------------------- */
+/* ---------------- Project Gallery (Multi-Screenshot Carousel) ---------------- */
 function ProjectGallery({ project }: { project: typeof projects[0] }) {
   const [active, setActive] = useState(0)
   const [lightboxOpen, setLightboxOpen] = useState(false)
@@ -256,8 +245,6 @@ function ProjectGallery({ project }: { project: typeof projects[0] }) {
   const next = () => goTo(active + 1)
   const prev = () => goTo(active - 1)
 
-  // Reset to the first slide whenever the project itself changes
-  // (e.g. after a filter/search re-renders a different card in place).
   useEffect(() => { setActive(0) }, [project.number])
 
   const handleTouchStart = (e: React.TouchEvent) => {
@@ -367,7 +354,7 @@ function ProjectGallery({ project }: { project: typeof projects[0] }) {
             </>
           )}
 
-          {/* Progress dots (only when the set is small enough to read at a glance) */}
+          {/* Progress dots */}
           {total > 1 && total <= 8 && (
             <div className="pointer-events-none absolute bottom-3 left-1/2 flex -translate-x-1/2 gap-1.5 sm:bottom-4">
               {project.images.map((_, i) => (
@@ -401,7 +388,7 @@ function ProjectGallery({ project }: { project: typeof projects[0] }) {
         </div>
       </div>
 
-      {/* Full-screen viewer — arrow nav on desktop, swipe/pinch on mobile */}
+      {/* Full-screen viewer */}
       <ImageViewer
         images={project.images}
         index={active}
@@ -414,7 +401,12 @@ function ProjectGallery({ project }: { project: typeof projects[0] }) {
   )
 }
 
-/* ---------------- Project Card (full detail block below the gallery) ---------------- */
+/* ---------------- Project Card (redesigned: lean right column, full-width challenges/metrics strip) ----------------
+   Layout on desktop (lg+):
+     Row 1: [ gallery (sticky) ] | [ badge/title/pitch/problem/links/features/stack ]
+     Row 2: full-width strip — Challenges (left, wider) + Metrics (right, compact) — below both columns
+   On mobile everything just stacks in reading order: gallery -> details -> challenges -> metrics.
+*/
 function ProjectCard({ project, index }: { project: typeof projects[0]; index: number }) {
   const [expanded, setExpanded] = useState(false)
   const FEATURES_COLLAPSED_COUNT = 6
@@ -422,100 +414,108 @@ function ProjectCard({ project, index }: { project: typeof projects[0]; index: n
   const hasMoreFeatures = project.features.length > FEATURES_COLLAPSED_COUNT
 
   return (
-    <article className={`project-card group flex flex-col gap-8 md:gap-10 lg:flex-row ${index % 2 === 1 ? 'lg:flex-row-reverse' : ''}`}>
-      {/* Gallery column */}
-      <div className="min-w-0 lg:flex-1">
-        <div className="lg:sticky lg:top-24">
-          <ProjectGallery project={project} />
-        </div>
-      </div>
-
-      {/* Detail column */}
-      <div className="flex min-w-0 flex-1 flex-col gap-5 lg:justify-center">
-        <div className="flex items-center gap-3">
-          <span className={`grid size-10 shrink-0 place-items-center rounded-full ${project.theme} font-mono text-xs font-bold`}>
-            {project.number}
-          </span>
-          <span className="font-mono text-[10px] tracking-[0.16em] text-muted-foreground uppercase">{project.year}</span>
-          <span className="rounded-full border border-border px-2.5 py-1 font-mono text-[9px] tracking-[0.12em] text-muted-foreground uppercase">
-            {project.category}
-          </span>
-        </div>
-
-        <h3 className="text-3xl font-medium tracking-[-0.04em] text-balance sm:text-4xl">{project.name}</h3>
-        <p className="text-sm leading-6 text-muted-foreground">{project.short}</p>
-
-        <div className="rounded-xl border border-border/70 bg-muted/20 p-4">
-          <p className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">The problem</p>
-          <p className="mt-1.5 text-xs leading-5 text-foreground/80">{project.problem}</p>
-        </div>
-
-        <div className="flex flex-wrap gap-2 pt-1">
-          <a
-            href={project.live}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-full bg-primary px-4 py-2 font-mono text-[10px] tracking-[0.12em] text-primary-foreground uppercase transition-colors hover:bg-primary/90"
-          >
-            Live <ExternalLink className="size-3" />
-          </a>
-          <a
-            href={project.github}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-full border border-border px-4 py-2 font-mono text-[10px] tracking-[0.12em] uppercase transition-colors hover:border-primary hover:bg-primary hover:text-primary-foreground"
-          >
-            GitHub <GithubIcon className="size-3" />
-          </a>
-        </div>
-
-        <div className="mt-2 grid gap-5 border-t border-border pt-4 sm:grid-cols-2">
-          <div>
-            <p className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">
-              Features {project.features.length > 0 && `(${project.features.length})`}
-            </p>
-            <ul className="mt-2.5 space-y-1.5">
-              {visibleFeatures.map((f) => (
-                <li key={f} className="flex items-start gap-2 text-xs leading-5 text-foreground/80">
-                  <span className="mt-1.5 size-1 shrink-0 rounded-full bg-primary" /> {f}
-                </li>
-              ))}
-            </ul>
-            {hasMoreFeatures && (
-              <button
-                type="button"
-                onClick={() => setExpanded((v) => !v)}
-                className="mt-2.5 font-mono text-[10px] tracking-[0.12em] text-primary uppercase hover:underline"
-              >
-                {expanded ? 'Show less' : `+${project.features.length - FEATURES_COLLAPSED_COUNT} more`}
-              </button>
-            )}
+    <article className="project-card group flex flex-col gap-8 md:gap-10">
+      {/* Top row: gallery + core details side by side */}
+      <div className={`flex flex-col gap-8 md:gap-10 lg:flex-row ${index % 2 === 1 ? 'lg:flex-row-reverse' : ''}`}>
+        {/* Gallery column */}
+        <div className="min-w-0 lg:flex-1">
+          <div className="lg:sticky lg:top-24">
+            <ProjectGallery project={project} />
           </div>
-          <div>
-            <p className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">Stack</p>
-            <div className="mt-2.5 flex flex-wrap gap-1.5">
-              {project.stack.map((s) => (
-                <span key={s} className="rounded-full border border-border px-2.5 py-1 font-mono text-[10px] text-muted-foreground">
-                  {s}
-                </span>
-              ))}
+        </div>
+
+        {/* Detail column — kept lean: identity, pitch, problem, links, features, stack */}
+        <div className="flex min-w-0 flex-1 flex-col gap-5 lg:justify-center">
+          <div className="flex items-center gap-3">
+            <span className={`grid size-10 shrink-0 place-items-center rounded-full ${project.theme} font-mono text-xs font-bold`}>
+              {project.number}
+            </span>
+            <span className="font-mono text-[10px] tracking-[0.16em] text-muted-foreground uppercase">{project.year}</span>
+            <span className="rounded-full border border-border px-2.5 py-1 font-mono text-[9px] tracking-[0.12em] text-muted-foreground uppercase">
+              {project.category}
+            </span>
+          </div>
+
+          <h3 className="text-3xl font-medium tracking-[-0.04em] text-balance sm:text-4xl">{project.name}</h3>
+          <p className="text-sm leading-6 text-muted-foreground">{project.short}</p>
+
+          <div className="rounded-xl border border-border/70 bg-muted/20 p-4">
+            <p className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">The problem</p>
+            <p className="mt-1.5 text-xs leading-5 text-foreground/80">{project.problem}</p>
+          </div>
+
+          <div className="flex flex-wrap gap-2 pt-1">
+            <a
+              href={project.live}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-full bg-primary px-4 py-2 font-mono text-[10px] tracking-[0.12em] text-primary-foreground uppercase transition-colors hover:bg-primary/90"
+            >
+              Live <ExternalLink className="size-3" />
+            </a>
+            <a
+              href={project.github}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-full border border-border px-4 py-2 font-mono text-[10px] tracking-[0.12em] uppercase transition-colors hover:border-primary hover:bg-primary hover:text-primary-foreground"
+            >
+              GitHub <GithubIcon className="size-3" />
+            </a>
+          </div>
+
+          <div className="mt-2 grid gap-5 border-t border-border pt-4 sm:grid-cols-2">
+            <div className="min-w-0">
+              <p className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">
+                Features {project.features.length > 0 && `(${project.features.length})`}
+              </p>
+              <ul className="mt-2.5 space-y-1.5">
+                {visibleFeatures.map((f) => (
+                  <li key={f} className="flex items-start gap-2 text-xs leading-5 text-foreground/80">
+                    <span className="mt-1.5 size-1 shrink-0 rounded-full bg-primary" /> {f}
+                  </li>
+                ))}
+              </ul>
+              {hasMoreFeatures && (
+                <button
+                  type="button"
+                  onClick={() => setExpanded((v) => !v)}
+                  className="mt-2.5 font-mono text-[10px] tracking-[0.12em] text-primary uppercase hover:underline"
+                >
+                  {expanded ? 'Show less' : `+${project.features.length - FEATURES_COLLAPSED_COUNT} more`}
+                </button>
+              )}
+            </div>
+            <div className="min-w-0">
+              <p className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">Stack</p>
+              <div className="mt-2.5 flex flex-wrap gap-1.5">
+                {project.stack.map((s) => (
+                  <span key={s} className="rounded-full border border-border px-2.5 py-1 font-mono text-[10px] text-muted-foreground">
+                    {s}
+                  </span>
+                ))}
+              </div>
             </div>
           </div>
         </div>
+      </div>
 
-        <div className="flex flex-col gap-4 border-t border-border pt-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0">
-            <p className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">Challenges</p>
-            <p className="mt-1 text-xs leading-5 text-foreground/80">{project.challenges}</p>
-          </div>
+      {/* Bottom strip: Challenges + Metrics, full width beneath both columns (desktop) */}
+      {(project.challenges || project.metrics) && (
+        <div className="flex flex-col gap-4 border-t border-border pt-5 md:flex-row md:items-start md:justify-between md:gap-10">
+          {project.challenges && (
+            <div className="min-w-0 md:flex-[2]">
+              <p className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">Challenges</p>
+              <p className="mt-1.5 text-xs leading-5 text-foreground/80 md:max-w-3xl">{project.challenges}</p>
+            </div>
+          )}
           {project.metrics && (
-            <div className="shrink-0 sm:text-right">
+            <div className="min-w-0 shrink-0 md:max-w-xs md:text-right">
               <p className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">Metrics</p>
-              <p className="mt-1 text-sm font-medium text-primary">{project.metrics}</p>
+              <p className="mt-1.5 text-sm font-medium leading-5 text-primary">{project.metrics}</p>
             </div>
           )}
         </div>
-      </div>
+      )}
     </article>
   )
 }
@@ -923,10 +923,10 @@ export function PortfolioSite() {
         </div>
       </section>
 
-      {/* GITHUB — now fully live, powered by GitHub's GraphQL API */}
+      {/* GITHUB */}
       <GitHubSection username={githubConfig.username} />
 
-      {/* TIMELINE - Redesigned Theme Cards */}
+      {/* TIMELINE */}
       <section id="timeline" className="border-y border-border bg-secondary">
         <div className="mx-auto max-w-350 px-5 py-24 md:px-10 md:py-36 lg:px-14">
           <Reveal>
@@ -967,7 +967,7 @@ export function PortfolioSite() {
         </div>
       </section>
 
-      {/* RESUME — advanced canvas-rendered PDF viewer (zoom, pan, page nav, full-screen) */}
+      {/* RESUME */}
       <section id="resume" className="mx-auto max-w-350 px-5 py-24 md:px-10 md:py-36 lg:px-14">
         <div className="grid gap-12 md:grid-cols-[0.6fr_0.4fr] md:items-center">
           <Reveal>
