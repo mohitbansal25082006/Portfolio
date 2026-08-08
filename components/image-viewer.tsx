@@ -48,6 +48,13 @@ export function ImageViewer({ images, index, onIndexChange, open, onClose, alt =
   const lastTapRef = useRef(0)
   const dragHappened = useRef(false)
   const containerRef = useRef<HTMLDivElement>(null)
+  
+  // Use a ref to track current zoom inside non-reactive event listeners
+  const zoomRef = useRef(zoom)
+  const panRef = useRef(pan)
+
+  useEffect(() => { zoomRef.current = zoom }, [zoom])
+  useEffect(() => { panRef.current = pan }, [pan])
 
   const goTo = useCallback((i: number) => {
     if (total === 0) return
@@ -67,6 +74,11 @@ export function ImageViewer({ images, index, onIndexChange, open, onClose, alt =
     if (nz === 1) setPan({ x: 0, y: 0 })
     return nz
   }), [])
+
+  const handleDoubleClick = useCallback(() => {
+    if (zoomRef.current > 1) resetZoom()
+    else setZoom(DOUBLE_TAP_ZOOM)
+  }, [resetZoom])
 
   // Lock the body completely while open
   useEffect(() => {
@@ -96,7 +108,6 @@ export function ImageViewer({ images, index, onIndexChange, open, onClose, alt =
     setPan({ x: 0, y: 0 })
 
     return () => {
-      // Restore body styles
       body.style.position = prev.position
       body.style.top = prev.top
       body.style.left = prev.left
@@ -104,12 +115,9 @@ export function ImageViewer({ images, index, onIndexChange, open, onClose, alt =
       body.style.width = prev.width
       body.style.overflow = prev.overflow
       
-      // Temporarily disable smooth scrolling to prevent the browser
-      // from animating the jump back to the original scroll position.
       html.style.scrollBehavior = 'auto'
       window.scrollTo(0, scrollY)
       
-      // Restore smooth scrolling on the next frame
       requestAnimationFrame(() => {
         html.style.scrollBehavior = prev.scrollBehavior
       })
@@ -131,8 +139,7 @@ export function ImageViewer({ images, index, onIndexChange, open, onClose, alt =
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [open, prev, next, resetZoom, zoomIn, zoomOut, onClose])
 
-  // Global mouse listeners for robust dragging (prevents drag from breaking 
-  // if the cursor leaves the container)
+  // Global mouse listeners for robust dragging
   useEffect(() => {
     if (!isDragging) return
 
@@ -158,15 +165,26 @@ export function ImageViewer({ images, index, onIndexChange, open, onClose, alt =
     }
   }, [isDragging])
 
-  // Native non-passive touch & wheel listeners to prevent body scroll when panning
+  // Native non-passive touch & wheel listeners
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
 
     const onTouchMove = (e: TouchEvent) => {
-      if (e.touches.length === 1 && zoom > 1) {
-        e.preventDefault() // Forcefully stop the browser from scrolling the page
-        if (!dragStart.current) return
+      // Pinch to zoom
+      if (e.touches.length === 2 && pinchStart.current) {
+        e.preventDefault()
+        const newDist = distanceBetweenTouches(e.touches)
+        const scale = newDist / (pinchStart.current.dist || 1)
+        const nextZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, pinchStart.current.zoom * scale))
+        setZoom(nextZoom)
+        if (nextZoom === 1) setPan({ x: 0, y: 0 })
+        return
+      }
+      
+      // Drag to pan
+      if (e.touches.length === 1 && dragStart.current && zoomRef.current > 1) {
+        e.preventDefault()
         const t = e.touches[0]
         const dx = t.clientX - dragStart.current.x
         const dy = t.clientY - dragStart.current.y
@@ -180,7 +198,7 @@ export function ImageViewer({ images, index, onIndexChange, open, onClose, alt =
         e.preventDefault()
         if (e.deltaY < 0) zoomIn()
         else zoomOut()
-      } else if (zoom > 1) {
+      } else if (zoomRef.current > 1) {
         e.preventDefault()
         setPan((p) => ({ x: p.x - e.deltaX, y: p.y - e.deltaY }))
       }
@@ -193,7 +211,7 @@ export function ImageViewer({ images, index, onIndexChange, open, onClose, alt =
       container.removeEventListener('touchmove', onTouchMove)
       container.removeEventListener('wheel', onWheel)
     }
-  }, [zoom, zoomIn, zoomOut])
+  }, [zoomIn, zoomOut])
 
   if (!open) return null
 
@@ -203,61 +221,87 @@ export function ImageViewer({ images, index, onIndexChange, open, onClose, alt =
   /* ---------------- Mouse handlers (desktop pan) ---------------- */
   const handleMouseDown = (e: React.MouseEvent) => {
     if (zoom <= 1) return
-    e.preventDefault() // prevent image ghosting/text selection
+    e.preventDefault()
     dragHappened.current = false
     setIsDragging(true)
     dragStart.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y }
   }
 
-  const handleDoubleClick = () => {
-    if (zoom > 1) resetZoom()
-    else setZoom(DOUBLE_TAP_ZOOM)
-  }
-
   /* ---------------- Touch handlers (mobile swipe / pinch / pan) ---------------- */
   const handleTouchStart = (e: React.TouchEvent) => {
     if (e.touches.length === 2) {
-      pinchStart.current = { dist: distanceBetweenTouches(e.touches), zoom }
+      pinchStart.current = { dist: distanceBetweenTouches(e.touches), zoom: zoomRef.current }
+      dragStart.current = null // Stop dragging if we start pinching
       swipeStart.current = null
       return
     }
     if (e.touches.length === 1) {
       const t = e.touches[0]
-      if (zoom > 1) {
+      if (zoomRef.current > 1) {
         dragHappened.current = false
-        dragStart.current = { x: t.clientX, y: t.clientY, panX: pan.x, panY: pan.y }
+        dragStart.current = { x: t.clientX, y: t.clientY, panX: panRef.current.x, panY: panRef.current.y }
         swipeStart.current = null
       } else {
         swipeStart.current = { x: t.clientX, y: t.clientY }
+        dragStart.current = null
       }
 
       const now = Date.now()
       if (now - lastTapRef.current < 300) {
         handleDoubleClick()
         swipeStart.current = null
+        dragStart.current = null
       }
       lastTapRef.current = now
     }
   }
 
   const handleTouchEnd = (e: React.TouchEvent) => {
-    pinchStart.current = null
-    dragStart.current = null
-    if (swipeStart.current && zoom <= 1) {
+    // Transition from pinch to drag (user lifted one finger but left one down)
+    if (pinchStart.current && e.touches.length === 1) {
+      pinchStart.current = null
+      const t = e.touches[0]
+      if (zoomRef.current > 1) {
+        dragStart.current = { x: t.clientX, y: t.clientY, panX: panRef.current.x, panY: panRef.current.y }
+        dragHappened.current = false
+      }
+      return
+    }
+
+    // Pinch ended (all fingers lifted)
+    if (pinchStart.current && e.touches.length === 0) {
+      pinchStart.current = null
+      return
+    }
+
+    // Drag ended
+    if (dragStart.current && e.touches.length === 0) {
+      dragStart.current = null
+      return
+    }
+
+    // Swipe ended (only counts if we were at 100% zoom)
+    if (swipeStart.current && zoomRef.current <= 1 && e.touches.length === 0) {
       const endX = e.changedTouches[0]?.clientX ?? swipeStart.current.x
       const endY = e.changedTouches[0]?.clientY ?? swipeStart.current.y
       const dx = endX - swipeStart.current.x
       const dy = endY - swipeStart.current.y
       if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) {
-        dragHappened.current = true // Prevent click interference
+        dragHappened.current = true
         dx > 0 ? prev() : next()
       }
+      swipeStart.current = null
     }
+  }
+
+  const handleTouchCancel = () => {
+    pinchStart.current = null
+    dragStart.current = null
     swipeStart.current = null
+    setIsDragging(false)
   }
 
   const handleBackdropClick = (e: React.MouseEvent) => {
-    // Prevent closing if the user just finished dragging the image around
     if (dragHappened.current) {
       dragHappened.current = false
       return
@@ -265,7 +309,6 @@ export function ImageViewer({ images, index, onIndexChange, open, onClose, alt =
     if (e.target === e.currentTarget) onClose()
   }
 
-  // Render via Portal to escape parent CSS transforms (stops layout flicker)
   return createPortal(
     <div
       className="fixed inset-0 z-[70] flex flex-col overflow-hidden bg-background/95 backdrop-blur-md"
@@ -339,7 +382,12 @@ export function ImageViewer({ images, index, onIndexChange, open, onClose, alt =
         onDoubleClick={handleDoubleClick}
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
-        style={{ touchAction: zoom > 1 ? 'none' : 'pan-y', cursor: zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default' }}
+        onTouchCancel={handleTouchCancel}
+        style={{ 
+          // 'none' is required so the browser doesn't hijack pinch/double-tap 
+          touchAction: 'none', 
+          cursor: zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default' 
+        }}
       >
         <img
           src={images[index]}
