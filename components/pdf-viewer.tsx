@@ -51,6 +51,31 @@ import {
  * pinch, and double-tap) and makes pan work identically in every direction
  * because it's just x/y translation, not axis-constrained scrolling.
  * ---------------------------------------------------------------------------
+ *
+ * MOBILE FIT-TO-SCREEN (v4 fix)
+ * ---------------------------------------------------------------------------
+ * The previous fit-to-screen pass computed `fitScale` once, using a fixed
+ * 30-frame retry poll gated on `window.innerWidth` read at effect-run time.
+ * Two things could make that land wrong on real phones:
+ *   1. Mobile browser chrome (the address bar) collapses/expands shortly
+ *      after the modal opens, changing `visualViewport` / `innerHeight`
+ *      *after* the fit calculation already ran — so the computed fit no
+ *      longer matches the real available height, and the page opens
+ *      appearing "zoomed" relative to the now-larger viewport.
+ *   2. `window.innerWidth` is a single point-in-time read; on some devices
+ *      (foldables, split-screen, orientation change mid-transition) it can
+ *      briefly disagree with the actual `viewportRef` element's measured
+ *      box, since the modal itself is what should be treated as ground
+ *      truth for "how much space do I actually have," not the window.
+ *
+ * The fix: use `ResizeObserver` on the viewport element itself (the actual
+ * box we're fitting into) as the source of truth, keep it subscribed for
+ * the lifetime of the modal (not just until first successful fit) so a
+ * post-open chrome-collapse or orientation change triggers a re-fit, and
+ * derive "is this a mobile-sized viewport" from that same measured element
+ * width rather than a separate `window.innerWidth` read. Desktop/tablet
+ * behavior (open at 100%, no auto-fit) is unchanged.
+ * ---------------------------------------------------------------------------
  */
 
 const MIN_SCALE = 0.5
@@ -58,6 +83,7 @@ const MAX_SCALE = 4
 const BASE_RENDER_SCALE = 1.5 // render pages at higher res for crisp zoom
 const MAX_OUTPUT_SCALE = 2 // cap devicePixelRatio scaling so canvas pixel
 // dimensions never exceed mobile GPU texture limits at high zoom.
+const MOBILE_BREAKPOINT = 768 // matches Tailwind's `md` breakpoint used elsewhere in this file
 
 type PDFDocumentProxy = any
 type PDFPageProxy = any
@@ -184,6 +210,11 @@ function PdfModal({ url, fileName, onClose }: { url: string; fileName: string; o
   const viewportRef = useRef<HTMLDivElement>(null) // outer, fixed-size, overflow:hidden
   const contentRef = useRef<HTMLDivElement>(null) // inner, gets the transform
 
+  // Tracks whether the user has manually zoomed/panned since the last fit,
+  // so a viewport resize (chrome collapse, orientation change) re-fits
+  // automatically only when the user hasn't already taken control.
+  const userInteractedRef = useRef(false)
+
   /* -------- Gesture refs (no re-renders while dragging/pinching) -------- */
   const drag = useRef<{ active: boolean; startX: number; startY: number; startTX: number; startTY: number; moved: boolean } | null>(null)
   const pinch = useRef<{
@@ -248,74 +279,92 @@ function PdfModal({ url, fileName, onClose }: { url: string; fileName: string; o
   }, [])
 
   /**
-   * Compute the "fit to screen" scale once the first page has rendered and
-   * the viewport is measured, then center it — this is what makes the
-   * viewer open already showing the whole page on small screens instead of
-   * a zoomed-in slice of it.
+   * Compute the "fit to screen" scale so the first page's full width AND
+   * height are visible inside the viewport, then center it — this is what
+   * makes the viewer open already showing the whole page on small screens
+   * instead of a zoomed-in slice of it.
    *
    * MOBILE ONLY: on desktop/tablet widths we keep the original behavior
    * (open at 100% / scale 1, no auto-fit) since desktop screens are usually
    * plenty tall/wide already and users there expect the classic "100%"
    * starting point, not an auto-shrunk page.
    *
-   * Runs whenever pages/rotation change (rotation swaps page width/height,
-   * so a portrait page rotated 90° needs re-fitting), but only actually
-   * moves the view if the user hasn't already interacted with zoom — we
-   * detect "hasn't interacted" via a ref rather than transform.scale itself,
-   * since scale === fitScale right after fitting and we don't want a resize
-   * to also count as "already interacted".
+   * "Mobile" here is decided from the *measured viewport element* (the
+   * actual box the PDF renders into), not `window.innerWidth` — the two
+   * can briefly disagree during the modal's open transition, and only the
+   * element's own box is what the fit math is fitting against.
+   *
+   * This is wired up via `ResizeObserver` rather than a one-shot effect so
+   * that later layout changes — the mobile browser's address bar
+   * collapsing/expanding after open, an orientation change, a foldable
+   * hinge event — trigger a re-fit too, as long as the user hasn't already
+   * taken manual control of zoom/pan (tracked via `userInteractedRef`).
    */
   useEffect(() => {
     if (status !== 'ready' || pages.length === 0) return
 
-    const isMobileViewport = typeof window !== 'undefined' && window.innerWidth < 768
+    const viewport = viewportRef.current
+    const content = contentRef.current
+    if (!viewport || !content) return
 
-    if (!isMobileViewport) {
-      // Desktop/tablet: keep the original default — open at scale 1,
-      // centered, no fit-to-screen shrinking.
-      setFitScale(1)
-      const viewport = viewportRef.current
-      const content = contentRef.current
-      const firstPageCanvas = content?.querySelector<HTMLCanvasElement>('[data-page="1"] canvas')
-      if (viewport && firstPageCanvas) {
-        const centeredX = (viewport.clientWidth - firstPageCanvas.clientWidth) / 2
-        applyTransform({ x: centeredX, y: 12, scale: 1 })
-      } else {
-        applyTransform({ x: 0, y: 0, scale: 1 })
-      }
-      return
-    }
-
-    let attempts = 0
     let cancelled = false
+    let rafId: number | null = null
+    let attempts = 0
 
-    const tryFit = () => {
+    const fitOnce = () => {
       if (cancelled) return
-      const viewport = viewportRef.current
-      const content = contentRef.current
-      const firstPageCanvas = content?.querySelector<HTMLCanvasElement>('[data-page="1"] canvas')
+      const firstPageCanvas = content.querySelector<HTMLCanvasElement>('[data-page="1"] canvas')
 
-      if (!viewport || !content || !firstPageCanvas || firstPageCanvas.clientWidth === 0) {
+      if (!firstPageCanvas || firstPageCanvas.clientWidth === 0) {
         // Canvas hasn't painted its CSS size yet (render is async) — retry
         // for a few frames rather than falling back to an unfit default.
-        if (attempts++ < 30) requestAnimationFrame(tryFit)
+        if (attempts++ < 40) rafId = requestAnimationFrame(fitOnce)
         return
       }
 
       const vw = viewport.clientWidth
       const vh = viewport.clientHeight
+      const isMobileViewport = vw < MOBILE_BREAKPOINT
+
+      if (!isMobileViewport) {
+        // Desktop/tablet: keep the original default — open at scale 1,
+        // centered, no fit-to-screen shrinking.
+        setFitScale(1)
+        if (!userInteractedRef.current) {
+          const centeredX = (vw - firstPageCanvas.clientWidth) / 2
+          applyTransform({ x: centeredX, y: 12, scale: 1 })
+        }
+        return
+      }
+
       // Horizontal padding on the content wrapper (px-3 on mobile) eats
       // into available fit width — account for it so the page doesn't get
       // clipped at the sides at "fit" scale.
       const horizontalPadding = 24
+      const verticalPadding = 24
       const pageWidth = firstPageCanvas.clientWidth
       const pageHeight = firstPageCanvas.clientHeight
 
       const scaleToFitWidth = (vw - horizontalPadding) / pageWidth
-      const scaleToFitHeight = (vh - 24) / pageHeight
+      const scaleToFitHeight = (vh - verticalPadding) / pageHeight
+      // Fit BOTH width and height inside the viewport (whichever is
+      // tighter), so the whole page is visible on open — this is the
+      // "fit to width and height" behavior for mobile.
       const computedFit = clamp(Math.min(scaleToFitWidth, scaleToFitHeight), 0.1, 1)
 
-      setFitScale(computedFit)
+      setFitScale((prev) => {
+        // Avoid pointless re-renders if a resize re-fit lands on
+        // essentially the same value.
+        if (prev != null && Math.abs(prev - computedFit) < 0.002) return prev
+        return computedFit
+      })
+
+      if (userInteractedRef.current) {
+        // The user already zoomed/panned manually — don't yank their view
+        // back to fit just because the viewport was measured again
+        // (e.g. address-bar collapse triggered a ResizeObserver tick).
+        return
+      }
 
       // Center the fitted page horizontally; align near the top vertically
       // (with small breathing room) rather than dead-center, since that
@@ -326,9 +375,23 @@ function PdfModal({ url, fileName, onClose }: { url: string; fileName: string; o
       applyTransform({ x: centeredX, y: 12, scale: computedFit })
     }
 
-    requestAnimationFrame(tryFit)
+    attempts = 0
+    rafId = requestAnimationFrame(fitOnce)
+
+    // Re-fit on real layout changes to the viewport box itself (address
+    // bar show/hide, orientation change, split-screen resize) — this is
+    // what a one-shot effect can't catch.
+    const ro = new ResizeObserver(() => {
+      attempts = 0
+      if (rafId != null) cancelAnimationFrame(rafId)
+      rafId = requestAnimationFrame(fitOnce)
+    })
+    ro.observe(viewport)
+
     return () => {
       cancelled = true
+      if (rafId != null) cancelAnimationFrame(rafId)
+      ro.disconnect()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, pages.length, rotation])
@@ -357,6 +420,7 @@ function PdfModal({ url, fileName, onClose }: { url: string; fileName: string; o
     const contentY = (vy - t.y) / t.scale
     const newX = vx - contentX * clamped
     const newY = vy - contentY * clamped
+    userInteractedRef.current = true
     applyTransform({ x: newX, y: newY, scale: clamped })
   }, [applyTransform, fitScale])
 
@@ -371,6 +435,7 @@ function PdfModal({ url, fileName, onClose }: { url: string; fileName: string; o
 
   const resetView = useCallback(() => {
     setRotation(0)
+    userInteractedRef.current = false
     const viewport = viewportRef.current
     const content = contentRef.current
     const firstPageCanvas = content?.querySelector<HTMLCanvasElement>('[data-page="1"] canvas')
@@ -456,6 +521,7 @@ function PdfModal({ url, fileName, onClose }: { url: string; fileName: string; o
       const factor = Math.pow(2, -clampedDelta * 0.02)
       zoomToward(transformRef.current.scale * factor, vx, vy)
     } else {
+      userInteractedRef.current = true
       const t = transformRef.current
       const next = clampPan(t.x - e.deltaX, t.y - e.deltaY, t.scale)
       applyTransform({ ...next, scale: t.scale })
@@ -486,6 +552,7 @@ function PdfModal({ url, fileName, onClose }: { url: string; fileName: string; o
       const dx = e.clientX - d.startX
       const dy = e.clientY - d.startY
       if (Math.abs(dx) > 3 || Math.abs(dy) > 3) d.moved = true
+      if (d.moved) userInteractedRef.current = true
       const t = transformRef.current
       const next = clampPan(d.startTX + dx, d.startTY + dy, t.scale)
       applyTransform({ ...next, scale: t.scale })
@@ -554,6 +621,7 @@ function PdfModal({ url, fileName, onClose }: { url: string; fileName: string; o
 
     if (e.touches.length === 2 && pinch.current) {
       e.preventDefault()
+      userInteractedRef.current = true
       const p = pinch.current
       const newDist = touchDist(e.touches)
       const rawScale = p.startScale * (newDist / p.startDist)
@@ -579,6 +647,7 @@ function PdfModal({ url, fileName, onClose }: { url: string; fileName: string; o
       const dy = touch.clientY - d.startY
       if (Math.abs(dx) > 8 || Math.abs(dy) > 8) d.moved = true
       if (d.moved) {
+        userInteractedRef.current = true
         const t = transformRef.current
         const next = clampPan(d.startTX + dx, d.startTY + dy, t.scale)
         applyTransform({ ...next, scale: t.scale })
