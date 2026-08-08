@@ -5,7 +5,6 @@ import {
   useEffect,
   useRef,
   useState,
-  type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
 } from 'react'
 import {
@@ -26,32 +25,41 @@ import {
  * Advanced PDF viewer
  * ---------------------------------------------------------------------------
  * Renders PDF pages to <canvas> using pdfjs-dist instead of relying on the
- * browser's native PDF plugin (which is inconsistent / often absent on
- * Android WebViews and in-app browsers, and shows blank on many mobile
- * Chrome/Safari configs when embedded via <iframe>).
+ * browser's native PDF plugin.
  *
- * Features:
- *  - Inline compact preview (click/tap to open fullscreen)
- *  - Fullscreen modal viewer with:
- *      - Pinch-to-zoom (touch, anchored to pinch midpoint) + ctrl/cmd+scroll
- *        zoom (desktop) + buttons
- *      - Drag-to-pan when zoomed in (mouse + touch)
- *      - Double-tap / double-click to zoom (anchored to tap point)
- *      - Page navigation (prev/next, jump-to-page, keyboard arrows)
- *      - Continuous vertical scroll through all pages
- *      - Rotate
- *      - Download + open-in-new-tab
- *      - Loading & error states
+ * ARCHITECTURE (v3 — transform-based, not scroll-based)
+ * ---------------------------------------------------------------------------
+ * Earlier versions tried to layer manual "pan" on top of a native scrolling
+ * container (mutating el.scrollLeft/scrollTop under touch handlers). That
+ * fights the browser's own scroll/gesture recognizer — on real phones this
+ * is exactly why pinch felt jumpy, double-tap zoomed to the wrong spot, and
+ * horizontal drag did nothing (native scroll containers only "own" the axis
+ * that overflows, so a page narrower than the viewport never picks up
+ * horizontal drags at all).
+ *
+ * This version follows the pattern used by production canvas/map/PDF tools
+ * (Google Maps, Photopea, pdf.js's own experiments, Figma's mobile viewer):
+ *   - Track pan (x, y) and scale purely as React state / refs.
+ *   - Render everything inside one wrapper with a single
+ *     `transform: translate(x, y) scale(s)`.
+ *   - Every gesture (wheel, pinch, drag, double-tap) is just math that
+ *     updates x, y, s — never touches scrollLeft/scrollTop.
+ *   - The outer viewport is a plain overflow:hidden box, so there is no
+ *     competing scroll container at all; touch-action is 'none' the whole
+ *     time and *all* single/multi-finger movement is handled by us.
+ * This makes zoom-toward-a-point trivial (it's the same math for wheel,
+ * pinch, and double-tap) and makes pan work identically in every direction
+ * because it's just x/y translation, not axis-constrained scrolling.
  * ---------------------------------------------------------------------------
  */
 
 const MIN_SCALE = 0.5
 const MAX_SCALE = 4
-const BASE_RENDER_SCALE = 1.5 // render at higher res for crisp zoom
-const MAX_OUTPUT_SCALE = 2 // cap device-pixel-ratio scaling so canvas dimensions
-// never exceed mobile GPU texture limits (some Android WebViews cap around
-// 4096px per canvas dimension; a 3x DPR phone at 400% zoom could otherwise
-// blow past that and silently fail to render / crash the tab).
+const BASE_RENDER_SCALE = 1.5 // render pages at higher res for crisp zoom
+const MAX_OUTPUT_SCALE = 2 // cap devicePixelRatio scaling so canvas pixel
+// dimensions never exceed mobile GPU texture limits at high zoom.
+const DOUBLE_TAP_MS = 300
+const DOUBLE_TAP_SLOP = 24 // px — how far apart two taps can be and still count as one gesture
 
 type PDFDocumentProxy = any
 type PDFPageProxy = any
@@ -74,13 +82,13 @@ function clamp(n: number, min: number, max: number) {
 /* ============================== Canvas Page ============================== */
 function PdfPage({
   page,
-  scale,
+  renderScale,
   rotation,
   pageNumber,
   onVisible,
 }: {
   page: PDFPageProxy
-  scale: number
+  renderScale: number
   rotation: number
   pageNumber: number
   onVisible: (n: number) => void
@@ -109,7 +117,7 @@ function PdfPage({
     const canvas = canvasRef.current
     if (!canvas || !page) return
 
-    const viewport = page.getViewport({ scale: scale * BASE_RENDER_SCALE, rotation })
+    const viewport = page.getViewport({ scale: renderScale, rotation })
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
@@ -146,7 +154,7 @@ function PdfPage({
         /* noop */
       }
     }
-  }, [page, scale, rotation])
+  }, [page, renderScale, rotation])
 
   return (
     <div ref={wrapRef} data-page={pageNumber} className="flex justify-center py-2">
@@ -157,50 +165,51 @@ function PdfPage({
 
 /* ============================== Fullscreen Modal ============================== */
 function PdfModal({ url, fileName, onClose }: { url: string; fileName: string; onClose: () => void }) {
-  const [pdfDoc, setPdfDoc] = useState<PDFDocumentProxy | null>(null)
   const [pages, setPages] = useState<PDFPageProxy[]>([])
   const [numPages, setNumPages] = useState(0)
   const [currentPage, setCurrentPage] = useState(1)
-  const [scale, setScale] = useState(1)
   const [rotation, setRotation] = useState(0)
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const [jumpValue, setJumpValue] = useState('1')
 
-  const scrollRef = useRef<HTMLDivElement>(null)
-  const pan = useRef({
-    active: false,
-    startX: 0,
-    startY: 0,
-    scrollLeft: 0,
-    scrollTop: 0,
-    moved: false,
-  })
+  // ---- Pan/zoom state, applied as a single CSS transform ----
+  // `fitScale` is the scale at which the first page fits the viewport on
+  // both width and height (computed once layout is known) — this becomes
+  // the baseline "100%" for the mobile-open experience, and MIN_SCALE is
+  // expressed relative to it so a user can still zoom out a little further
+  // than fit if they want to see two-up or just breathe.
+  const [fitScale, setFitScale] = useState<number | null>(null)
+  const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 })
+  const transformRef = useRef(transform)
+  transformRef.current = transform
 
-  // Pinch state: tracks the pinch anchor (midpoint) in *content* coordinates
-  // (i.e. relative to the scrollable content, independent of current scroll
-  // position) so zoom can stay anchored under the user's fingers instead of
-  // re-centering on the viewport, which is what made pinch feel "broken" /
-  // jumpy on phones.
+  const viewportRef = useRef<HTMLDivElement>(null) // outer, fixed-size, overflow:hidden
+  const contentRef = useRef<HTMLDivElement>(null) // inner, gets the transform
+
+  /* -------- Gesture refs (no re-renders while dragging/pinching) -------- */
+  const drag = useRef<{ active: boolean; startX: number; startY: number; startTX: number; startTY: number; moved: boolean } | null>(null)
   const pinch = useRef<{
     startDist: number
     startScale: number
-    anchorContentX: number
-    anchorContentY: number
+    startTX: number
+    startTY: number
+    // Anchor point in viewport-local coordinates (fixed reference frame,
+    // doesn't move as the transform changes).
+    anchorVX: number
+    anchorVY: number
   } | null>(null)
-
-  // Single-finger touch tracking, used to distinguish a tap/double-tap from
-  // the start of a drag-to-pan gesture, and to know whether we're mid-pan so
-  // we can preventDefault selectively (rather than blanket-blocking native
-  // scroll, which is what previously fought with the browser on mobile).
-  const singleTouch = useRef({
-    active: false,
-    startX: 0,
-    startY: 0,
-    scrollLeft: 0,
-    scrollTop: 0,
-    moved: false,
-  })
   const lastTap = useRef({ time: 0, x: 0, y: 0 })
+  const rafPending = useRef(false)
+
+  const applyTransform = useCallback((next: { x: number; y: number; scale: number }) => {
+    transformRef.current = next
+    if (rafPending.current) return
+    rafPending.current = true
+    requestAnimationFrame(() => {
+      rafPending.current = false
+      setTransform({ ...transformRef.current })
+    })
+  }, [])
 
   /* -------- Load document -------- */
   useEffect(() => {
@@ -210,7 +219,6 @@ function PdfModal({ url, fileName, onClose }: { url: string; fileName: string; o
       .then((pdfjsLib) => pdfjsLib.getDocument(url).promise)
       .then(async (doc: PDFDocumentProxy) => {
         if (cancelled) return
-        setPdfDoc(doc)
         setNumPages(doc.numPages)
         const loaded: PDFPageProxy[] = []
         for (let i = 1; i <= doc.numPages; i++) {
@@ -234,14 +242,192 @@ function PdfModal({ url, fileName, onClose }: { url: string; fileName: string; o
     const prevOverflow = document.body.style.overflow
     const prevTouchAction = document.body.style.touchAction
     document.body.style.overflow = 'hidden'
-    // Prevent iOS/Android pull-to-refresh / rubber-banding from fighting
-    // with the modal's own scroll+pinch handling underneath.
     document.body.style.touchAction = 'none'
     return () => {
       document.body.style.overflow = prevOverflow
       document.body.style.touchAction = prevTouchAction
     }
   }, [])
+
+  /**
+   * Compute the "fit to screen" scale once the first page has rendered and
+   * the viewport is measured, then center it — this is what makes the
+   * viewer open already showing the whole page on small screens instead of
+   * a zoomed-in slice of it.
+   *
+   * MOBILE ONLY: on desktop/tablet widths we keep the original behavior
+   * (open at 100% / scale 1, no auto-fit) since desktop screens are usually
+   * plenty tall/wide already and users there expect the classic "100%"
+   * starting point, not an auto-shrunk page.
+   *
+   * Runs whenever pages/rotation change (rotation swaps page width/height,
+   * so a portrait page rotated 90° needs re-fitting), but only actually
+   * moves the view if the user hasn't already interacted with zoom — we
+   * detect "hasn't interacted" via a ref rather than transform.scale itself,
+   * since scale === fitScale right after fitting and we don't want a resize
+   * to also count as "already interacted".
+   */
+  useEffect(() => {
+    if (status !== 'ready' || pages.length === 0) return
+
+    const isMobileViewport = typeof window !== 'undefined' && window.innerWidth < 768
+
+    if (!isMobileViewport) {
+      // Desktop/tablet: keep the original default — open at scale 1,
+      // centered, no fit-to-screen shrinking.
+      setFitScale(1)
+      const viewport = viewportRef.current
+      const content = contentRef.current
+      const firstPageCanvas = content?.querySelector<HTMLCanvasElement>('[data-page="1"] canvas')
+      if (viewport && firstPageCanvas) {
+        const centeredX = (viewport.clientWidth - firstPageCanvas.clientWidth) / 2
+        applyTransform({ x: centeredX, y: 12, scale: 1 })
+      } else {
+        applyTransform({ x: 0, y: 0, scale: 1 })
+      }
+      return
+    }
+
+    let attempts = 0
+    let cancelled = false
+
+    const tryFit = () => {
+      if (cancelled) return
+      const viewport = viewportRef.current
+      const content = contentRef.current
+      const firstPageCanvas = content?.querySelector<HTMLCanvasElement>('[data-page="1"] canvas')
+
+      if (!viewport || !content || !firstPageCanvas || firstPageCanvas.clientWidth === 0) {
+        // Canvas hasn't painted its CSS size yet (render is async) — retry
+        // for a few frames rather than falling back to an unfit default.
+        if (attempts++ < 30) requestAnimationFrame(tryFit)
+        return
+      }
+
+      const vw = viewport.clientWidth
+      const vh = viewport.clientHeight
+      // Horizontal padding on the content wrapper (px-3 on mobile) eats
+      // into available fit width — account for it so the page doesn't get
+      // clipped at the sides at "fit" scale.
+      const horizontalPadding = 24
+      const pageWidth = firstPageCanvas.clientWidth
+      const pageHeight = firstPageCanvas.clientHeight
+
+      const scaleToFitWidth = (vw - horizontalPadding) / pageWidth
+      const scaleToFitHeight = (vh - 24) / pageHeight
+      const computedFit = clamp(Math.min(scaleToFitWidth, scaleToFitHeight), 0.1, 1)
+
+      setFitScale(computedFit)
+
+      // Center the fitted page horizontally; align near the top vertically
+      // (with small breathing room) rather than dead-center, since that
+      // reads more naturally for a document and matches where "page 1"
+      // navigation resets to.
+      const fittedWidth = pageWidth * computedFit
+      const centeredX = (vw - fittedWidth) / 2
+      applyTransform({ x: centeredX, y: 12, scale: computedFit })
+    }
+
+    requestAnimationFrame(tryFit)
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, pages.length, rotation])
+
+  /**
+   * Zooms so that `nextScale` applies while the content point currently
+   * under viewport coordinate (vx, vy) stays visually fixed there.
+   * This is the single piece of math reused by wheel-zoom, pinch-zoom, and
+   * double-tap-zoom — the thing that makes all three "just work" once
+   * correct, instead of needing separate hacks per gesture.
+   */
+  const zoomToward = useCallback((nextScale: number, vx: number, vy: number) => {
+    const t = transformRef.current
+    // Bounds are expressed relative to the fitted scale (once known) so
+    // "zoom out as far as possible" means "see the whole page" rather than
+    // some arbitrary absolute number that might be way smaller or larger
+    // than the page actually needs on this screen.
+    const lowerBound = fitScale ? fitScale * 0.5 : MIN_SCALE
+    const upperBound = fitScale ? Math.max(MAX_SCALE, fitScale * MAX_SCALE) : MAX_SCALE
+    const clamped = clamp(Math.round(nextScale * 1000) / 1000, lowerBound, upperBound)
+    if (clamped === t.scale) return
+    const ratio = clamped / t.scale
+    // Content-space point currently under (vx, vy): (vx - t.x) / t.scale.
+    // We want: newX + contentPoint * clamped === vx  =>  newX = vx - contentPoint * clamped
+    const contentX = (vx - t.x) / t.scale
+    const contentY = (vy - t.y) / t.scale
+    const newX = vx - contentX * clamped
+    const newY = vy - contentY * clamped
+    applyTransform({ x: newX, y: newY, scale: clamped })
+  }, [applyTransform, fitScale])
+
+  const zoomBy = useCallback((delta: number) => {
+    const viewport = viewportRef.current
+    const rect = viewport?.getBoundingClientRect()
+    const vx = rect ? rect.width / 2 : 0
+    const vy = rect ? rect.height / 2 : 0
+    const nextScale = transformRef.current.scale + delta
+    zoomToward(nextScale, vx, vy)
+  }, [zoomToward])
+
+  const resetView = useCallback(() => {
+    setRotation(0)
+    const viewport = viewportRef.current
+    const content = contentRef.current
+    const firstPageCanvas = content?.querySelector<HTMLCanvasElement>('[data-page="1"] canvas')
+    if (viewport && firstPageCanvas && fitScale) {
+      const vw = viewport.clientWidth
+      const fittedWidth = firstPageCanvas.clientWidth * fitScale
+      applyTransform({ x: (vw - fittedWidth) / 2, y: 12, scale: fitScale })
+    } else {
+      applyTransform({ x: 0, y: 0, scale: fitScale ?? 1 })
+    }
+  }, [applyTransform, fitScale])
+
+  /** Clamp pan so content can't be dragged arbitrarily far off-screen. */
+  const clampPan = useCallback((x: number, y: number, scale: number) => {
+    const viewport = viewportRef.current
+    const content = contentRef.current
+    if (!viewport || !content) return { x, y }
+    const vw = viewport.clientWidth
+    const vh = viewport.clientHeight
+    const cw = content.scrollWidth * scale
+    const ch = content.scrollHeight * scale
+    // Allow a little overscroll slack for a natural feel, then let the
+    // rubber-band-free clamp pull it back on release.
+    const slackX = Math.max(0, (vw - cw) / 2)
+    const slackY = Math.max(0, (vh - ch) / 2)
+    const minX = cw <= vw ? slackX : vw - cw
+    const maxX = cw <= vw ? slackX : 0
+    const minY = ch <= vh ? Math.max(slackY, 40) : vh - ch - 40
+    const maxY = ch <= vh ? Math.max(slackY, 40) : 40
+    return { x: clamp(x, minX, maxX), y: clamp(y, minY, maxY) }
+  }, [])
+
+  const goToPage = useCallback(
+    (n: number) => {
+      const target = clamp(n, 1, numPages || 1)
+      setCurrentPage(target)
+      setJumpValue(String(target))
+      const content = contentRef.current
+      const viewport = viewportRef.current
+      const pageEl = content?.querySelector<HTMLElement>(`[data-page="${target}"]`)
+      if (pageEl && content && viewport) {
+        // Reset to fit-scale and translate so the target page's top aligns
+        // with the viewport top — since we no longer use native scroll,
+        // "jump to page" is done by adjusting our own transform instead of
+        // scrollIntoView.
+        const scale = fitScale ?? 1
+        const offsetTop = pageEl.offsetTop * scale
+        const pageCanvas = pageEl.querySelector<HTMLCanvasElement>('canvas')
+        const fittedWidth = (pageCanvas?.clientWidth ?? 0) * scale
+        const centeredX = fittedWidth ? (viewport.clientWidth - fittedWidth) / 2 : 0
+        applyTransform({ x: centeredX, y: -offsetTop + 12, scale })
+      }
+    },
+    [numPages, applyTransform, fitScale],
+  )
 
   /* -------- Keyboard controls -------- */
   useEffect(() => {
@@ -258,103 +444,69 @@ function PdfModal({ url, fileName, onClose }: { url: string; fileName: string; o
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage, numPages])
 
-  const zoomBy = useCallback((delta: number) => {
-    setScale((s) => clamp(Math.round((s + delta) * 100) / 100, MIN_SCALE, MAX_SCALE))
-  }, [])
-
-  const resetView = useCallback(() => {
-    setScale(1)
-    setRotation(0)
-  }, [])
-
-  const goToPage = useCallback(
-    (n: number) => {
-      const target = clamp(n, 1, numPages || 1)
-      setCurrentPage(target)
-      setJumpValue(String(target))
-      const el = scrollRef.current?.querySelector(`[data-page="${target}"]`)
-      el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    },
-    [numPages],
-  )
-
-  /* -------- Ctrl/Cmd + wheel = zoom; otherwise natural scroll -------- */
+  /* -------- Wheel: ctrl/cmd = zoom-toward-cursor; plain = pan -------- */
   const handleWheel = (e: ReactWheelEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    const rect = viewportRef.current?.getBoundingClientRect()
+    if (!rect) return
+    const vx = e.clientX - rect.left
+    const vy = e.clientY - rect.top
+
     if (e.ctrlKey || e.metaKey) {
-      e.preventDefault()
-      zoomBy(e.deltaY < 0 ? 0.15 : -0.15)
+      const MAX_DELTA = 10
+      const clampedDelta = clamp(e.deltaY, -MAX_DELTA, MAX_DELTA)
+      const factor = Math.pow(2, -clampedDelta * 0.02)
+      zoomToward(transformRef.current.scale * factor, vx, vy)
+    } else {
+      const t = transformRef.current
+      const next = clampPan(t.x - e.deltaX, t.y - e.deltaY, t.scale)
+      applyTransform({ ...next, scale: t.scale })
     }
   }
 
-  /* -------- Drag to pan (mouse) -------- */
-  const handlePointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (e.pointerType !== 'mouse') return
-    const el = scrollRef.current
-    if (!el) return
-    pan.current = {
-      active: true,
-      startX: e.clientX,
-      startY: e.clientY,
-      scrollLeft: el.scrollLeft,
-      scrollTop: el.scrollTop,
-      moved: false,
-    }
-  }
-  const handlePointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (!pan.current.active) return
-    const el = scrollRef.current
-    if (!el) return
-    const dx = e.clientX - pan.current.startX
-    const dy = e.clientY - pan.current.startY
-    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) pan.current.moved = true
-    el.scrollLeft = pan.current.scrollLeft - dx
-    el.scrollTop = pan.current.scrollTop - dy
-  }
-  const handlePointerUp = () => {
-    pan.current.active = false
-  }
-
-  /* -------- Double-click (desktop) zoom, anchored to click point -------- */
+  /* -------- Double-click (desktop mouse) zoom, anchored to click point -------- */
   const handleDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    const el = scrollRef.current
-    if (!el) return
-    const rect = el.getBoundingClientRect()
-    const anchorX = e.clientX - rect.left + el.scrollLeft
-    const anchorY = e.clientY - rect.top + el.scrollTop
-    zoomToward(scale > 1 ? 1 : 2, anchorX, anchorY, rect)
+    const rect = viewportRef.current?.getBoundingClientRect()
+    if (!rect) return
+    const vx = e.clientX - rect.left
+    const vy = e.clientY - rect.top
+    const t = transformRef.current
+    const base = fitScale ?? 1
+    zoomToward(t.scale > base * 1.05 ? base : base * 2, vx, vy)
   }
 
-  /**
-   * Zooms to `nextScale` while keeping the content under (anchorX, anchorY)
-   * — expressed in the scroll container's *content* coordinate space —
-   * visually fixed under the same point in the viewport. This is the piece
-   * that was missing before: scale changed but scroll position never
-   * adjusted to compensate, so the page appeared to jump around whenever you
-   * zoomed on a phone.
-   */
-  const zoomToward = (nextScale: number, anchorContentX: number, anchorContentY: number, rect: DOMRect) => {
-    const el = scrollRef.current
-    if (!el) return
-    const clamped = clamp(Math.round(nextScale * 100) / 100, MIN_SCALE, MAX_SCALE)
-    const ratio = clamped / scale
-    setScale(clamped)
-    // Defer scroll adjustment to after the DOM has re-rendered at the new
-    // scale (canvas dimensions change synchronously in the page's effect,
-    // but layout needs a tick to settle).
-    requestAnimationFrame(() => {
-      const viewportX = anchorContentX - el.scrollLeft
-      const viewportY = anchorContentY - el.scrollTop
-      const newAnchorX = anchorContentX * ratio
-      const newAnchorY = anchorContentY * ratio
-      el.scrollLeft = newAnchorX - viewportX
-      el.scrollTop = newAnchorY - viewportY
-    })
+  /* -------- Mouse drag-to-pan (any direction) -------- */
+  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return
+    const t = transformRef.current
+    drag.current = { active: true, startX: e.clientX, startY: e.clientY, startTX: t.x, startTY: t.y, moved: false }
   }
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      const d = drag.current
+      if (!d?.active) return
+      const dx = e.clientX - d.startX
+      const dy = e.clientY - d.startY
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) d.moved = true
+      const t = transformRef.current
+      const next = clampPan(d.startTX + dx, d.startTY + dy, t.scale)
+      applyTransform({ ...next, scale: t.scale })
+    }
+    const onUp = () => {
+      if (drag.current) drag.current.active = false
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+  }, [applyTransform, clampPan])
 
-  /* -------- Touch: pinch-to-zoom (anchored) + double-tap + pan -------- */
-  const touchMidpoint = (touches: React.TouchList) => {
+  /* -------- Touch: pinch-to-zoom (anchored) + double-tap + free-direction pan -------- */
+  const touchMidpoint = (touches: React.TouchList, rect: DOMRect) => {
     const [a, b] = [touches[0], touches[1]]
-    return { x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2 }
+    return { x: (a.clientX + b.clientX) / 2 - rect.left, y: (a.clientY + b.clientY) / 2 - rect.top }
   }
   const touchDist = (touches: React.TouchList) => {
     const [a, b] = [touches[0], touches[1]]
@@ -362,94 +514,110 @@ function PdfModal({ url, fileName, onClose }: { url: string; fileName: string; o
   }
 
   const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
-    const el = scrollRef.current
-    if (!el) return
+    const rect = viewportRef.current?.getBoundingClientRect()
+    if (!rect) return
 
     if (e.touches.length === 2) {
-      // Starting a pinch — cancel any in-progress single-finger pan.
-      singleTouch.current.active = false
-      const rect = el.getBoundingClientRect()
-      const mid = touchMidpoint(e.touches)
+      // A second finger landed — always start/refresh a pinch, discarding
+      // any single-finger drag in progress so the two gestures never fight.
+      drag.current = null
+      const t = transformRef.current
+      const mid = touchMidpoint(e.touches, rect)
       pinch.current = {
         startDist: touchDist(e.touches),
-        startScale: scale,
-        anchorContentX: mid.x - rect.left + el.scrollLeft,
-        anchorContentY: mid.y - rect.top + el.scrollTop,
+        startScale: t.scale,
+        startTX: t.x,
+        startTY: t.y,
+        anchorVX: mid.x,
+        anchorVY: mid.y,
       }
       return
     }
 
     if (e.touches.length === 1) {
-      const t = e.touches[0]
+      const touch = e.touches[0]
       const now = Date.now()
       const dt = now - lastTap.current.time
-      const dx = Math.abs(t.clientX - lastTap.current.x)
-      const dy = Math.abs(t.clientY - lastTap.current.y)
+      const dx = Math.abs(touch.clientX - lastTap.current.x)
+      const dy = Math.abs(touch.clientY - lastTap.current.y)
 
-      if (dt < 300 && dx < 30 && dy < 30) {
-        // Double-tap: zoom anchored to the tap point.
-        const rect = el.getBoundingClientRect()
-        const anchorX = t.clientX - rect.left + el.scrollLeft
-        const anchorY = t.clientY - rect.top + el.scrollTop
-        zoomToward(scale > 1 ? 1 : 2, anchorX, anchorY, rect)
-        lastTap.current = { time: 0, x: 0, y: 0 }
-        singleTouch.current.active = false
+      if (dt > 0 && dt < DOUBLE_TAP_MS && dx < DOUBLE_TAP_SLOP && dy < DOUBLE_TAP_SLOP) {
+        // Double-tap confirmed: zoom anchored to the tap point.
+        const vx = touch.clientX - rect.left
+        const vy = touch.clientY - rect.top
+        const t = transformRef.current
+        const base = fitScale ?? 1
+        zoomToward(t.scale > base * 1.05 ? base : base * 2, vx, vy)
+        lastTap.current = { time: 0, x: 0, y: 0 } // consume — avoid triple-tap re-trigger
+        drag.current = null
         return
       }
 
-      lastTap.current = { time: now, x: t.clientX, y: t.clientY }
-      singleTouch.current = {
+      lastTap.current = { time: now, x: touch.clientX, y: touch.clientY }
+      const t = transformRef.current
+      drag.current = {
         active: true,
-        startX: t.clientX,
-        startY: t.clientY,
-        scrollLeft: el.scrollLeft,
-        scrollTop: el.scrollTop,
+        startX: touch.clientX,
+        startY: touch.clientY,
+        startTX: t.x,
+        startTY: t.y,
         moved: false,
       }
     }
   }
 
   const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
-    const el = scrollRef.current
-    if (!el) return
+    const rect = viewportRef.current?.getBoundingClientRect()
+    if (!rect) return
 
     if (e.touches.length === 2 && pinch.current) {
-      // Two fingers down: this is always a pinch gesture, so it's safe (and
-      // necessary) to take over from native touch scrolling entirely.
       e.preventDefault()
+      const p = pinch.current
       const newDist = touchDist(e.touches)
-      const ratio = newDist / pinch.current.startDist
-      const nextScale = pinch.current.startScale * ratio
-      const rect = el.getBoundingClientRect()
-      zoomToward(nextScale, pinch.current.anchorContentX, pinch.current.anchorContentY, rect)
+      const rawScale = p.startScale * (newDist / p.startDist)
+      const lowerBound = fitScale ? fitScale * 0.5 : MIN_SCALE
+      const upperBound = fitScale ? Math.max(MAX_SCALE, fitScale * MAX_SCALE) : MAX_SCALE
+      const clampedScale = clamp(Math.round(rawScale * 1000) / 1000, lowerBound, upperBound)
+      const ratio = clampedScale / p.startScale
+      // Anchor stays fixed under the pinch midpoint (recomputed from the
+      // *start* transform each move, so it doesn't drift/accumulate error
+      // over a long pinch gesture).
+      const contentX = (p.anchorVX - p.startTX) / p.startScale
+      const contentY = (p.anchorVY - p.startTY) / p.startScale
+      const newX = p.anchorVX - contentX * clampedScale
+      const newY = p.anchorVY - contentY * clampedScale
+      applyTransform({ x: newX, y: newY, scale: clampedScale })
       return
     }
 
-    if (e.touches.length === 1 && singleTouch.current.active) {
-      const t = e.touches[0]
-      const dx = t.clientX - singleTouch.current.startX
-      const dy = t.clientY - singleTouch.current.startY
-
-      // Only take over as a manual pan once zoomed in — at 100% we want to
-      // let the browser's native vertical scroll (with momentum) handle
-      // single-finger drags, which is smoother and what users expect.
-      if (scale > 1) {
-        if (Math.abs(dx) > 4 || Math.abs(dy) > 4) singleTouch.current.moved = true
-        e.preventDefault()
-        el.scrollLeft = singleTouch.current.scrollLeft - dx
-        el.scrollTop = singleTouch.current.scrollTop - dy
-      } else if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
-        singleTouch.current.moved = true
-      }
+    if (e.touches.length === 1 && drag.current?.active) {
+      e.preventDefault()
+      const touch = e.touches[0]
+      const d = drag.current
+      const dx = touch.clientX - d.startX
+      const dy = touch.clientY - d.startY
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) d.moved = true
+      const t = transformRef.current
+      const next = clampPan(d.startTX + dx, d.startTY + dy, t.scale)
+      applyTransform({ ...next, scale: t.scale })
     }
   }
 
   const handleTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
     if (e.touches.length < 2) pinch.current = null
-    if (e.touches.length === 0) singleTouch.current.active = false
+    if (e.touches.length === 0) {
+      if (drag.current) drag.current.active = false
+      // Snap back within bounds with a smooth transition if the user
+      // dragged past the clamped edge (rubber-band release feel).
+      const t = transformRef.current
+      const clamped = clampPan(t.x, t.y, t.scale)
+      if (clamped.x !== t.x || clamped.y !== t.y) {
+        applyTransform({ ...clamped, scale: t.scale })
+      }
+    }
   }
 
-  /* -------- Track current page while scrolling -------- */
+  /* -------- Track current page from transform position -------- */
   const handleVisiblePage = useCallback((n: number) => {
     setCurrentPage(n)
     setJumpValue(String(n))
@@ -460,6 +628,9 @@ function PdfModal({ url, fileName, onClose }: { url: string; fileName: string; o
     const n = parseInt(jumpValue, 10)
     if (!Number.isNaN(n)) goToPage(n)
   }
+
+  const isZoomed = fitScale != null && transform.scale > fitScale * 1.02
+  const displayPercent = fitScale ? Math.round((transform.scale / fitScale) * 100) : Math.round(transform.scale * 100)
 
   return (
     <div className="fixed inset-0 z-[100] flex flex-col bg-black/95 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Resume PDF viewer">
@@ -512,7 +683,7 @@ function PdfModal({ url, fileName, onClose }: { url: string; fileName: string; o
               <Minus className="size-3.5" />
             </button>
             <button onClick={resetView} className="min-w-11 rounded-full px-1 text-center font-mono text-[11px] text-white/80 transition-colors hover:bg-white/10" aria-label="Reset zoom">
-              {Math.round(scale * 100)}%
+              {displayPercent}%
             </button>
             <button onClick={() => zoomBy(0.2)} className="grid size-7 place-items-center rounded-full text-white/80 transition-colors hover:bg-white/10" aria-label="Zoom in">
               <Plus className="size-3.5" />
@@ -560,29 +731,18 @@ function PdfModal({ url, fileName, onClose }: { url: string; fileName: string; o
         </div>
       </div>
 
-      {/* Viewer body */}
+      {/* Viewer body — plain overflow:hidden viewport; all movement is our own transform */}
       <div
-        ref={scrollRef}
+        ref={viewportRef}
         onWheel={handleWheel}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerLeave={handlePointerUp}
+        onMouseDown={handleMouseDown}
         onDoubleClick={handleDoubleClick}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
         onTouchCancel={handleTouchEnd}
-        className="relative flex-1 overflow-auto overscroll-contain px-3 py-4 [cursor:grab] active:[cursor:grabbing] md:px-6"
-        style={{
-          WebkitOverflowScrolling: 'touch',
-          // Let the browser handle single-finger vertical scroll natively
-          // (smooth momentum) at rest; our JS handlers only take over via
-          // preventDefault once a pinch or an in-progress zoomed pan is
-          // detected. Setting this to 'none' unconditionally — as before —
-          // is what broke normal scrolling/pinch responsiveness on mobile.
-          touchAction: 'pan-y',
-        }}
+        className={`relative flex-1 select-none overflow-hidden ${isZoomed ? '[cursor:grab] active:[cursor:grabbing]' : ''}`}
+        style={{ touchAction: 'none' }}
       >
         {status === 'loading' && (
           <div className="flex h-full min-h-[50vh] flex-col items-center justify-center gap-3 text-white/60">
@@ -607,10 +767,31 @@ function PdfModal({ url, fileName, onClose }: { url: string; fileName: string; o
         )}
 
         {status === 'ready' && (
-          <div className="mx-auto w-fit select-none">
+          <div
+            ref={contentRef}
+            className="w-fit px-3 py-4 md:px-6"
+            style={{
+              transform: `translate3d(${transform.x}px, ${transform.y}px, 0) scale(${transform.scale})`,
+              transformOrigin: '0 0',
+              willChange: 'transform',
+              // Stay invisible for the one/two frames it takes to measure
+              // the first rendered page and compute fitScale — otherwise
+              // there's a visible flash of the page at scale=1 (often
+              // larger than the screen) before it snaps down to fit.
+              opacity: fitScale == null ? 0 : 1,
+              transition: fitScale == null ? 'none' : 'opacity 120ms ease',
+            }}
+          >
             {pages.map((p, i) => (
-              <PdfPage key={i} page={p} pageNumber={i + 1} scale={scale} rotation={rotation} onVisible={handleVisiblePage} />
+              <PdfPage key={i} page={p} pageNumber={i + 1} renderScale={BASE_RENDER_SCALE} rotation={rotation} onVisible={handleVisiblePage} />
             ))}
+          </div>
+        )}
+
+        {status === 'ready' && fitScale == null && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-white/60">
+            <Loader2 className="size-6 animate-spin" />
+            <p className="font-mono text-[10px] tracking-[0.14em] uppercase">Fitting to screen…</p>
           </div>
         )}
       </div>
@@ -628,7 +809,6 @@ function PdfModal({ url, fileName, onClose }: { url: string; fileName: string; o
 /* ============================== Inline Preview + Trigger ============================== */
 export function PdfViewer({ url, fileName = 'resume.pdf' }: { url: string; fileName?: string }) {
   const [open, setOpen] = useState(false)
-  const [thumbDoc, setThumbDoc] = useState<PDFDocumentProxy | null>(null)
   const [thumbPage, setThumbPage] = useState<PDFPageProxy | null>(null)
   const [thumbStatus, setThumbStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const thumbCanvasRef = useRef<HTMLCanvasElement>(null)
@@ -638,11 +818,7 @@ export function PdfViewer({ url, fileName = 'resume.pdf' }: { url: string; fileN
     let cancelled = false
     loadPdfJs()
       .then((pdfjsLib) => pdfjsLib.getDocument(url).promise)
-      .then((doc: PDFDocumentProxy) => {
-        if (cancelled) return
-        setThumbDoc(doc)
-        return doc.getPage(1)
-      })
+      .then((doc: PDFDocumentProxy) => doc.getPage(1))
       .then((page: PDFPageProxy | undefined) => {
         if (cancelled || !page) return
         setThumbPage(page)
