@@ -58,8 +58,6 @@ const MAX_SCALE = 4
 const BASE_RENDER_SCALE = 1.5 // render pages at higher res for crisp zoom
 const MAX_OUTPUT_SCALE = 2 // cap devicePixelRatio scaling so canvas pixel
 // dimensions never exceed mobile GPU texture limits at high zoom.
-const DOUBLE_TAP_MS = 300
-const DOUBLE_TAP_SLOP = 24 // px — how far apart two taps can be and still count as one gesture
 
 type PDFDocumentProxy = any
 type PDFPageProxy = any
@@ -198,8 +196,7 @@ function PdfModal({ url, fileName, onClose }: { url: string; fileName: string; o
     anchorVX: number
     anchorVY: number
   } | null>(null)
-  const lastTap = useRef({ time: 0, x: 0, y: 0 })
-  const tapStart = useRef<{ time: number; x: number; y: number } | null>(null)
+  const singleTouchStart = useRef<{ x: number; y: number } | null>(null)
   const rafPending = useRef(false)
 
   const applyTransform = useCallback((next: { x: number; y: number; scale: number }) => {
@@ -520,10 +517,9 @@ function PdfModal({ url, fileName, onClose }: { url: string; fileName: string; o
 
     if (e.touches.length === 2) {
       // A second finger landed — always start/refresh a pinch, discarding
-      // any single-finger drag/tap tracking in progress so the gestures
-      // never fight or leak into each other.
+      // any single-finger drag in progress so the gestures never fight.
       drag.current = null
-      tapStart.current = null
+      singleTouchStart.current = null
       const t = transformRef.current
       const mid = touchMidpoint(e.touches, rect)
       pinch.current = {
@@ -539,7 +535,7 @@ function PdfModal({ url, fileName, onClose }: { url: string; fileName: string; o
 
     if (e.touches.length === 1) {
       const touch = e.touches[0]
-      tapStart.current = { time: Date.now(), x: touch.clientX, y: touch.clientY }
+      singleTouchStart.current = { x: touch.clientX, y: touch.clientY }
       const t = transformRef.current
       drag.current = {
         active: true,
@@ -564,7 +560,6 @@ function PdfModal({ url, fileName, onClose }: { url: string; fileName: string; o
       const lowerBound = fitScale ? fitScale * 0.5 : MIN_SCALE
       const upperBound = fitScale ? Math.max(MAX_SCALE, fitScale * MAX_SCALE) : MAX_SCALE
       const clampedScale = clamp(Math.round(rawScale * 1000) / 1000, lowerBound, upperBound)
-      const ratio = clampedScale / p.startScale
       // Anchor stays fixed under the pinch midpoint (recomputed from the
       // *start* transform each move, so it doesn't drift/accumulate error
       // over a long pinch gesture).
@@ -595,10 +590,8 @@ function PdfModal({ url, fileName, onClose }: { url: string; fileName: string; o
     if (e.touches.length < 2) pinch.current = null
 
     if (e.touches.length === 0) {
-      const wasDrag = drag.current
-      const start = tapStart.current
       drag.current = null
-      tapStart.current = null
+      singleTouchStart.current = null
 
       // Snap back within bounds with a smooth transition if the user
       // dragged past the clamped edge (rubber-band release feel).
@@ -606,39 +599,6 @@ function PdfModal({ url, fileName, onClose }: { url: string; fileName: string; o
       const clamped = clampPan(t.x, t.y, t.scale)
       if (clamped.x !== t.x || clamped.y !== t.y) {
         applyTransform({ ...clamped, scale: t.scale })
-      }
-
-      // A genuine "tap" is: this touch never moved past the slop threshold
-      // (wasDrag.moved === false) and released quickly. We check this on
-      // release — not on the next touchstart — because only at release do
-      // we actually know whether the finger moved during its time down.
-      const released = e.changedTouches[0]
-      if (!released || !start || !wasDrag || wasDrag.moved) {
-        return
-      }
-      const now = Date.now()
-      const tapDuration = now - start.time
-      if (tapDuration > 500) return // too slow to be a tap at all
-
-      const rect = viewportRef.current?.getBoundingClientRect()
-      if (!rect) return
-      const vx = released.clientX - rect.left
-      const vy = released.clientY - rect.top
-
-      const prev = lastTap.current
-      const dt = now - prev.time
-      const dx = Math.abs(released.clientX - prev.x)
-      const dy = Math.abs(released.clientY - prev.y)
-
-      if (prev.time > 0 && dt < DOUBLE_TAP_MS && dx < DOUBLE_TAP_SLOP && dy < DOUBLE_TAP_SLOP) {
-        // Double-tap confirmed: zoom anchored to the tap point.
-        const cur = transformRef.current
-        const base = fitScale ?? 1
-        zoomToward(cur.scale > base * 1.05 ? base : base * 2, vx, vy)
-        lastTap.current = { time: 0, x: 0, y: 0 } // consume — avoid triple-tap re-trigger
-      } else {
-        // First tap of a possible pair — remember it and wait for a second.
-        lastTap.current = { time: now, x: released.clientX, y: released.clientY }
       }
     }
   }
@@ -825,7 +785,7 @@ function PdfModal({ url, fileName, onClose }: { url: string; fileName: string; o
       {/* Mobile hint */}
       <div className="border-t border-white/10 bg-black/60 px-4 py-2 text-center backdrop-blur-xl md:hidden">
         <p className="font-mono text-[9px] tracking-[0.12em] text-white/40 uppercase">
-          Pinch to zoom · Double-tap to zoom · Drag to pan
+          Pinch to zoom · Drag to pan
         </p>
       </div>
     </div>
