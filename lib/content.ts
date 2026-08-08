@@ -30,6 +30,7 @@ export const navItems = [
   { label: 'Skills', href: '#skills' },
   { label: 'GitHub', href: '#github' },
   { label: 'Timeline', href: '#timeline' },
+  { label: 'Resume', href: '#resume' },
   { label: 'Contact', href: '#contact' },
 ]
 
