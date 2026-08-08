@@ -95,6 +95,12 @@ interface GraphQLResponse {
         nodes: Array<{
           stargazerCount: number
           primaryLanguage: { name: string; color: string | null } | null
+          languages: {
+            edges: Array<{
+              size: number
+              node: { name: string; color: string | null }
+            }>
+          }
         }>
       }
       selectedYearContributions: {
@@ -164,6 +170,15 @@ const CONTRIBUTIONS_QUERY = /* GraphQL */ `
           primaryLanguage {
             name
             color
+          }
+          languages(first: 10, orderBy: { field: SIZE, direction: DESC }) {
+            edges {
+              size
+              node {
+                name
+                color
+              }
+            }
           }
         }
       }
@@ -271,7 +286,11 @@ function computeStreaks(days: ContributionDay[]): { current: number; longest: nu
   return { current, longest }
 }
 
-async function graphqlRequest(query: string, variables: Record<string, unknown>): Promise<GraphQLResponse> {
+async function graphqlRequest(
+  query: string,
+  variables: Record<string, unknown>,
+  opts: { bypassCache?: boolean } = {},
+): Promise<GraphQLResponse> {
   const token = process.env.GITHUB_TOKEN
 
   if (!token) {
@@ -288,8 +307,12 @@ async function graphqlRequest(query: string, variables: Record<string, unknown>)
       'User-Agent': 'portfolio-github-section',
     },
     body: JSON.stringify({ query, variables }),
-    // Revalidate this data at most once per hour (Next.js fetch cache / ISR).
-    next: { revalidate: 3600, tags: ['github-profile'] },
+    // Revalidate this data at most once per hour (Next.js fetch cache / ISR)
+    // — unless the caller explicitly asked to bypass the cache (manual
+    // refresh button), in which case we skip Next's fetch cache entirely.
+    ...(opts.bypassCache
+      ? { cache: 'no-store' as const }
+      : { next: { revalidate: 3600, tags: ['github-profile'] } }),
   })
 
   if (!res.ok) {
@@ -310,7 +333,7 @@ async function graphqlRequest(query: string, variables: Record<string, unknown>)
  * Fetches recent public events via the REST API (Events don't have a
  * first-class GraphQL equivalent for "recent activity feed").
  */
-async function fetchRecentActivity(username: string): Promise<RecentActivityItem[]> {
+async function fetchRecentActivity(username: string, opts: { bypassCache?: boolean } = {}): Promise<RecentActivityItem[]> {
   const token = process.env.GITHUB_TOKEN
 
   const res = await fetch(`${GITHUB_REST_URL}/users/${username}/events/public?per_page=30`, {
@@ -319,7 +342,9 @@ async function fetchRecentActivity(username: string): Promise<RecentActivityItem
       Accept: 'application/vnd.github+json',
       'User-Agent': 'portfolio-github-section',
     },
-    next: { revalidate: 900, tags: ['github-activity'] }, // refresh every 15 min
+    ...(opts.bypassCache
+      ? { cache: 'no-store' as const }
+      : { next: { revalidate: 900, tags: ['github-activity'] } }), // refresh every 15 min
   })
 
   if (!res.ok) return []
@@ -420,8 +445,15 @@ async function fetchRecentActivity(username: string): Promise<RecentActivityItem
  * @param year Optional calendar year (e.g. 2025) to scope the contribution
  *   graph to. Defaults to the trailing 365 days (GitHub's own default view)
  *   when omitted.
+ * @param opts.bypassCache When true, skips Next.js's fetch cache entirely
+ *   so every underlying request hits GitHub live. Used for the manual
+ *   "refresh" button so it's never blocked by a warm 1-hour server cache.
  */
-export async function fetchGitHubProfile(username: string, year?: number): Promise<GitHubProfile> {
+export async function fetchGitHubProfile(
+  username: string,
+  year?: number,
+  opts: { bypassCache?: boolean } = {},
+): Promise<GitHubProfile> {
   let from: Date
   let to: Date
 
@@ -436,12 +468,16 @@ export async function fetchGitHubProfile(username: string, year?: number): Promi
   }
 
   const [graphqlRes, recentActivity] = await Promise.all([
-    graphqlRequest(CONTRIBUTIONS_QUERY, {
-      login: username,
-      from: from.toISOString(),
-      to: to.toISOString(),
-    }),
-    fetchRecentActivity(username).catch(() => [] as RecentActivityItem[]),
+    graphqlRequest(
+      CONTRIBUTIONS_QUERY,
+      {
+        login: username,
+        from: from.toISOString(),
+        to: to.toISOString(),
+      },
+      opts,
+    ),
+    fetchRecentActivity(username, opts).catch(() => [] as RecentActivityItem[]),
   ])
 
   const user = graphqlRes.data?.user
@@ -463,32 +499,33 @@ export async function fetchGitHubProfile(username: string, year?: number): Promi
 
   const { current, longest } = computeStreaks(contributionData)
 
-  const allTimeContributions = await fetchAllTimeContributions(username, contributionYears).catch(
+  const allTimeContributions = await fetchAllTimeContributions(username, contributionYears, opts).catch(
     () => user.selectedYearContributions.contributionCalendar.totalContributions,
   )
 
-  // Aggregate top languages across the user's own (non-fork) repositories,
-  // weighted by repo count (a lightweight proxy — true byte-weighted stats
-  // require per-repo `languages` queries, which is far more expensive).
-  const languageCounts = new Map<string, { count: number; color: string }>()
+  // Aggregate ALL languages across the user's own (non-fork) repositories,
+  // weighted by actual byte size within each repo (GitHub's own "Top
+  // languages" methodology) rather than a repo-count proxy. This surfaces
+  // every language the account uses, not just the top few.
+  const languageBytes = new Map<string, { bytes: number; color: string }>()
   for (const repo of user.repositories.nodes) {
-    if (!repo.primaryLanguage) continue
-    const key = repo.primaryLanguage.name
-    const existing = languageCounts.get(key)
-    languageCounts.set(key, {
-      count: (existing?.count ?? 0) + 1,
-      color: repo.primaryLanguage.color ?? LANGUAGE_FALLBACK_COLOR,
-    })
+    for (const edge of repo.languages.edges) {
+      const key = edge.node.name
+      const existing = languageBytes.get(key)
+      languageBytes.set(key, {
+        bytes: (existing?.bytes ?? 0) + edge.size,
+        color: edge.node.color ?? existing?.color ?? LANGUAGE_FALLBACK_COLOR,
+      })
+    }
   }
-  const totalLangRepos = Array.from(languageCounts.values()).reduce((sum, l) => sum + l.count, 0) || 1
-  const topLanguages: TopLanguage[] = Array.from(languageCounts.entries())
-    .map(([name, { count, color }]) => ({
+  const totalBytes = Array.from(languageBytes.values()).reduce((sum, l) => sum + l.bytes, 0) || 1
+  const topLanguages: TopLanguage[] = Array.from(languageBytes.entries())
+    .map(([name, { bytes, color }]) => ({
       name,
-      pct: Math.round((count / totalLangRepos) * 100),
+      pct: Math.round((bytes / totalBytes) * 1000) / 10, // one decimal place
       color,
     }))
     .sort((a, b) => b.pct - a.pct)
-    .slice(0, 5)
 
   const totalStars = user.repositories.nodes.reduce((sum, r) => sum + r.stargazerCount, 0)
 
@@ -530,10 +567,14 @@ export async function fetchGitHubProfile(username: string, year?: number): Promi
  * using a single aliased GraphQL query (one field per year) so it costs
  * one request regardless of account age.
  */
-async function fetchAllTimeContributions(username: string, knownYears: number[]): Promise<number> {
+async function fetchAllTimeContributions(
+  username: string,
+  knownYears: number[],
+  opts: { bypassCache?: boolean } = {},
+): Promise<number> {
   const years = knownYears.length > 0 ? knownYears : [new Date().getFullYear()]
   const query = buildAllTimeQuery(years)
-  const res = (await graphqlRequest(query, { login: username })) as unknown as AllTimeGraphQLResponse
+  const res = (await graphqlRequest(query, { login: username }, opts)) as unknown as AllTimeGraphQLResponse
 
   const user = res.data?.user
   if (!user) return 0

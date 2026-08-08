@@ -21,6 +21,11 @@ export async function GET(req: Request) {
   const username = searchParams.get('username') ?? process.env.GITHUB_USERNAME
   const yearParam = searchParams.get('year')
   const year = yearParam ? Number.parseInt(yearParam, 10) : undefined
+  // Presence of `_t` signals a forced manual refresh from the client (see
+  // hooks/use-github-profile.ts). When present, we bypass Next's server-side
+  // fetch cache too, so "refresh" always talks to GitHub instead of
+  // returning the same cached data the browser cache-bust was meant to skip.
+  const isForcedRefresh = searchParams.has('_t')
 
   if (!username) {
     return NextResponse.json(
@@ -34,10 +39,13 @@ export async function GET(req: Request) {
   }
 
   try {
-    const profile = await fetchGitHubProfile(username, year)
+    const profile = await fetchGitHubProfile(username, year, { bypassCache: isForcedRefresh })
     return NextResponse.json(profile, {
       headers: {
-        'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=86400',
+        // Forced refreshes should never be cached by any intermediary either.
+        'Cache-Control': isForcedRefresh
+          ? 'no-store'
+          : 'public, s-maxage=3600, stale-while-revalidate=86400',
       },
     })
   } catch (error) {

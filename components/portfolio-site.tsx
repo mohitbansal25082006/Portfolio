@@ -13,6 +13,7 @@ import {
   themes, timeline,
 } from '@/lib/content'
 import { GitHubSection } from '@/components/github-section'
+import { PdfViewer } from '@/components/pdf-viewer'
 
 /* ---------------- Custom Brand Icons (SVG) ---------------- */
 const GithubIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -776,7 +777,7 @@ export function PortfolioSite() {
         </div>
       </section>
 
-      {/* RESUME */}
+      {/* RESUME — advanced canvas-rendered PDF viewer (zoom, pan, page nav, full-screen) */}
       <section id="resume" className="mx-auto max-w-350 px-5 py-24 md:px-10 md:py-36 lg:px-14">
         <div className="grid gap-12 md:grid-cols-[0.6fr_0.4fr] md:items-center">
           <Reveal>
@@ -799,17 +800,7 @@ export function PortfolioSite() {
             </div>
           </Reveal>
           <Reveal delay={120}>
-            <div className="resume-preview">
-              <div className="flex items-center justify-between border-b border-border px-4 py-2">
-                <span className="flex gap-1.5">
-                  <span className="size-2 rounded-full bg-destructive/60" />
-                  <span className="size-2 rounded-full bg-primary/60" />
-                  <span className="size-2 rounded-full bg-accent/60" />
-                </span>
-                <span className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">resume.pdf</span>
-              </div>
-              <iframe src="/resume.pdf" className="h-[400px] w-full bg-secondary" title="Resume Preview" />
-            </div>
+            <PdfViewer url={siteConfig.resumeUrl} fileName="resume.pdf" />
           </Reveal>
         </div>
       </section>

@@ -8,7 +8,8 @@
 //   - Year selector for the contribution calendar
 //   - Month labels above the heatmap
 //   - Click a day to see that day's actual commits, linked to GitHub
-//   - Top languages / Pinned repos (max 4) / Recent activity in one
+//   - All languages (byte-weighted) / Pinned repos (max 4) / Recent activity
+//     in one
 //     equal-height row on desktop
 //   - Fully responsive down to small mobile widths
 // ============================================================================
@@ -322,21 +323,21 @@ export function GitHubSection({ username }: { username: string }) {
 
           {/* TOP LANGUAGES / PINNED REPOS / RECENT ACTIVITY — equal height row */}
           <div className="mt-6 grid gap-6 md:grid-cols-3 md:items-stretch">
-            {/* TOP LANGUAGES */}
+            {/* ALL LANGUAGES (byte-weighted, full breakdown) */}
             <Reveal>
               <div className="flex h-full flex-col rounded-2xl border border-border bg-muted/30 p-6 backdrop-blur-sm md:p-8">
-                <p className="font-mono text-[11px] tracking-[0.14em] uppercase">Top languages</p>
+                <p className="font-mono text-[11px] tracking-[0.14em] uppercase">All languages</p>
                 {data.topLanguages.length === 0 ? (
                   <p className="mt-5 text-xs text-muted-foreground">No language data available yet.</p>
                 ) : (
                   <>
                     <div className="mt-5 flex h-2.5 overflow-hidden rounded-full">
                       {data.topLanguages.map((l) => (
-                        <div key={l.name} style={{ width: `${l.pct}%`, background: l.color }} title={l.name} />
+                        <div key={l.name} style={{ width: `${l.pct}%`, background: l.color }} title={`${l.name} — ${l.pct}%`} />
                       ))}
                     </div>
-                    <div className="mt-5 space-y-2">
-                      {data.topLanguages.slice(0, 3).map((l) => (
+                    <div className="mt-5 max-h-64 space-y-2 overflow-y-auto pr-1">
+                      {data.topLanguages.map((l) => (
                         <div key={l.name} className="flex items-center justify-between text-xs">
                           <span className="flex items-center gap-2 text-foreground/80">
                             <span className="size-2.5 shrink-0 rounded-full" style={{ background: l.color }} /> {l.name}
