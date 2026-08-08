@@ -199,6 +199,7 @@ function PdfModal({ url, fileName, onClose }: { url: string; fileName: string; o
     anchorVY: number
   } | null>(null)
   const lastTap = useRef({ time: 0, x: 0, y: 0 })
+  const tapStart = useRef<{ time: number; x: number; y: number } | null>(null)
   const rafPending = useRef(false)
 
   const applyTransform = useCallback((next: { x: number; y: number; scale: number }) => {
@@ -519,8 +520,10 @@ function PdfModal({ url, fileName, onClose }: { url: string; fileName: string; o
 
     if (e.touches.length === 2) {
       // A second finger landed — always start/refresh a pinch, discarding
-      // any single-finger drag in progress so the two gestures never fight.
+      // any single-finger drag/tap tracking in progress so the gestures
+      // never fight or leak into each other.
       drag.current = null
+      tapStart.current = null
       const t = transformRef.current
       const mid = touchMidpoint(e.touches, rect)
       pinch.current = {
@@ -536,24 +539,7 @@ function PdfModal({ url, fileName, onClose }: { url: string; fileName: string; o
 
     if (e.touches.length === 1) {
       const touch = e.touches[0]
-      const now = Date.now()
-      const dt = now - lastTap.current.time
-      const dx = Math.abs(touch.clientX - lastTap.current.x)
-      const dy = Math.abs(touch.clientY - lastTap.current.y)
-
-      if (dt > 0 && dt < DOUBLE_TAP_MS && dx < DOUBLE_TAP_SLOP && dy < DOUBLE_TAP_SLOP) {
-        // Double-tap confirmed: zoom anchored to the tap point.
-        const vx = touch.clientX - rect.left
-        const vy = touch.clientY - rect.top
-        const t = transformRef.current
-        const base = fitScale ?? 1
-        zoomToward(t.scale > base * 1.05 ? base : base * 2, vx, vy)
-        lastTap.current = { time: 0, x: 0, y: 0 } // consume — avoid triple-tap re-trigger
-        drag.current = null
-        return
-      }
-
-      lastTap.current = { time: now, x: touch.clientX, y: touch.clientY }
+      tapStart.current = { time: Date.now(), x: touch.clientX, y: touch.clientY }
       const t = transformRef.current
       drag.current = {
         active: true,
@@ -596,23 +582,63 @@ function PdfModal({ url, fileName, onClose }: { url: string; fileName: string; o
       const d = drag.current
       const dx = touch.clientX - d.startX
       const dy = touch.clientY - d.startY
-      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) d.moved = true
-      const t = transformRef.current
-      const next = clampPan(d.startTX + dx, d.startTY + dy, t.scale)
-      applyTransform({ ...next, scale: t.scale })
+      if (Math.abs(dx) > 8 || Math.abs(dy) > 8) d.moved = true
+      if (d.moved) {
+        const t = transformRef.current
+        const next = clampPan(d.startTX + dx, d.startTY + dy, t.scale)
+        applyTransform({ ...next, scale: t.scale })
+      }
     }
   }
 
   const handleTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
     if (e.touches.length < 2) pinch.current = null
+
     if (e.touches.length === 0) {
-      if (drag.current) drag.current.active = false
+      const wasDrag = drag.current
+      const start = tapStart.current
+      drag.current = null
+      tapStart.current = null
+
       // Snap back within bounds with a smooth transition if the user
       // dragged past the clamped edge (rubber-band release feel).
       const t = transformRef.current
       const clamped = clampPan(t.x, t.y, t.scale)
       if (clamped.x !== t.x || clamped.y !== t.y) {
         applyTransform({ ...clamped, scale: t.scale })
+      }
+
+      // A genuine "tap" is: this touch never moved past the slop threshold
+      // (wasDrag.moved === false) and released quickly. We check this on
+      // release — not on the next touchstart — because only at release do
+      // we actually know whether the finger moved during its time down.
+      const released = e.changedTouches[0]
+      if (!released || !start || !wasDrag || wasDrag.moved) {
+        return
+      }
+      const now = Date.now()
+      const tapDuration = now - start.time
+      if (tapDuration > 500) return // too slow to be a tap at all
+
+      const rect = viewportRef.current?.getBoundingClientRect()
+      if (!rect) return
+      const vx = released.clientX - rect.left
+      const vy = released.clientY - rect.top
+
+      const prev = lastTap.current
+      const dt = now - prev.time
+      const dx = Math.abs(released.clientX - prev.x)
+      const dy = Math.abs(released.clientY - prev.y)
+
+      if (prev.time > 0 && dt < DOUBLE_TAP_MS && dx < DOUBLE_TAP_SLOP && dy < DOUBLE_TAP_SLOP) {
+        // Double-tap confirmed: zoom anchored to the tap point.
+        const cur = transformRef.current
+        const base = fitScale ?? 1
+        zoomToward(cur.scale > base * 1.05 ? base : base * 2, vx, vy)
+        lastTap.current = { time: 0, x: 0, y: 0 } // consume — avoid triple-tap re-trigger
+      } else {
+        // First tap of a possible pair — remember it and wait for a second.
+        lastTap.current = { time: now, x: released.clientX, y: released.clientY }
       }
     }
   }
@@ -835,19 +861,70 @@ export function PdfViewer({ url, fileName = 'resume.pdf' }: { url: string; fileN
 
   useEffect(() => {
     if (!thumbPage || !thumbCanvasRef.current) return
-    const canvas = thumbCanvasRef.current
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-    const containerWidth = canvas.parentElement?.clientWidth || 400
-    const unscaledViewport = thumbPage.getViewport({ scale: 1 })
-    const dpr = Math.min(typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1, MAX_OUTPUT_SCALE)
-    const targetScale = (containerWidth / unscaledViewport.width) * dpr
-    const viewport = thumbPage.getViewport({ scale: targetScale })
-    canvas.width = viewport.width
-    canvas.height = viewport.height
-    canvas.style.width = '100%'
-    canvas.style.height = 'auto'
-    thumbPage.render({ canvasContext: ctx, viewport }).promise.catch(() => {})
+
+    const renderThumb = () => {
+      const canvas = thumbCanvasRef.current
+      const ctx = canvas?.getContext('2d')
+      if (!canvas || !ctx) return
+
+      const container = canvas.parentElement
+      const containerWidth = container?.clientWidth || 400
+      const containerHeight = container?.clientHeight || 400
+      const padding = 24 // matches the p-3 (12px each side) wrapper around the canvas
+      const availableWidth = Math.max(containerWidth - padding, 1)
+      const availableHeight = Math.max(containerHeight - padding, 1)
+
+      const unscaledViewport = thumbPage.getViewport({ scale: 1 })
+
+      // The canvas is displayed via `max-h-full` inside a fixed-height flex
+      // container, i.e. its *height* is what's actually constrained — width
+      // just follows the page's aspect ratio. Rendering at a scale derived
+      // from width alone (the old approach) meant the pixel buffer's
+      // resolution didn't match what the height-constrained CSS box was
+      // actually displaying it at, so the browser had to rescale the
+      // bitmap — producing visible blur. Fit against whichever dimension
+      // is tighter so the render resolution always matches (or exceeds)
+      // the final on-screen size.
+      const fitScaleForWidth = availableWidth / unscaledViewport.width
+      const fitScaleForHeight = availableHeight / unscaledViewport.height
+      const displayScale = Math.min(fitScaleForWidth, fitScaleForHeight)
+
+      // Render at a genuinely high pixel density — this is one small
+      // thumbnail (not the dozens of full-res pages in the modal), so
+      // there's no perf reason to cap it at the same MAX_OUTPUT_SCALE used
+      // to protect GPU texture limits for the full-screen zoomed viewer.
+      // A higher, uncapped DPR plus a bit of oversampling keeps it crisp on
+      // 3x-DPR phone screens instead of being rendered soft and upscaled.
+      const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1
+      const renderScale = displayScale * Math.min(dpr, 3) * 1.5
+
+      const viewport = thumbPage.getViewport({ scale: renderScale })
+      canvas.width = Math.ceil(viewport.width)
+      canvas.height = Math.ceil(viewport.height)
+      // CSS size matches the *intended display* size (displayScale, not
+      // the oversampled renderScale) — the browser then downsamples the
+      // high-res bitmap to fit, which looks sharp, rather than upsampling
+      // a low-res bitmap, which looks blurry.
+      canvas.style.width = `${Math.ceil(unscaledViewport.width * displayScale)}px`
+      canvas.style.height = `${Math.ceil(unscaledViewport.height * displayScale)}px`
+
+      thumbPage.render({ canvasContext: ctx, viewport }).promise.catch(() => {})
+    }
+
+    renderThumb()
+
+    // Re-render on resize/orientation-change so the thumbnail stays sharp
+    // (and correctly proportioned) if the card's container size changes.
+    let resizeTimer: ReturnType<typeof setTimeout>
+    const onResize = () => {
+      clearTimeout(resizeTimer)
+      resizeTimer = setTimeout(renderThumb, 150)
+    }
+    window.addEventListener('resize', onResize)
+    return () => {
+      clearTimeout(resizeTimer)
+      window.removeEventListener('resize', onResize)
+    }
   }, [thumbPage])
 
   return (
