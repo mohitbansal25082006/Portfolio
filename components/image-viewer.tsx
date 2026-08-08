@@ -49,7 +49,7 @@ export function ImageViewer({ images, index, onIndexChange, open, onClose, alt =
   const dragHappened = useRef(false)
   const containerRef = useRef<HTMLDivElement>(null)
   
-  // Use a ref to track current zoom inside non-reactive event listeners
+  // Use refs to track current zoom/pan inside non-reactive native event listeners
   const zoomRef = useRef(zoom)
   const panRef = useRef(pan)
 
@@ -165,8 +165,10 @@ export function ImageViewer({ images, index, onIndexChange, open, onClose, alt =
     }
   }, [isDragging])
 
-  // Native non-passive touch & wheel listeners
+  // Native non-passive touch & wheel listeners to prevent body scroll and handle gestures
+  // We MUST include `open` in the dependency array so the listeners attach when the modal mounts.
   useEffect(() => {
+    if (!open) return
     const container = containerRef.current
     if (!container) return
 
@@ -182,7 +184,7 @@ export function ImageViewer({ images, index, onIndexChange, open, onClose, alt =
         return
       }
       
-      // Drag to pan
+      // Drag to pan (only if zoomed in)
       if (e.touches.length === 1 && dragStart.current && zoomRef.current > 1) {
         e.preventDefault()
         const t = e.touches[0]
@@ -211,7 +213,7 @@ export function ImageViewer({ images, index, onIndexChange, open, onClose, alt =
       container.removeEventListener('touchmove', onTouchMove)
       container.removeEventListener('wheel', onWheel)
     }
-  }, [zoomIn, zoomOut])
+  }, [open, zoomIn, zoomOut])
 
   if (!open) return null
 
@@ -246,6 +248,7 @@ export function ImageViewer({ images, index, onIndexChange, open, onClose, alt =
         dragStart.current = null
       }
 
+      // Double tap detection
       const now = Date.now()
       if (now - lastTapRef.current < 300) {
         handleDoubleClick()
