@@ -51,6 +51,19 @@ import {
  * pinch, and double-tap) and makes pan work identically in every direction
  * because it's just x/y translation, not axis-constrained scrolling.
  * ---------------------------------------------------------------------------
+ *
+ * MOBILE FIT-TO-SCREEN (v4 improvement)
+ * ---------------------------------------------------------------------------
+ * On mobile screens (< 768px), the viewer automatically fits the entire
+ * first page within the viewport — both width AND height — so the user
+ * sees the whole page immediately instead of a zoomed-in slice. This uses
+ * the PDF page's intrinsic dimensions (via `page.getViewport`) rather than
+ * querying the canvas DOM element, which eliminates timing/race conditions
+ * where the canvas hasn't been laid out yet when the fit calculation runs.
+ *
+ * On desktop (≥ 768px), the original behavior is preserved: open at scale 1
+ * (100%), centered horizontally.
+ * ---------------------------------------------------------------------------
  */
 
 const MIN_SCALE = 0.5
@@ -58,6 +71,10 @@ const MAX_SCALE = 4
 const BASE_RENDER_SCALE = 1.5 // render pages at higher res for crisp zoom
 const MAX_OUTPUT_SCALE = 2 // cap devicePixelRatio scaling so canvas pixel
 // dimensions never exceed mobile GPU texture limits at high zoom.
+
+// Mobile breakpoint — below this width the viewer auto-fits the page to
+// the viewport on open; at or above it keeps the classic scale-1 default.
+const MOBILE_BREAKPOINT = 768
 
 type PDFDocumentProxy = any
 type PDFPageProxy = any
@@ -75,6 +92,12 @@ function loadPdfJs() {
 
 function clamp(n: number, min: number, max: number) {
   return Math.min(max, Math.max(min, n))
+}
+
+/** Returns true when the current viewport is considered "mobile" for
+ *  the purpose of auto-fit-to-screen behavior. */
+function isMobileViewport() {
+  return typeof window !== 'undefined' && window.innerWidth < MOBILE_BREAKPOINT
 }
 
 /* ============================== Canvas Page ============================== */
@@ -184,6 +207,12 @@ function PdfModal({ url, fileName, onClose }: { url: string; fileName: string; o
   const viewportRef = useRef<HTMLDivElement>(null) // outer, fixed-size, overflow:hidden
   const contentRef = useRef<HTMLDivElement>(null) // inner, gets the transform
 
+  // Tracks whether the user has manually zoomed/panned since the last
+  // auto-fit. When true, resize/orientation-change listeners will NOT
+  // override the user's view with a re-fit. Reset to false whenever the
+  // fit useEffect applies a new fit (initial open, rotation change, etc.)
+  const userInteracted = useRef(false)
+
   /* -------- Gesture refs (no re-renders while dragging/pinching) -------- */
   const drag = useRef<{ active: boolean; startX: number; startY: number; startTX: number; startTY: number; moved: boolean } | null>(null)
   const pinch = useRef<{
@@ -248,37 +277,94 @@ function PdfModal({ url, fileName, onClose }: { url: string; fileName: string; o
   }, [])
 
   /**
-   * Compute the "fit to screen" scale once the first page has rendered and
-   * the viewport is measured, then center it — this is what makes the
-   * viewer open already showing the whole page on small screens instead of
-   * a zoomed-in slice of it.
+   * Compute the "fit to screen" scale and apply it.
    *
-   * MOBILE ONLY: on desktop/tablet widths we keep the original behavior
-   * (open at 100% / scale 1, no auto-fit) since desktop screens are usually
-   * plenty tall/wide already and users there expect the classic "100%"
-   * starting point, not an auto-shrunk page.
+   * MOBILE ONLY: on screens < 768px wide, the first page is scaled so that
+   * it fits entirely within the viewport (both width AND height). This uses
+   * the PDF page's intrinsic dimensions via `page.getViewport()` — NOT the
+   * canvas DOM element's `clientWidth` — so the calculation is instant and
+   * reliable with no timing dependencies on canvas rendering or layout.
+   *
+   * DESKTOP: keeps the original behavior — open at scale 1 (100%), centered.
    *
    * Runs whenever pages/rotation change (rotation swaps page width/height,
-   * so a portrait page rotated 90° needs re-fitting), but only actually
-   * moves the view if the user hasn't already interacted with zoom — we
-   * detect "hasn't interacted" via a ref rather than transform.scale itself,
-   * since scale === fitScale right after fitting and we don't want a resize
-   * to also count as "already interacted".
+   * so a portrait page rotated 90° needs re-fitting).
+   *
+   * Also sets up a ResizeObserver and window resize/orientation listener
+   * so the view re-fits when the viewport size changes (e.g., mobile
+   * browser URL bar show/hide, orientation rotation) — but ONLY if the
+   * user hasn't manually zoomed/panned (`userInteracted` ref).
    */
   useEffect(() => {
     if (status !== 'ready' || pages.length === 0) return
 
-    const isMobileViewport = typeof window !== 'undefined' && window.innerWidth < 768
+    // Reset interaction flag — this is a fresh fit (initial open or rotation)
+    userInteracted.current = false
 
-    if (!isMobileViewport) {
+    const firstPage = pages[0]
+
+    /**
+     * Core fit calculation. Returns the scale that makes the first page
+     * fit within the viewport on both axes, and the centered X position.
+     */
+    const computeFit = (): { scale: number; x: number; y: number } | null => {
+      const viewport = viewportRef.current
+      if (!viewport || !firstPage) return null
+
+      // Get the page's rendered dimensions at BASE_RENDER_SCALE.
+      // This matches what the canvas CSS dimensions will be once rendered,
+      // but is available instantly — no need to wait for canvas layout.
+      const pageVP = firstPage.getViewport({ scale: BASE_RENDER_SCALE, rotation })
+
+      const vw = viewport.clientWidth
+      const vh = viewport.clientHeight
+      if (vw === 0 || vh === 0) return null
+
+      // Content wrapper has px-3 (12px each side) on mobile = 24px total
+      // horizontal padding, and py-4 (16px each side) = 32px total vertical
+      // padding. The transform scales the ENTIRE wrapper (canvas + padding),
+      // so we must include padding in the fit calculation.
+      const horizontalPadding = 24
+      const verticalPadding = 32
+
+      const totalContentWidth = pageVP.width + horizontalPadding
+      // For height, account for the top padding of the wrapper + the first
+      // page's py-2 wrapper (8px top). The bottom padding doesn't affect
+      // the first page's fit, so we use a slightly smaller value.
+      const totalContentHeight = pageVP.height + verticalPadding
+
+      const scaleToFitWidth = vw / totalContentWidth
+      const scaleToFitHeight = vh / totalContentHeight
+
+      // Use the smaller of the two so the page fits within BOTH dimensions.
+      // Allow upscaling to 2x so small pages can fill the viewport.
+      const computedFit = clamp(Math.min(scaleToFitWidth, scaleToFitHeight), 0.1, 2)
+
+      // Center horizontally
+      const fittedWidth = totalContentWidth * computedFit
+      const centeredX = (vw - fittedWidth) / 2
+
+      // Position near the top with a small offset
+      const y = 12
+
+      return { scale: computedFit, x: centeredX, y }
+    }
+
+    const applyFit = () => {
+      const result = computeFit()
+      if (!result) return
+      setFitScale(result.scale)
+      applyTransform({ x: result.x, y: result.y, scale: result.scale })
+    }
+
+    if (!isMobileViewport()) {
       // Desktop/tablet: keep the original default — open at scale 1,
       // centered, no fit-to-screen shrinking.
       setFitScale(1)
       const viewport = viewportRef.current
-      const content = contentRef.current
-      const firstPageCanvas = content?.querySelector<HTMLCanvasElement>('[data-page="1"] canvas')
-      if (viewport && firstPageCanvas) {
-        const centeredX = (viewport.clientWidth - firstPageCanvas.clientWidth) / 2
+      if (viewport && firstPage) {
+        const pageVP = firstPage.getViewport({ scale: BASE_RENDER_SCALE, rotation })
+        const centeredX = (viewport.clientWidth - pageVP.width) / 2
         applyTransform({ x: centeredX, y: 12, scale: 1 })
       } else {
         applyTransform({ x: 0, y: 0, scale: 1 })
@@ -286,49 +372,36 @@ function PdfModal({ url, fileName, onClose }: { url: string; fileName: string; o
       return
     }
 
-    let attempts = 0
-    let cancelled = false
+    // Mobile: fit page to viewport
+    applyFit()
 
-    const tryFit = () => {
-      if (cancelled) return
-      const viewport = viewportRef.current
-      const content = contentRef.current
-      const firstPageCanvas = content?.querySelector<HTMLCanvasElement>('[data-page="1"] canvas')
-
-      if (!viewport || !content || !firstPageCanvas || firstPageCanvas.clientWidth === 0) {
-        // Canvas hasn't painted its CSS size yet (render is async) — retry
-        // for a few frames rather than falling back to an unfit default.
-        if (attempts++ < 30) requestAnimationFrame(tryFit)
-        return
+    // Re-fit when viewport size changes (mobile browser UI, orientation
+    // change, etc.) — but only if the user hasn't manually zoomed/panned.
+    const handleResize = () => {
+      if (!userInteracted.current) {
+        applyFit()
       }
-
-      const vw = viewport.clientWidth
-      const vh = viewport.clientHeight
-      // Horizontal padding on the content wrapper (px-3 on mobile) eats
-      // into available fit width — account for it so the page doesn't get
-      // clipped at the sides at "fit" scale.
-      const horizontalPadding = 24
-      const pageWidth = firstPageCanvas.clientWidth
-      const pageHeight = firstPageCanvas.clientHeight
-
-      const scaleToFitWidth = (vw - horizontalPadding) / pageWidth
-      const scaleToFitHeight = (vh - 24) / pageHeight
-      const computedFit = clamp(Math.min(scaleToFitWidth, scaleToFitHeight), 0.1, 1)
-
-      setFitScale(computedFit)
-
-      // Center the fitted page horizontally; align near the top vertically
-      // (with small breathing room) rather than dead-center, since that
-      // reads more naturally for a document and matches where "page 1"
-      // navigation resets to.
-      const fittedWidth = pageWidth * computedFit
-      const centeredX = (vw - fittedWidth) / 2
-      applyTransform({ x: centeredX, y: 12, scale: computedFit })
     }
 
-    requestAnimationFrame(tryFit)
+    // ResizeObserver catches viewport size changes that window resize
+    // might miss (e.g., mobile browser URL bar show/hide changes the
+    // viewport height without firing a window resize event).
+    const ro = new ResizeObserver(() => {
+      if (!userInteracted.current) {
+        applyFit()
+      }
+    })
+    if (viewportRef.current) {
+      ro.observe(viewportRef.current)
+    }
+
+    window.addEventListener('resize', handleResize)
+    window.addEventListener('orientationchange', handleResize)
+
     return () => {
-      cancelled = true
+      ro.disconnect()
+      window.removeEventListener('resize', handleResize)
+      window.removeEventListener('orientationchange', handleResize)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, pages.length, rotation])
@@ -341,6 +414,7 @@ function PdfModal({ url, fileName, onClose }: { url: string; fileName: string; o
    * correct, instead of needing separate hacks per gesture.
    */
   const zoomToward = useCallback((nextScale: number, vx: number, vy: number) => {
+    userInteracted.current = true
     const t = transformRef.current
     // Bounds are expressed relative to the fitted scale (once known) so
     // "zoom out as far as possible" means "see the whole page" rather than
@@ -361,6 +435,7 @@ function PdfModal({ url, fileName, onClose }: { url: string; fileName: string; o
   }, [applyTransform, fitScale])
 
   const zoomBy = useCallback((delta: number) => {
+    userInteracted.current = true
     const viewport = viewportRef.current
     const rect = viewport?.getBoundingClientRect()
     const vx = rect ? rect.width / 2 : 0
@@ -371,17 +446,19 @@ function PdfModal({ url, fileName, onClose }: { url: string; fileName: string; o
 
   const resetView = useCallback(() => {
     setRotation(0)
+    userInteracted.current = false
     const viewport = viewportRef.current
-    const content = contentRef.current
-    const firstPageCanvas = content?.querySelector<HTMLCanvasElement>('[data-page="1"] canvas')
-    if (viewport && firstPageCanvas && fitScale) {
-      const vw = viewport.clientWidth
-      const fittedWidth = firstPageCanvas.clientWidth * fitScale
-      applyTransform({ x: (vw - fittedWidth) / 2, y: 12, scale: fitScale })
+    const firstPage = pages.length > 0 ? pages[0] : null
+    if (viewport && firstPage && fitScale) {
+      const pageVP = firstPage.getViewport({ scale: BASE_RENDER_SCALE, rotation: 0 })
+      const horizontalPadding = 24
+      const totalWidth = pageVP.width + horizontalPadding
+      const fittedWidth = totalWidth * fitScale
+      applyTransform({ x: (viewport.clientWidth - fittedWidth) / 2, y: 12, scale: fitScale })
     } else {
       applyTransform({ x: 0, y: 0, scale: fitScale ?? 1 })
     }
-  }, [applyTransform, fitScale])
+  }, [applyTransform, fitScale, pages])
 
   /** Clamp pan so content can't be dragged arbitrarily far off-screen. */
   const clampPan = useCallback((x: number, y: number, scale: number) => {
@@ -445,6 +522,7 @@ function PdfModal({ url, fileName, onClose }: { url: string; fileName: string; o
   /* -------- Wheel: ctrl/cmd = zoom-toward-cursor; plain = pan -------- */
   const handleWheel = (e: ReactWheelEvent<HTMLDivElement>) => {
     e.preventDefault()
+    userInteracted.current = true
     const rect = viewportRef.current?.getBoundingClientRect()
     if (!rect) return
     const vx = e.clientX - rect.left
@@ -464,6 +542,7 @@ function PdfModal({ url, fileName, onClose }: { url: string; fileName: string; o
 
   /* -------- Double-click (desktop mouse) zoom, anchored to click point -------- */
   const handleDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    userInteracted.current = true
     const rect = viewportRef.current?.getBoundingClientRect()
     if (!rect) return
     const vx = e.clientX - rect.left
@@ -476,6 +555,7 @@ function PdfModal({ url, fileName, onClose }: { url: string; fileName: string; o
   /* -------- Mouse drag-to-pan (any direction) -------- */
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     if (e.button !== 0) return
+    userInteracted.current = true
     const t = transformRef.current
     drag.current = { active: true, startX: e.clientX, startY: e.clientY, startTX: t.x, startTY: t.y, moved: false }
   }
@@ -518,6 +598,7 @@ function PdfModal({ url, fileName, onClose }: { url: string; fileName: string; o
     if (e.touches.length === 2) {
       // A second finger landed — always start/refresh a pinch, discarding
       // any single-finger drag in progress so the gestures never fight.
+      userInteracted.current = true
       drag.current = null
       singleTouchStart.current = null
       const t = transformRef.current
@@ -577,7 +658,10 @@ function PdfModal({ url, fileName, onClose }: { url: string; fileName: string; o
       const d = drag.current
       const dx = touch.clientX - d.startX
       const dy = touch.clientY - d.startY
-      if (Math.abs(dx) > 8 || Math.abs(dy) > 8) d.moved = true
+      if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
+        d.moved = true
+        userInteracted.current = true
+      }
       if (d.moved) {
         const t = transformRef.current
         const next = clampPan(d.startTX + dx, d.startTY + dy, t.scale)
