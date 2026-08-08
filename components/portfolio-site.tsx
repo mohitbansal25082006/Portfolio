@@ -2,10 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode, type CSSProperties } from 'react'
 import {
-  ArrowDownRight, ArrowUpRight, BookOpen, Calendar, Check, Code2, Copy,
+  ArrowDownRight, ArrowUpRight, BookOpen, Calendar, Check, ChevronLeft, ChevronRight, Code2, Copy,
   Cpu, Database, Download, ExternalLink, Layers, Loader2, Mail,
   MapPin, Menu, MoveUpRight, Search, Send, Smartphone, Sparkles, Star,
-  Users, Wrench, X,
+  Users, Wrench, X, ZoomIn,
 } from 'lucide-react'
 import {
   about, contactInfo, githubConfig, navItems, projectFilters, projects,
@@ -14,6 +14,7 @@ import {
 } from '@/lib/content'
 import { GitHubSection } from '@/components/github-section'
 import { PdfViewer } from '@/components/pdf-viewer'
+import { ImageViewer } from '@/components/image-viewer'
 
 /* ---------------- Custom Brand Icons (SVG) ---------------- */
 const GithubIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -109,15 +110,15 @@ function TechSphere({ items }: { items: string[] }) {
         target.current.y = target.current.y % 360
         target.current.x = -10 + Math.sin(target.current.y * Math.PI / 180) * 5
       }
-      
+
       current.current.x += (target.current.x - current.current.x) * 0.05
-      
+
       let diffY = target.current.y - current.current.y
       while (diffY < -180) diffY += 360
       while (diffY > 180) diffY -= 360
       current.current.y += diffY * 0.05
       current.current.y = current.current.y % 360
-      
+
       if (sphereRef.current) {
         sphereRef.current.style.transform = `rotateX(${current.current.x}deg) rotateY(${current.current.y}deg)`
       }
@@ -143,12 +144,12 @@ function TechSphere({ items }: { items: string[] }) {
     updateRotationFromPoint(e.clientX, e.clientY, rect)
   }
 
-  const handleMouseEnter = () => { 
-    isHovering.current = true 
+  const handleMouseEnter = () => {
+    isHovering.current = true
     target.current.y = current.current.y % 360
     target.current.x = current.current.x
   }
-  const handleMouseLeave = () => { 
+  const handleMouseLeave = () => {
     isHovering.current = false
     target.current.y = current.current.y % 360
     target.current.x = -10
@@ -181,7 +182,7 @@ function TechSphere({ items }: { items: string[] }) {
   }
 
   return (
-    <div 
+    <div
       className="sphere-container"
       onMouseMove={handleMouseMove}
       onMouseEnter={handleMouseEnter}
@@ -202,12 +203,12 @@ function TechSphere({ items }: { items: string[] }) {
         {items.map((item, i) => {
           const p = positions[i]
           return (
-            <span 
-              key={item} 
-              className="sphere-item" 
-              style={{ 
-                '--tx': `${p.x * 180}px`, 
-                '--ty': `${p.y * 180}px`, 
+            <span
+              key={item}
+              className="sphere-item"
+              style={{
+                '--tx': `${p.x * 180}px`,
+                '--ty': `${p.y * 180}px`,
                 '--tz': `${p.z * 180}px`
               } as CSSProperties}
             >
@@ -237,40 +238,285 @@ const skillIcons: Record<string, typeof Code2> = {
   'AI / ML': Cpu, Mobile: Smartphone, Tools: Wrench,
 }
 
-/* ---------------- Project Gallery (Multi-Screenshot Carousel) ---------------- */
+/* ---------------- Project Gallery (Multi-Screenshot Carousel) ----------------
+   - Left / right arrow navigation (click, keyboard, swipe)
+   - Slide counter + progress dots (dots collapse to a scrollable strip
+     when there are many screenshots, so it never overflows on mobile)
+   - Lightbox for a full-screen zoomed look at the active screenshot
+   - Fully responsive: arrows sit inside the frame on mobile so they
+     never get clipped, thumbnails scroll horizontally
+------------------------------------------------------------------------- */
 function ProjectGallery({ project }: { project: typeof projects[0] }) {
   const [active, setActive] = useState(0)
+  const [lightboxOpen, setLightboxOpen] = useState(false)
+  const touchStartX = useRef<number | null>(null)
+  const total = project.images.length
+
+  const goTo = (i: number) => setActive(((i % total) + total) % total)
+  const next = () => goTo(active + 1)
+  const prev = () => goTo(active - 1)
+
+  // Reset to the first slide whenever the project itself changes
+  // (e.g. after a filter/search re-renders a different card in place).
+  useEffect(() => { setActive(0) }, [project.number])
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0]?.clientX ?? null
+  }
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX.current === null) return
+    const endX = e.changedTouches[0]?.clientX ?? touchStartX.current
+    const delta = endX - touchStartX.current
+    if (Math.abs(delta) > 40) {
+      delta > 0 ? prev() : next()
+    }
+    touchStartX.current = null
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowLeft') { e.preventDefault(); prev() }
+    if (e.key === 'ArrowRight') { e.preventDefault(); next() }
+  }
+
   return (
-    <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
-      <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
-        <div className="flex gap-1.5">
-          <span className="size-2.5 rounded-full bg-destructive/50" />
-          <span className="size-2.5 rounded-full bg-primary/50" />
-          <span className="size-2.5 rounded-full bg-accent/50" />
-        </div>
-        <div className="flex-1 mx-4">
-          <div className="mx-auto w-fit rounded-md bg-secondary px-3 py-0.5 font-mono text-[10px] text-muted-foreground uppercase">{project.name}.app</div>
-        </div>
-        <a href={project.live} target="_blank" rel="noreferrer" className="grid size-6 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
-          <MoveUpRight className="size-3.5" />
-        </a>
-      </div>
-      <div className="relative aspect-[16/10] w-full overflow-hidden bg-secondary">
-        <img src={project.images[active]} alt={`${project.name} screenshot ${active + 1}`} className="absolute inset-0 h-full w-full object-contain p-2 transition-all duration-500" />
-        <span className="absolute left-4 top-4 rounded-full bg-background/80 px-3 py-1 font-mono text-[10px] tracking-[0.16em] text-foreground/80 uppercase backdrop-blur">{project.year}</span>
-      </div>
-      <div className="flex gap-2 overflow-x-auto border-t border-border p-2">
-        {project.images.map((img, i) => (
-          <button
-            key={i}
-            onClick={() => setActive(i)}
-            className={`relative h-12 w-20 shrink-0 overflow-hidden rounded-md border transition-all ${i === active ? 'border-primary' : 'border-border opacity-50 hover:opacity-100'}`}
+    <>
+      <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
+        {/* Browser chrome bar */}
+        <div className="flex items-center justify-between border-b border-border px-3.5 py-2.5 sm:px-4">
+          <div className="flex shrink-0 gap-1.5">
+            <span className="size-2.5 rounded-full bg-destructive/50" />
+            <span className="size-2.5 rounded-full bg-primary/50" />
+            <span className="size-2.5 rounded-full bg-accent/50" />
+          </div>
+          <div className="mx-3 min-w-0 flex-1 sm:mx-4">
+            <div className="mx-auto w-fit max-w-full truncate rounded-md bg-secondary px-3 py-0.5 font-mono text-[9px] text-muted-foreground uppercase sm:text-[10px]">
+              {project.name}.app
+            </div>
+          </div>
+          <a
+            href={project.live}
+            target="_blank"
+            rel="noreferrer"
+            className="grid size-6 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            aria-label={`Open ${project.name} live site`}
           >
-            <img src={img} alt={`thumbnail ${i + 1}`} className="h-full w-full object-cover" />
+            <MoveUpRight className="size-3.5" />
+          </a>
+        </div>
+
+        {/* Slide viewport */}
+        <div
+          className="group/gallery relative aspect-[16/10] w-full touch-pan-y select-none overflow-hidden bg-secondary outline-none sm:aspect-[16/10]"
+          tabIndex={0}
+          role="group"
+          aria-roledescription="carousel"
+          aria-label={`${project.name} screenshots`}
+          onKeyDown={handleKeyDown}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+        >
+          <img
+            src={project.images[active]}
+            alt={`${project.name} screenshot ${active + 1} of ${total}`}
+            className="absolute inset-0 h-full w-full cursor-zoom-in object-contain p-2 transition-opacity duration-300"
+            key={active}
+            onClick={() => setLightboxOpen(true)}
+          />
+
+          {/* Year badge */}
+          <span className="pointer-events-none absolute left-3 top-3 rounded-full bg-background/80 px-2.5 py-1 font-mono text-[9px] tracking-[0.14em] text-foreground/80 uppercase backdrop-blur sm:left-4 sm:top-4 sm:px-3 sm:text-[10px]">
+            {project.year}
+          </span>
+
+          {/* Slide counter */}
+          {total > 1 && (
+            <span className="pointer-events-none absolute right-3 top-3 rounded-full bg-background/80 px-2.5 py-1 font-mono text-[9px] tracking-[0.14em] text-foreground/80 backdrop-blur sm:right-4 sm:top-4 sm:px-3 sm:text-[10px]">
+              {active + 1} / {total}
+            </span>
+          )}
+
+          {/* Expand / lightbox trigger */}
+          <button
+            type="button"
+            onClick={() => setLightboxOpen(true)}
+            className="absolute bottom-3 right-3 grid size-8 place-items-center rounded-full bg-background/80 text-foreground/80 opacity-0 backdrop-blur transition-opacity hover:bg-background hover:text-foreground focus-visible:opacity-100 group-hover/gallery:opacity-100 sm:bottom-4 sm:right-4"
+            aria-label="View screenshot full size"
+          >
+            <ZoomIn className="size-3.5" />
           </button>
-        ))}
+
+          {/* Left / right arrow navigation */}
+          {total > 1 && (
+            <>
+              <button
+                type="button"
+                onClick={prev}
+                className="absolute left-2 top-1/2 grid size-9 -translate-y-1/2 place-items-center rounded-full border border-border/60 bg-background/80 text-foreground shadow-lg backdrop-blur transition-all hover:border-primary hover:bg-primary hover:text-primary-foreground active:scale-90 sm:left-3 sm:size-10 sm:opacity-0 sm:group-hover/gallery:opacity-100 sm:focus-visible:opacity-100"
+                aria-label="Previous screenshot"
+              >
+                <ChevronLeft className="size-4 sm:size-5" />
+              </button>
+              <button
+                type="button"
+                onClick={next}
+                className="absolute right-2 top-1/2 grid size-9 -translate-y-1/2 place-items-center rounded-full border border-border/60 bg-background/80 text-foreground shadow-lg backdrop-blur transition-all hover:border-primary hover:bg-primary hover:text-primary-foreground active:scale-90 sm:right-3 sm:size-10 sm:opacity-0 sm:group-hover/gallery:opacity-100 sm:focus-visible:opacity-100"
+                aria-label="Next screenshot"
+              >
+                <ChevronRight className="size-4 sm:size-5" />
+              </button>
+            </>
+          )}
+
+          {/* Progress dots (only when the set is small enough to read at a glance) */}
+          {total > 1 && total <= 8 && (
+            <div className="pointer-events-none absolute bottom-3 left-1/2 flex -translate-x-1/2 gap-1.5 sm:bottom-4">
+              {project.images.map((_, i) => (
+                <span
+                  key={i}
+                  className={`pointer-events-auto h-1.5 cursor-pointer rounded-full transition-all ${
+                    i === active ? 'w-5 bg-primary' : 'w-1.5 bg-background/70 hover:bg-background'
+                  }`}
+                  onClick={() => goTo(i)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Thumbnail strip */}
+        <div className="flex gap-2 overflow-x-auto border-t border-border p-2 [scrollbar-width:thin]">
+          {project.images.map((img, i) => (
+            <button
+              key={i}
+              onClick={() => goTo(i)}
+              className={`relative h-11 w-[4.75rem] shrink-0 overflow-hidden rounded-md border transition-all sm:h-12 sm:w-20 ${
+                i === active ? 'border-primary ring-1 ring-primary' : 'border-border opacity-50 hover:opacity-100'
+              }`}
+              aria-label={`Go to screenshot ${i + 1}`}
+              aria-current={i === active}
+            >
+              <img src={img} alt="" className="h-full w-full object-cover" />
+            </button>
+          ))}
+        </div>
       </div>
-    </div>
+
+      {/* Full-screen viewer — arrow nav on desktop, swipe/pinch on mobile */}
+      <ImageViewer
+        images={project.images}
+        index={active}
+        onIndexChange={setActive}
+        open={lightboxOpen}
+        onClose={() => setLightboxOpen(false)}
+        alt={project.name}
+      />
+    </>
+  )
+}
+
+/* ---------------- Project Card (full detail block below the gallery) ---------------- */
+function ProjectCard({ project, index }: { project: typeof projects[0]; index: number }) {
+  const [expanded, setExpanded] = useState(false)
+  const FEATURES_COLLAPSED_COUNT = 6
+  const visibleFeatures = expanded ? project.features : project.features.slice(0, FEATURES_COLLAPSED_COUNT)
+  const hasMoreFeatures = project.features.length > FEATURES_COLLAPSED_COUNT
+
+  return (
+    <article className={`project-card group flex flex-col gap-8 md:gap-10 lg:flex-row ${index % 2 === 1 ? 'lg:flex-row-reverse' : ''}`}>
+      {/* Gallery column */}
+      <div className="min-w-0 lg:flex-1">
+        <div className="lg:sticky lg:top-24">
+          <ProjectGallery project={project} />
+        </div>
+      </div>
+
+      {/* Detail column */}
+      <div className="flex min-w-0 flex-1 flex-col gap-5 lg:justify-center">
+        <div className="flex items-center gap-3">
+          <span className={`grid size-10 shrink-0 place-items-center rounded-full ${project.theme} font-mono text-xs font-bold`}>
+            {project.number}
+          </span>
+          <span className="font-mono text-[10px] tracking-[0.16em] text-muted-foreground uppercase">{project.year}</span>
+          <span className="rounded-full border border-border px-2.5 py-1 font-mono text-[9px] tracking-[0.12em] text-muted-foreground uppercase">
+            {project.category}
+          </span>
+        </div>
+
+        <h3 className="text-3xl font-medium tracking-[-0.04em] text-balance sm:text-4xl">{project.name}</h3>
+        <p className="text-sm leading-6 text-muted-foreground">{project.short}</p>
+
+        <div className="rounded-xl border border-border/70 bg-muted/20 p-4">
+          <p className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">The problem</p>
+          <p className="mt-1.5 text-xs leading-5 text-foreground/80">{project.problem}</p>
+        </div>
+
+        <div className="flex flex-wrap gap-2 pt-1">
+          <a
+            href={project.live}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1.5 rounded-full bg-primary px-4 py-2 font-mono text-[10px] tracking-[0.12em] text-primary-foreground uppercase transition-colors hover:bg-primary/90"
+          >
+            Live <ExternalLink className="size-3" />
+          </a>
+          <a
+            href={project.github}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1.5 rounded-full border border-border px-4 py-2 font-mono text-[10px] tracking-[0.12em] uppercase transition-colors hover:border-primary hover:bg-primary hover:text-primary-foreground"
+          >
+            GitHub <GithubIcon className="size-3" />
+          </a>
+        </div>
+
+        <div className="mt-2 grid gap-5 border-t border-border pt-4 sm:grid-cols-2">
+          <div>
+            <p className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">
+              Features {project.features.length > 0 && `(${project.features.length})`}
+            </p>
+            <ul className="mt-2.5 space-y-1.5">
+              {visibleFeatures.map((f) => (
+                <li key={f} className="flex items-start gap-2 text-xs leading-5 text-foreground/80">
+                  <span className="mt-1.5 size-1 shrink-0 rounded-full bg-primary" /> {f}
+                </li>
+              ))}
+            </ul>
+            {hasMoreFeatures && (
+              <button
+                type="button"
+                onClick={() => setExpanded((v) => !v)}
+                className="mt-2.5 font-mono text-[10px] tracking-[0.12em] text-primary uppercase hover:underline"
+              >
+                {expanded ? 'Show less' : `+${project.features.length - FEATURES_COLLAPSED_COUNT} more`}
+              </button>
+            )}
+          </div>
+          <div>
+            <p className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">Stack</p>
+            <div className="mt-2.5 flex flex-wrap gap-1.5">
+              {project.stack.map((s) => (
+                <span key={s} className="rounded-full border border-border px-2.5 py-1 font-mono text-[10px] text-muted-foreground">
+                  {s}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-4 border-t border-border pt-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <p className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">Challenges</p>
+            <p className="mt-1 text-xs leading-5 text-foreground/80">{project.challenges}</p>
+          </div>
+          {project.metrics && (
+            <div className="shrink-0 sm:text-right">
+              <p className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">Metrics</p>
+              <p className="mt-1 text-sm font-medium text-primary">{project.metrics}</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </article>
   )
 }
 
@@ -283,7 +529,7 @@ export function PortfolioSite() {
   const [activeFilter, setActiveFilter] = useState('All')
   const [query, setQuery] = useState('')
   const [activeSection, setActiveSection] = useState('')
-  
+
   const [formStatus, setFormStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const [form, setForm] = useState({ name: '', email: '', subject: '', message: '' })
 
@@ -606,15 +852,15 @@ export function PortfolioSite() {
           </Reveal>
           <Reveal delay={80}>
             <div className="flex items-center gap-2 rounded-full border border-border bg-background px-3 py-2">
-              <Search className="size-3.5 text-muted-foreground" />
+              <Search className="size-3.5 shrink-0 text-muted-foreground" />
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Search projects, stack, features..."
-                className="w-full bg-transparent font-mono text-[11px] tracking-[0.08em] uppercase placeholder:text-muted-foreground focus:outline-none md:w-72"
+                className="w-full min-w-0 bg-transparent font-mono text-[11px] tracking-[0.08em] uppercase placeholder:text-muted-foreground focus:outline-none md:w-72"
               />
               {query && (
-                <button onClick={() => setQuery('')} className="text-muted-foreground hover:text-foreground" aria-label="Clear search">
+                <button onClick={() => setQuery('')} className="shrink-0 text-muted-foreground hover:text-foreground" aria-label="Clear search">
                   <X className="size-3.5" />
                 </button>
               )}
@@ -645,66 +891,10 @@ export function PortfolioSite() {
             <p className="font-mono text-xs tracking-[0.14em] text-muted-foreground uppercase">No projects match your search.</p>
           </div>
         ) : (
-          <div className="flex flex-col gap-24 md:gap-32">
+          <div className="flex flex-col gap-20 md:gap-28 lg:gap-32">
             {filteredProjects.map((project, index) => (
-              <Reveal key={project.number} delay={index * 40}>
-                <article className={`project-card group flex flex-col gap-8 ${index % 2 === 1 ? 'md:flex-row-reverse' : 'md:flex-row'}`}>
-                  <div className="flex-1">
-                    <ProjectGallery project={project} />
-                  </div>
-                  <div className="flex flex-1 flex-col gap-5 md:justify-center">
-                    <div className="flex items-center gap-3">
-                      <span className={`grid size-10 place-items-center rounded-full ${project.theme} font-mono text-xs font-bold`}>{project.number}</span>
-                      <span className="font-mono text-[10px] tracking-[0.16em] text-muted-foreground uppercase">{project.year}</span>
-                    </div>
-                    <h3 className="text-3xl font-medium tracking-[-0.04em] md:text-4xl">{project.name}</h3>
-                    <p className="text-sm leading-6 text-muted-foreground">{project.short}</p>
-                    <p className="text-xs leading-5 text-muted-foreground/70">Problem: {project.problem}</p>
-                    
-                    <div className="flex flex-wrap gap-2 pt-2">
-                      <a href={project.live} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-full bg-primary px-4 py-2 font-mono text-[10px] tracking-[0.12em] text-primary-foreground uppercase transition-colors hover:bg-primary/90">
-                        Live <ExternalLink className="size-3" />
-                      </a>
-                      <a href={project.github} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-full border border-border px-4 py-2 font-mono text-[10px] tracking-[0.12em] uppercase transition-colors hover:border-primary hover:bg-primary hover:text-primary-foreground">
-                        GitHub <GithubIcon className="size-3" />
-                      </a>
-                    </div>
-
-                    <div className="mt-2 grid gap-4 border-t border-border pt-4 sm:grid-cols-2">
-                      <div>
-                        <p className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">Features</p>
-                        <ul className="mt-2 space-y-1">
-                          {project.features.map((f) => (
-                            <li key={f} className="flex items-center gap-2 text-xs text-foreground/80">
-                              <span className="size-1 rounded-full bg-primary" /> {f}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                      <div>
-                        <p className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">Stack</p>
-                        <div className="mt-2 flex flex-wrap gap-1">
-                          {project.stack.map((s) => (
-                            <span key={s} className="rounded-full border border-border px-2 py-0.5 font-mono text-[10px] text-muted-foreground">{s}</span>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-center justify-between gap-4 border-t border-border pt-4">
-                      <div>
-                        <p className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">Challenges</p>
-                        <p className="mt-1 text-xs leading-5 text-foreground/80">{project.challenges}</p>
-                      </div>
-                      {project.metrics && (
-                        <div className="text-right">
-                          <p className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">Metrics</p>
-                          <p className="mt-1 text-sm font-medium text-primary">{project.metrics}</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </article>
+              <Reveal key={`${project.number}-${project.name}`} delay={Math.min(index, 4) * 40}>
+                <ProjectCard project={project} index={index} />
               </Reveal>
             ))}
           </div>

@@ -2,8 +2,9 @@
 
 A single-page Next.js portfolio for **Mohit Bansal** (Full-Stack Developer ·
 AI Engineer · Mobile Developer), featuring a live GitHub integration,
-theme switching, project search/filtering, an advanced in-browser resume
-PDF viewer, and a working contact form.
+theme switching, a searchable/filterable project showcase with a
+full-screen image viewer, an advanced in-browser resume PDF viewer, and a
+working contact form.
 
 ---
 
@@ -17,11 +18,11 @@ PDF viewer, and a working contact form.
 | 4 | **About** | `#about` | Bio paragraphs, college/year, interest tags, 3 "pillars" (Build / Innovate / Grow). |
 | 5 | **Stats** | — | Animated count-up cards (Projects Built, DSA Problems, AI Tools, GitHub Contributions, Technologies, Years Coding). |
 | 6 | **Skills** | `#skills` | 7 categorized skill groups (Languages, Frontend, Backend, Database, AI/ML, Mobile, Tools) as icon cards. |
-| 7 | **Projects** | `#work` | Searchable, filterable project showcase (8 projects) — multi-screenshot gallery per project, features/stack/challenges/metrics, Live + GitHub links. |
+| 7 | **Projects** | `#work` | Searchable, filterable project showcase (8 projects) — see §3 below for the full breakdown of the redesigned gallery + full-screen viewer. |
 | 8 | **Tech Sphere** | — | Interactive 3D rotating sphere of tech-stack tags (mouse-follow + auto-spin). |
-| 9 | **GitHub** | `#github` | **Live, real-time GitHub data** — see §3 below for full breakdown. |
+| 9 | **GitHub** | `#github` | **Live, real-time GitHub data** — see §4 below for full breakdown. |
 | 10 | **Timeline** | `#timeline` | Vertical alternating timeline of milestones (2024 → Future), animated on scroll. |
-| 11 | **Resume** | `#resume` | **Advanced canvas-rendered PDF viewer** — see §3.5 below for full breakdown. |
+| 11 | **Resume** | `#resume` | **Advanced canvas-rendered PDF viewer** — see §5 below for full breakdown. |
 | 12 | **Contact** | `#contact` | Working contact form (POSTs to `/api/contact`, sends email via Nodemailer/Gmail) with loading/success/error states, plus email-copy button and social links. |
 | 13 | **Footer** | — | Logo, nav links, social icons, copyright. |
 | — | **Theme switcher** | — | Floating bottom-right button cycling 6 color themes (Midnight, Cyberpunk, Glass, Minimal, Neon, Ocean) via `data-theme` attribute + CSS custom properties. |
@@ -37,12 +38,96 @@ PDF viewer, and a working contact form.
 - **Responsive mobile menu** — hamburger nav with slide-down panel.
 - **Grain + aurora background effects** — subtle SVG noise overlay and blurred animated color blobs for visual depth.
 - **Working contact form** — real email delivery via Nodemailer, with a branded HTML email template.
-- **Advanced, mobile-safe resume viewer** — canvas-rendered PDF (via `pdfjs-dist`) with zoom, pan, page navigation, and full-screen mode — see §3.5.
-- **Full mobile responsiveness** — every section (including the GitHub section and the resume viewer) is tuned down to small phone widths.
+- **Full-screen image viewer** — reusable component powering every project's screenshot gallery, see §3.
+- **Advanced, mobile-safe resume viewer** — canvas-rendered PDF (via `pdfjs-dist`) with zoom, pan, page navigation, and full-screen mode — see §5.
+- **Full mobile responsiveness** — every section (project gallery, image viewer, GitHub section, resume viewer) is tuned down to small phone widths, including dynamic-viewport-height handling so full-screen overlays never get clipped by mobile browser chrome.
 
 ---
 
-## 3. GitHub section — live data (the headline feature)
+## 3. Projects section — gallery + full-screen image viewer
+
+The projects section (`#work`) was redesigned for two things: comfortably
+hosting large, screenshot-heavy projects (like DeepDive AI's 12 screenshots)
+and being fully usable on both mobile and desktop.
+
+### 3.1 Layout (`ProjectCard`, inside `components/portfolio-site.tsx`)
+
+- Each project renders as a `ProjectCard`: a compact in-page gallery on one
+  side and full detail (name, problem statement, live/GitHub links,
+  features, stack, challenges, metrics) on the other.
+- Alternates left/right at the `lg` breakpoint only, and stacks vertically
+  below that — so it reads cleanly through tablet widths, not just phones.
+- On large screens the gallery **sticks** (`lg:sticky`) while the detail
+  column scrolls alongside it.
+- The **feature list collapses** to 6 items with a "+N more" toggle, since
+  large projects (DeepDive AI has 15 features) previously produced a wall
+  of text.
+- Metrics and challenges stack vertically on mobile instead of squeezing
+  side-by-side.
+
+### 3.2 In-page gallery (`ProjectGallery`, inside `components/portfolio-site.tsx`)
+
+A compact "browser chrome" card that lives inline in each project's detail
+block:
+
+- Left / right arrow buttons (fade in on hover on desktop, always visible
+  on mobile), swipe support, arrow-key navigation when focused
+- Slide counter (`3 / 12`) and progress dots (dots only render when a
+  project has ≤ 8 images, so large sets like DeepDive AI's don't overflow)
+- Scrollable thumbnail strip along the bottom, highlighting the active shot
+- Clicking the main image, or the dedicated zoom button, opens the
+  **full-screen viewer** (§3.3) at the currently active image
+
+### 3.3 Full-screen image viewer (`components/image-viewer.tsx` — new file)
+
+A standalone, reusable `ImageViewer` component (not specific to
+projects — any image set can use it) that opens as a full-screen overlay.
+
+**Desktop**
+- Left/right on-screen arrow buttons
+- `←` / `→` arrow keys, `Esc` to close, `0` to reset zoom
+- `Ctrl/Cmd + scroll wheel`, or `+`/`−` buttons, to zoom (up to 4×)
+- Click-and-drag to pan once zoomed in
+- Double-click to toggle 100% ↔ 200%
+
+**Mobile**
+- One-finger swipe left/right to move between images
+- Pinch-to-zoom, one-finger drag to pan once zoomed in
+- Double-tap to toggle 100% ↔ 200%
+- Same on-screen arrow buttons as large tap targets, so navigation is
+  discoverable even before a user tries swiping
+
+**Shared**
+- Thumbnail strip at the bottom to jump directly to any image
+- Slide counter, zoom-percentage readout, reset-zoom button
+- Body scroll is locked while open; closes via the × button, `Esc`, or a
+  backdrop click
+- Uses **dynamic viewport height** (`100dvh`) rather than `100vh`, and a
+  `min-h-0` flex layout for the image stage, so the viewer always fits
+  within what's actually visible — this specifically fixes an earlier bug
+  where the image and bottom thumbnail bar could get pushed off-screen on
+  mobile once the browser's address bar was accounted for
+- The image itself is centered with a **deterministic flex box**
+  (`flex items-center justify-center` + a fully-sized, `object-contain`
+  `<img>`) rather than `absolute` positioning with auto-margins — the
+  latter resolved the image's size inconsistently across browsers when
+  combined with the zoom/pan CSS transform, which was the cause of the
+  image intermittently rendering small and off-center with a clipped
+  right-arrow button. The current approach renders correctly every time,
+  on every screen size.
+
+### 3.4 `content.ts` project numbering fix
+
+Two projects were previously both numbered `'02'` and both named
+"DeepDive AI" (the real project plus a leftover placeholder), which
+collided with the gallery's list keys. Numbering was corrected — the real
+DeepDive AI is now `01`, and the placeholder was renamed to "MannSahay"
+(matching the existing timeline entry) pending its own real content and
+screenshots.
+
+---
+
+## 4. GitHub section — live data
 
 Unlike most of the rest of the site (which is static content from
 `lib/content.ts`), the GitHub section pulls **real, real-time data** from
@@ -67,7 +152,7 @@ guarantee fresh data on demand.
 
 ---
 
-## 3.5 Resume section — advanced in-browser PDF viewer
+## 5. Resume section — advanced in-browser PDF viewer
 
 **The problem it replaces:** the resume preview previously used a raw
 `<iframe src="/resume.pdf">`. Many mobile browsers — Android Chrome
@@ -105,9 +190,15 @@ plugin support.
 No changes to `siteConfig.resumeUrl` or `/public/resume.pdf` were required —
 the viewer reads from the exact same path the old iframe used.
 
+> **Note:** the resume viewer's full-screen modal and the new project image
+> viewer (§3.3) solve very similar problems (zoom, pan, full-screen,
+> mobile gestures) but are intentionally separate components — the PDF
+> viewer is tied to `pdfjs-dist` page rendering, while `ImageViewer` is a
+> general-purpose image lightbox usable anywhere in the site.
+
 ---
 
-## 4. Environment variables required
+## 6. Environment variables required
 
 | Variable | Used by | Purpose |
 |---|---|---|
@@ -117,13 +208,14 @@ the viewer reads from the exact same path the old iframe used.
 | `EMAIL_PASS` | `app/api/contact/route.ts` | Gmail App Password for Nodemailer auth. |
 
 See `.env.local.example` for the template and `GITHUB_INTEGRATION_GUIDE.md`
-for full token-creation and setup steps. The resume PDF viewer requires **no**
-environment variables — it works entirely client-side against the static
-file at `siteConfig.resumeUrl`.
+for full token-creation and setup steps. Neither the resume PDF viewer nor
+the project image viewer requires **any** environment variables — both work
+entirely client-side against static assets (`siteConfig.resumeUrl` and each
+project's `images` array in `lib/content.ts`, respectively).
 
 ---
 
-## 5. File map
+## 7. File map
 
 ```
 portfolio-website/
@@ -141,7 +233,8 @@ portfolio-website/
 │               └── route.ts           GET /api/github/day — commits made on a specific date
 │
 ├── components/
-│   ├── portfolio-site.tsx             Main page component — assembles every section, theme switcher, nav, contact form logic, resume viewer
+│   ├── portfolio-site.tsx             Main page component — assembles every section, theme switcher, nav, project gallery + card, contact form logic, resume viewer
+│   ├── image-viewer.tsx               ★ NEW — full-screen image viewer/lightbox: arrow nav + keyboard on desktop, swipe/pinch/double-tap on mobile, thumbnail strip, zoom/pan. Used by the project gallery, reusable anywhere else an image set needs a full-screen view.
 │   ├── github-section.tsx             Live GitHub section — heatmap, year picker, day-commit modal, languages, pinned repos, activity
 │   ├── pdf-viewer.tsx                 Advanced PDF viewer — canvas rendering (pdfjs-dist), zoom/pan/rotate/page-nav, full-screen modal, mobile gestures
 │   └── ui/
@@ -167,7 +260,7 @@ portfolio-website/
 
 ---
 
-## 6. Tech stack
+## 8. Tech stack
 
 - **Framework**: Next.js 16 (App Router, Turbopack dev server)
 - **Styling**: Tailwind CSS v4 + custom CSS variables (`oklch()` color themes)
@@ -175,12 +268,13 @@ portfolio-website/
 - **Email**: Nodemailer (Gmail SMTP)
 - **Data**: GitHub GraphQL API v4 + REST API v3 (native `fetch`, no client library)
 - **PDF rendering**: `pdfjs-dist` — canvas-based, client-side PDF rendering that replaces native iframe PDF viewing for consistent cross-browser/mobile compatibility (zoom, pan, page navigation, full-screen)
+- **Image viewing**: custom `ImageViewer` component (`components/image-viewer.tsx`) — no external dependency, built on native pointer/touch events
 - **Analytics**: `@vercel/analytics`
 - **Fonts**: Geist / Geist Mono (via `next/font/google`)
 
 ---
 
-## 7. Dependencies to install
+## 9. Dependencies to install
 
 In addition to the existing `package.json` dependencies, the resume viewer
 requires:
@@ -208,3 +302,8 @@ or webpack config changes are required.
    ```ts
    mod.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
    ```
+
+The project image viewer (`components/image-viewer.tsx`) requires **no**
+additional dependencies — it's built entirely on native browser APIs
+(pointer/touch events, CSS transforms) and only imports icons already used
+elsewhere in the project (`lucide-react`).

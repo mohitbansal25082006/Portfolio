@@ -119,22 +119,88 @@ export const projectFilters = ['All', 'AI', 'Web', 'Mobile', 'Open Source']
 
 export const projects = [
   {
-    number: '01', name: 'MannSahay', mark: 'M', year: '2024', category: 'ai',
-    theme: 'project-mannsahay',
-    short: 'AI-powered career guidance platform helping students discover career paths with personalized recommendations.',
-    problem: 'Students lack access to personalized, data-driven career guidance.',
-    features: ['AI Career Guidance', 'Resume Analysis', 'Personalized Roadmaps', 'Authentication', 'Dashboard'],
-    stack: ['Next.js', 'Prisma', 'PostgreSQL', 'Gemini', 'Tailwind'],
-    challenges: 'Streaming AI responses with sub-second latency.',
-    metrics: '500+ students guided',
-    live: '#', github: '#', caseStudy: '#',
+    number: '01',
+    name: 'DeepDive AI',
+    mark: 'D',
+    year: '2026',
+    category: 'ai',
+
+    theme: 'project-deepdive',
+
+    short:
+      'Autonomous deep-research AI that searches, analyzes, verifies, and transforms complex queries into structured reports, podcasts, presentations, and debates.',
+
+    problem:
+      'Research is time-consuming and fragmented across search, analysis, fact-checking, writing, and content creation. DeepDive AI automates the entire research workflow through a multi-agent AI system.',
+
+    features: [
+      'Autonomous Multi-Agent Research',
+      'Deep Web Search & Source Trust Scoring',
+      'AI Research Reports',
+      'RAG-Powered Research Assistant',
+      'Personal AI Knowledge Base',
+      'AI Academic Papers',
+      'AI Podcasts & Voice Debates',
+      'AI Presentation Generation',
+      'Knowledge Graphs & Infographics',
+      'Real-Time Team Workspaces',
+      'Realtime Team Chat',
+      'Offline Research & Export',
+      'Social Research Feed',
+      'Razorpay Credit System',
+      'Google & GitHub OAuth',
+    ],
+
+    stack: [
+      'React Native',
+      'Expo',
+      'TypeScript',
+      'Supabase',
+      'PostgreSQL',
+      'pgvector',
+      'OpenAI',
+      'Tavily',
+      'Stream Chat',
+      'Next.js',
+      'Razorpay',
+    ],
+
+    challenges:
+      'Designing and coordinating a large multi-agent AI pipeline while supporting streaming responses, RAG, real-time collaboration, offline caching, cross-device media, and reliable AI-generated exports.',
+
+    metrics:
+      '58+ development parts · 500+ files · 58+ database migrations',
+
+    live: '#',
+    github: '#',
+    caseStudy: '#',
+
     images: [
-      'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?q=80&w=2070&auto=format&fit=crop',
-      'https://images.unsplash.com/photo-1551288049-bebda4e38f71?q=80&w=2070&auto=format&fit=crop',
+      '/deepdive/deepdive1.jpeg',
+      '/deepdive/deepdive2.jpeg',
+      '/deepdive/deepdive3.jpeg',
+      '/deepdive/deepdive4.jpeg',
+      '/deepdive/deepdive5.jpeg',
+      '/deepdive/deepdive6.jpeg',
+      '/deepdive/deepdive7.jpeg',
+      '/deepdive/deepdive8.jpeg',
+      '/deepdive/deepdive9.jpeg',
+      '/deepdive/deepdive10.jpeg',
+      '/deepdive/deepdive11.jpeg',
+      '/deepdive/deepdive12.jpeg',
+      '/deepdive/deepdive13.jpeg',
+      '/deepdive/deepdive14.jpeg',
+      '/deepdive/deepdive15.jpeg',
+      '/deepdive/deepdive16.jpeg',
+      '/deepdive/deepdive17.jpeg',
+      '/deepdive/deepdive18.jpeg',
+      '/deepdive/deepdive19.png',
+      '/deepdive/deepdive20.png',
+      '/deepdive/deepdive21.png',
     ],
   },
   {
-    number: '02', name: 'DeepDive AI', mark: 'D', year: '2024', category: 'ai',
+    number: '02', name: 'MannSahay', mark: 'M', year: '2024', category: 'ai',
     theme: 'project-deepdive',
     short: 'Conversational research companion that turns long documents into dialogue.',
     problem: 'Long-form documents are slow to navigate and easy to abandon.',
