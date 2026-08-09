@@ -29,7 +29,7 @@
 
 A single-page, highly interactive portfolio built for **Mohit Bansal**. This isn't just a static resume—it's a real-time web application featuring live GitHub API integration, an advanced cross-platform resume PDF viewer, a custom-built image lightbox, and 6 fully swappable color themes.
 
-🚀 **Live Site:** [https://mohitbansal-kohl.vercel.app/](https://mohitbansal-kohl.vercel.app/)
+🚀 **Live Site:** [https://mohitbansal-kohl.vercel.app/](https://www.mohitbansal.online/)
 
 ## ✨ Key Features
 
