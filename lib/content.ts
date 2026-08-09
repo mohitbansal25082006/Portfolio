@@ -14,12 +14,12 @@ export const siteConfig = {
   location: 'Jaipur, India',
   availability: 'Open to Internships & Collaborations',
   resumeUrl: '/resume.pdf',
-  email: 'mohitbansal25082006@gmail.com',
+  email: 'mohitbansal2508@gmail.com',
   established: '2023',
   social: {
     github: 'https://github.com/mohitbansal25082006',
     linkedin: 'https://www.linkedin.com/in/mohit-bansal-383440315',
-    email: 'mailto:mohitbansal25082006@gmail.com',
+    email: 'mailto:mohitbansal2508@gmail.com',
     leetcode: 'https://leetcode.com/u/mohitbansal25082006/',
   },
 }

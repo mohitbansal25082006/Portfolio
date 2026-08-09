@@ -697,9 +697,27 @@ body {
 
 /* ============================================================================
    MAGNETIC BUTTON GLOW
+   ----------------------------------------------------------------------------
+   FIX (button-row collapse on hover/click)
+   ----------------------------------------------------------------------------
+   `.magnetic` used to be `display: inline-block` with no defined intrinsic
+   box model beyond its inline content, and its `mousemove` listener was
+   (previously, in the component) attached to its *parent* flex row. That
+   meant hovering anywhere in a row of Magnetic buttons moved every button
+   in the row at once, and doing that to inline-block boxes sitting in a
+   flex-wrap row caused the row to visibly reflow/"collapse" on every
+   mousemove — and the broken transform state could persist through a click.
+
+   Now that the component only listens on its own element (see
+   portfolio-site.tsx), this class just needs to be a well-behaved flex
+   item so the translate() it applies never fights flexbox layout of its
+   siblings. `inline-flex` gives it a real box (matching its single child)
+   without introducing extra baseline/line-height quirks that
+   `inline-block` can pick up inside a flex-wrap parent.
    ========================================================================== */
 .magnetic {
   position: relative;
+  display: inline-flex;
   transition: transform 250ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 .magnetic::before {

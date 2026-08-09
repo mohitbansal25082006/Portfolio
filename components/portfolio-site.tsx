@@ -367,6 +367,33 @@ function Typewriter({ text, start, speed = 18, className = '' }: { text: string;
 
 /* ============================================================================
    Magnetic — wraps an element to make it magnetic toward the cursor
+   ----------------------------------------------------------------------------
+   FIX (button-row collapse on hover/click)
+   ----------------------------------------------------------------------------
+   Previously this component:
+     1. Rendered its wrapper as `display: inline-block` with no defined
+        box beyond its content.
+     2. Attached the `mousemove`/`mouseleave` listeners to `el.parentElement`
+        instead of `el` itself.
+
+   Point (2) meant that when several <Magnetic> buttons sit side-by-side in
+   a flex row (e.g. the hero's "Download Resume" / "View Projects" /
+   "Contact Me" buttons), moving the mouse ANYWHERE over that shared flex
+   parent fired the mousemove handler for *every* sibling simultaneously —
+   not just the one actually being hovered. Each sibling would then apply
+   its own `translate(dx, dy)` based on distance from *its own* center,
+   so multiple inline-block boxes were being transformed at once while the
+   browser tried to reflow the inline formatting context around them. That
+   fight between simultaneous transforms on adjacent inline-level boxes is
+   what visually reads as the row "collapsing" or jittering shut on hover,
+   and the same bad transform state could persist into a click.
+
+   Fix: listeners are attached to the element itself (`el`), so only the
+   button actually under the cursor ever moves — its siblings are
+   untouched. The wrapper is also switched from `inline-block` to
+   `inline-flex` (see `.magnetic` in globals.css) so it has a well-defined
+   flex-item box that behaves predictably next to its siblings instead of
+   depending on inline text-layout metrics.
    ========================================================================== */
 function Magnetic({ children, strength = 0.3 }: { children: ReactNode; strength?: number }) {
   const ref = useRef<HTMLDivElement>(null)
@@ -384,19 +411,16 @@ function Magnetic({ children, strength = 0.3 }: { children: ReactNode; strength?
       el.style.transform = `translate(${dx}px, ${dy}px)`
     }
     const onLeave = () => { el.style.transform = 'translate(0,0)' }
-    const parent = el.parentElement
-    if (parent) {
-      parent.addEventListener('mousemove', onMove)
-      parent.addEventListener('mouseleave', onLeave)
-    }
+    // Scoped to the element itself — NOT el.parentElement — so hovering
+    // one button in a row never moves its siblings.
+    el.addEventListener('mousemove', onMove)
+    el.addEventListener('mouseleave', onLeave)
     return () => {
-      if (parent) {
-        parent.removeEventListener('mousemove', onMove)
-        parent.removeEventListener('mouseleave', onLeave)
-      }
+      el.removeEventListener('mousemove', onMove)
+      el.removeEventListener('mouseleave', onLeave)
     }
   }, [strength])
-  return <div ref={ref} className="magnetic inline-block">{children}</div>
+  return <div ref={ref} className="magnetic inline-flex">{children}</div>
 }
 
 /* ---------------- Reveal wrapper (scroll-triggered) ---------------- */

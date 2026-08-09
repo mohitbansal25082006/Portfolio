@@ -98,6 +98,19 @@ import {
  * the rest of the site (see globals.css `.intro-*` classes for the sibling
  * animation vocabulary this reuses).
  * ---------------------------------------------------------------------------
+ *
+ * CLICKABLE LINK ANNOTATIONS (v7)
+ * ---------------------------------------------------------------------------
+ * PDFs can embed two kinds of "links" relevant here: external URI links
+ * (mailto:, https://, etc.) and internal go-to-page links. `PdfPage` now
+ * fetches the page's annotations via `page.getAnnotations()` and renders an
+ * absolutely-positioned, transparent `<a>`/`<button>` overlay for each link
+ * annotation on top of the canvas, using `pdfjs-dist`'s own
+ * `Util.normalizeRect` + `viewport.convertToViewportRectangle` so the
+ * overlay boxes line up correctly regardless of page rotation or render
+ * scale. External links open in a new tab; internal "go to page" links call
+ * back up to the modal's `goToPage` so navigation stays inside the viewer.
+ * ---------------------------------------------------------------------------
  */
 
 const MIN_SCALE = 0.5
@@ -112,6 +125,21 @@ const MOBILE_BREAKPOINT = 768
 
 type PDFDocumentProxy = any
 type PDFPageProxy = any
+
+/** Normalized shape for a single clickable link overlay on a page. */
+type PageLink = {
+  key: string
+  // Position/size as a percentage of the page's rendered box, so the
+  // overlay scales naturally with the canvas's CSS width/height without
+  // needing to know the current zoom transform.
+  leftPct: number
+  topPct: number
+  widthPct: number
+  heightPct: number
+  kind: 'external' | 'internal'
+  url?: string
+  pageNumber?: number
+}
 
 let pdfjsLibPromise: Promise<any> | null = null
 function loadPdfJs() {
@@ -134,23 +162,111 @@ function isMobileViewport() {
   return typeof window !== 'undefined' && window.innerWidth < MOBILE_BREAKPOINT
 }
 
+/**
+ * Extracts clickable link overlays from a page's raw annotations.
+ * Handles both external URI links (`annotation.url`) and internal
+ * destination links (`annotation.dest`, resolved to a page number via
+ * `pdfDoc.getPageIndex`). Coordinates are converted to viewport space with
+ * `viewport.convertToViewportRectangle` so rotation is already accounted
+ * for, then normalized to percentages of the page box.
+ */
+async function extractPageLinks(
+  pdfDoc: PDFDocumentProxy,
+  page: PDFPageProxy,
+  pdfjsLib: any,
+  rotation: number,
+): Promise<PageLink[]> {
+  const [annotations, viewport] = await Promise.all([
+    page.getAnnotations({ intent: 'display' }),
+    Promise.resolve(page.getViewport({ scale: 1, rotation })),
+  ])
+
+  const links: PageLink[] = []
+  let i = 0
+
+  for (const annotation of annotations) {
+    if (annotation.subtype !== 'Link' || !annotation.rect) continue
+
+    const rect = pdfjsLib.Util.normalizeRect(
+      viewport.convertToViewportRectangle(annotation.rect),
+    )
+    // convertToViewportRectangle can return the rect with y-axis flipped
+    // relative to top-left screen origin depending on rotation; normalize
+    // to a top-left-origin box in [0,1] page-space using the viewport's
+    // own width/height.
+    const left = Math.min(rect[0], rect[2])
+    const right = Math.max(rect[0], rect[2])
+    const top = Math.min(rect[1], rect[3])
+    const bottom = Math.max(rect[1], rect[3])
+
+    const leftPct = (left / viewport.width) * 100
+    const widthPct = ((right - left) / viewport.width) * 100
+    const topPct = (top / viewport.height) * 100
+    const heightPct = ((bottom - top) / viewport.height) * 100
+
+    if (annotation.url) {
+      links.push({
+        key: `link-${i++}`,
+        leftPct,
+        topPct,
+        widthPct,
+        heightPct,
+        kind: 'external',
+        url: annotation.url,
+      })
+      continue
+    }
+
+    if (annotation.dest) {
+      try {
+        const dest =
+          typeof annotation.dest === 'string'
+            ? await pdfDoc.getDestination(annotation.dest)
+            : annotation.dest
+        const destRef = dest?.[0]
+        if (destRef != null) {
+          const pageIndex = await pdfDoc.getPageIndex(destRef)
+          links.push({
+            key: `link-${i++}`,
+            leftPct,
+            topPct,
+            widthPct,
+            heightPct,
+            kind: 'internal',
+            pageNumber: pageIndex + 1,
+          })
+        }
+      } catch {
+        // Unresolvable internal destination — skip rather than break render.
+      }
+    }
+  }
+
+  return links
+}
+
 /* ============================== Canvas Page ============================== */
 function PdfPage({
+  pdfDoc,
   page,
   renderScale,
   rotation,
   pageNumber,
   onVisible,
+  onNavigate,
 }: {
+  pdfDoc: PDFDocumentProxy
   page: PDFPageProxy
   renderScale: number
   rotation: number
   pageNumber: number
   onVisible: (n: number) => void
+  onNavigate: (n: number) => void
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
   const renderTaskRef = useRef<any>(null)
+  const [links, setLinks] = useState<PageLink[]>([])
 
   useEffect(() => {
     const el = wrapRef.current
@@ -211,15 +327,81 @@ function PdfPage({
     }
   }, [page, renderScale, rotation])
 
+  // Load link annotations for this page whenever the page or rotation
+  // changes (rotation changes the viewport→screen coordinate mapping).
+  useEffect(() => {
+    let cancelled = false
+    if (!page || !pdfDoc) return
+
+    loadPdfJs()
+      .then((pdfjsLib) => extractPageLinks(pdfDoc, page, pdfjsLib, rotation))
+      .then((extracted) => {
+        if (!cancelled) setLinks(extracted)
+      })
+      .catch((err) => {
+        console.error('Failed to extract PDF link annotations', err)
+        if (!cancelled) setLinks([])
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [page, pdfDoc, rotation])
+
   return (
-    <div ref={wrapRef} data-page={pageNumber} className="flex justify-center py-2">
-      <canvas ref={canvasRef} className="rounded-lg bg-white shadow-lg" />
+    <div ref={wrapRef} data-page={pageNumber} className="relative flex justify-center py-2">
+      <div className="relative inline-block">
+        <canvas ref={canvasRef} className="rounded-lg bg-white shadow-lg" />
+        {links.length > 0 && (
+          <div className="pointer-events-none absolute inset-0">
+            {links.map((link) =>
+              link.kind === 'external' && link.url ? (
+                <a
+                  key={link.key}
+                  href={link.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  title={link.url}
+                  className="pointer-events-auto absolute cursor-pointer rounded-sm outline-none transition-colors hover:bg-primary/15 focus-visible:ring-2 focus-visible:ring-primary"
+                  style={{
+                    left: `${link.leftPct}%`,
+                    top: `${link.topPct}%`,
+                    width: `${link.widthPct}%`,
+                    height: `${link.heightPct}%`,
+                  }}
+                  // Prevent the underlying drag/pan handlers from treating
+                  // this as the start of a pan gesture.
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onTouchStart={(e) => e.stopPropagation()}
+                />
+              ) : link.kind === 'internal' && link.pageNumber ? (
+                <button
+                  key={link.key}
+                  type="button"
+                  title={`Go to page ${link.pageNumber}`}
+                  onClick={() => onNavigate(link.pageNumber!)}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onTouchStart={(e) => e.stopPropagation()}
+                  className="pointer-events-auto absolute cursor-pointer rounded-sm outline-none transition-colors hover:bg-primary/15 focus-visible:ring-2 focus-visible:ring-primary"
+                  style={{
+                    left: `${link.leftPct}%`,
+                    top: `${link.topPct}%`,
+                    width: `${link.widthPct}%`,
+                    height: `${link.heightPct}%`,
+                  }}
+                />
+              ) : null,
+            )}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
 
 /* ============================== Fullscreen Modal ============================== */
 function PdfModal({ url, fileName, onClose }: { url: string; fileName: string; onClose: () => void }) {
+  const [pdfDoc, setPdfDoc] = useState<PDFDocumentProxy | null>(null)
   const [pages, setPages] = useState<PDFPageProxy[]>([])
   const [numPages, setNumPages] = useState(0)
   const [currentPage, setCurrentPage] = useState(1)
@@ -280,6 +462,7 @@ function PdfModal({ url, fileName, onClose }: { url: string; fileName: string; o
       .then((pdfjsLib) => pdfjsLib.getDocument(url).promise)
       .then(async (doc: PDFDocumentProxy) => {
         if (cancelled) return
+        setPdfDoc(doc)
         setNumPages(doc.numPages)
         const loaded: PDFPageProxy[] = []
         for (let i = 1; i <= doc.numPages; i++) {
@@ -899,9 +1082,19 @@ function PdfModal({ url, fileName, onClose }: { url: string; fileName: string; o
               transition: fitScale == null ? 'none' : 'opacity 120ms ease',
             }}
           >
-            {pages.map((p, i) => (
-              <PdfPage key={i} page={p} pageNumber={i + 1} renderScale={BASE_RENDER_SCALE} rotation={rotation} onVisible={handleVisiblePage} />
-            ))}
+            {pdfDoc &&
+              pages.map((p, i) => (
+                <PdfPage
+                  key={i}
+                  pdfDoc={pdfDoc}
+                  page={p}
+                  pageNumber={i + 1}
+                  renderScale={BASE_RENDER_SCALE}
+                  rotation={rotation}
+                  onVisible={handleVisiblePage}
+                  onNavigate={goToPage}
+                />
+              ))}
           </div>
         )}
 
@@ -916,7 +1109,7 @@ function PdfModal({ url, fileName, onClose }: { url: string; fileName: string; o
       {/* Mobile hint */}
       <div className="border-t border-white/10 bg-black/60 px-4 py-2 text-center backdrop-blur-xl md:hidden">
         <p className="font-mono text-[9px] tracking-[0.12em] text-white/40 uppercase">
-          Pinch to zoom · Drag to pan
+          Pinch to zoom · Drag to pan · Tap links to open
         </p>
       </div>
     </div>,
