@@ -179,7 +179,7 @@ export const projects = [
     metrics:
       '58+ development parts · 500+ files · 58+ database migrations · 200,000+ lines of code · 3 integrated applications (mobile app, admin dashboard, public web)',
 
-    live: 'deepdive.website',
+    live: 'https://deepdive.website/',
     github: 'https://github.com/mohitbansal25082006/deepdive-app',
 
     images: [
@@ -268,18 +268,54 @@ export const projects = [
     ],
   },
   {
-    number: '03', name: 'NeuraFusion', mark: 'N', year: '2024', category: 'ai',
+    number: '03', name: 'NeuraFusion', mark: 'N', year: '2025', category: 'ai',
     theme: 'project-neurafusion',
-    short: 'Multi-modal AI playground blending text, image, and audio generation.',
-    problem: 'Creators juggle too many disconnected AI tools.',
-    features: ['Text-to-Image', 'Voice Synthesis', 'Prompt Library', 'Real-time Preview'],
-    stack: ['React', 'Gemini', 'WebSockets', 'Supabase'],
-    challenges: 'Orchestrating concurrent model streams.',
-    metrics: '1.2k generations / week',
-    live: '#', github: '#', caseStudy: '#',
+
+    short:
+      'A multimodal AI assistant that understands text, images, and audio in one interface — with 5 switchable personalities and zero-cost infrastructure using free-tier Hugging Face models.',
+
+    problem:
+      'Most AI assistants handle only one modality at a time and lock advanced features behind paid APIs, forcing users to juggle separate tools for chat, image understanding, and voice. NeuraFusion fuses text, vision, and audio reasoning into a single Gradio interface, runs entirely on free open-source models by default, and lets users switch the AI\'s personality to match the task — with an optional GPT-4o upgrade path for those who want it.',
+
+    features: [
+      'Multimodal Fusion (Text + Image + Audio)',
+      '5 Switchable AI Personalities',
+      'Visual Q&A with Attention Heatmaps',
+      'Voice Input & Text-to-Speech',
+      'Conversation Memory via LangChain',
+      'Usage Analytics Dashboard',
+      '4-Format Conversation Export',
+      'Free-Tier Models with Optional GPT-4o',
+    ],
+
+    stack: [
+      'Python',
+      'Gradio',
+      'Hugging Face Transformers',
+      'Flan-T5',
+      'BLIP-2',
+      'Whisper',
+      'LangChain',
+      'gTTS',
+      'Matplotlib',
+      'OpenAI GPT-4o (optional)',
+    ],
+
+    challenges:
+      'Getting five different open-source models — a text model, a vision-language model, a speech recognizer, and a fusion layer — to reason together coherently on modest free-tier hardware, without the latency or memory footprint of a single giant multimodal model. Attention heatmaps and color-distribution analysis had to run in near real time to stay useful in an interactive demo rather than becoming a batch process.',
+
+    metrics:
+      'Runs entirely on free-tier infrastructure ($0 cost) · 5 personality modes · 4 processing modalities · deployed live on Hugging Face Spaces',
+
+    live: 'https://huggingface.co/spaces/mohitbansal25082006/NeuraFusion',
+    github: 'https://github.com/mohitbansal25082006/NeuraFusion',
     images: [
-      'https://images.unsplash.com/photo-1620641788421-7a1c342ea42e?q=80&w=2074&auto=format&fit=crop',
-      'https://images.unsplash.com/photo-1635776062127-d379bfcba9f8?q=80&w=2072&auto=format&fit=crop',
+        '/neurafusion/neurafusion1.png',
+        '/neurafusion/neurafusion2.png',
+        '/neurafusion/neurafusion3.png',
+        '/neurafusion/neurafusion4.png',
+        '/neurafusion/neurafusion5.png',
+        '/neurafusion/neurafusion6.png',
     ],
   },
   {
