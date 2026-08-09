@@ -35,24 +35,461 @@ const TwitterIcon = (props: React.SVGProps<SVGSVGElement>) => (
   </svg>
 )
 
+/* ============================================================================
+   INTRO LOADER — Gamified boot sequence
+   ========================================================================== */
+function IntroLoader({ onComplete }: { onComplete: () => void }) {
+  const [progress, setProgress] = useState(0)
+  const [statusIdx, setStatusIdx] = useState(0)
+  const [exiting, setExiting] = useState(false)
+  const [drawPath, setDrawPath] = useState(false)
+  const [fillLogo, setFillLogo] = useState(false)
+
+  const bootMessages = useMemo(() => [
+    '> initializing portfolio',
+    '> loading skill matrix',
+    '> calibrating ai engines',
+    '> mounting archives',
+    '> syncing github commits',
+    '> compiling experience',
+    '> rendering interface',
+    '> ready.',
+  ], [])
+
+  useEffect(() => {
+    setDrawPath(true)
+    const fillTimer = setTimeout(() => setFillLogo(true), 1400)
+    
+    let currentProgress = 0
+    const intervalId = setInterval(() => {
+      currentProgress += 2
+      if (currentProgress > 100) currentProgress = 100
+      setProgress(currentProgress)
+      
+      const idx = Math.min(bootMessages.length - 1, Math.floor((currentProgress / 100) * bootMessages.length))
+      setStatusIdx(idx)
+
+      if (currentProgress >= 100) {
+        clearInterval(intervalId)
+        setTimeout(() => {
+          setExiting(true)
+          setTimeout(onComplete, 900)
+        }, 300)
+      }
+    }, 64)
+
+    return () => {
+      clearInterval(intervalId)
+      clearTimeout(fillTimer)
+    }
+  }, [onComplete, bootMessages])
+
+  const skip = () => {
+    setExiting(true)
+    setTimeout(onComplete, 900)
+  }
+
+  return (
+    <div className={`intro-overlay ${exiting ? 'is-exiting' : ''}`} role="dialog" aria-label="Loading portfolio">
+      <div className="intro-grid" />
+
+      <div className="relative mb-10 flex flex-col items-center px-4">
+        <svg width="110" height="110" viewBox="0 0 120 120" className="mb-6">
+          {/* Hexagon frame */}
+          <polygon
+            points="60,8 108,34 108,86 60,112 12,86 12,34"
+            className={`intro-logo-path ${drawPath ? 'is-drawing' : ''}`}
+            pathLength={1}
+          />
+          {/* MB Monogram Text - perfectly crisp and responsive */}
+          <text 
+            x="60" 
+            y="75" 
+            textAnchor="middle" 
+            fontSize="40" 
+            fontFamily="var(--font-mono)" 
+            fontWeight="700" 
+            className={`intro-logo-fill ${fillLogo ? 'is-filled' : ''}`}
+          >
+            MB
+          </text>
+        </svg>
+
+        <p className="intro-title">{'> booting portfolio'}</p>
+      </div>
+
+      <div className="flex flex-col items-center gap-3 w-full max-w-sm">
+        <div className="intro-progress-track w-full">
+          <div className="intro-progress-fill" style={{ width: `${progress}%` }} />
+        </div>
+        <div className="flex w-full items-center justify-between">
+          <span className="intro-status is-visible" key={statusIdx}>
+            {bootMessages[statusIdx]}
+          </span>
+          <span className="intro-progress-pct">{progress.toString().padStart(3, '0')}%</span>
+        </div>
+      </div>
+
+      <button className="intro-skip" onClick={skip} aria-label="Skip intro">
+        Skip intro →
+      </button>
+    </div>
+  )
+}
+
+/* ============================================================================
+   PARTICLE FIELD — constellation canvas (Mobile optimized)
+   ========================================================================== */
+function ParticleField() {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const mouseRef = useRef({ x: -1000, y: -1000 })
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (prefersReduced) return
+
+    let width = (canvas.width = window.innerWidth)
+    let height = (canvas.height = window.innerHeight)
+    
+    const isMobile = window.innerWidth < 768
+    const COUNT = Math.min(isMobile ? 35 : 90, Math.floor((width * height) / (isMobile ? 25000 : 18000)))
+    
+    const particles = Array.from({ length: COUNT }, () => ({
+      x: Math.random() * width,
+      y: Math.random() * height,
+      vx: (Math.random() - 0.5) * 0.35,
+      vy: (Math.random() - 0.5) * 0.35,
+      r: Math.random() * 1.6 + 0.6,
+    }))
+
+    const getPrimary = () => {
+      const c = getComputedStyle(document.documentElement).getPropertyValue('--primary').trim()
+      return c || 'oklch(0.86 0.22 115)'
+    }
+
+    let raf = 0
+    const render = () => {
+      ctx.clearRect(0, 0, width, height)
+      const primary = getPrimary()
+
+      for (let i = 0; i < particles.length; i++) {
+        const p = particles[i]
+        
+        // Mouse interaction — repel softly
+        const mdx = p.x - mouseRef.current.x
+        const mdy = p.y - mouseRef.current.y
+        const md = Math.hypot(mdx, mdy)
+        if (md < 140) {
+          const force = (140 - md) / 140
+          p.vx += (mdx / md) * force * 0.4
+          p.vy += (mdy / md) * force * 0.4
+        }
+
+        p.vx *= 0.985
+        p.vy *= 0.985
+        p.x += p.vx
+        p.y += p.vy
+
+        if (p.x < 0) p.x = width
+        if (p.x > width) p.x = 0
+        if (p.y < 0) p.y = height
+        if (p.y > height) p.y = 0
+
+        for (let j = i + 1; j < particles.length; j++) {
+          const q = particles[j]
+          const dx = p.x - q.x
+          const dy = p.y - q.y
+          const d = Math.hypot(dx, dy)
+          if (d < 120) {
+            const alpha = (1 - d / 120) * 0.18
+            ctx.strokeStyle = primary
+            ctx.globalAlpha = alpha
+            ctx.lineWidth = 0.6
+            ctx.beginPath()
+            ctx.moveTo(p.x, p.y)
+            ctx.lineTo(q.x, q.y)
+            ctx.stroke()
+            ctx.globalAlpha = 1
+          }
+        }
+      }
+
+      for (const p of particles) {
+        ctx.fillStyle = primary
+        ctx.globalAlpha = 0.55
+        ctx.beginPath()
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2)
+        ctx.fill()
+      }
+      ctx.globalAlpha = 1
+
+      raf = requestAnimationFrame(render)
+    }
+    render()
+
+    const onResize = () => {
+      width = canvas.width = window.innerWidth
+      height = canvas.height = window.innerHeight
+    }
+    const onMouse = (e: MouseEvent) => { mouseRef.current = { x: e.clientX, y: e.clientY } }
+    const onTouch = (e: TouchEvent) => {
+      if (e.touches.length > 0) {
+        mouseRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
+      }
+    }
+    const onLeave = () => { mouseRef.current = { x: -1000, y: -1000 } }
+
+    window.addEventListener('resize', onResize)
+    window.addEventListener('mousemove', onMouse)
+    window.addEventListener('touchmove', onTouch, { passive: true })
+    window.addEventListener('mouseleave', onLeave)
+
+    return () => {
+      cancelAnimationFrame(raf)
+      window.removeEventListener('resize', onResize)
+      window.removeEventListener('mousemove', onMouse)
+      window.removeEventListener('touchmove', onTouch)
+      window.removeEventListener('mouseleave', onLeave)
+    }
+  }, [])
+
+  return <canvas ref={canvasRef} className="particle-canvas" aria-hidden="true" />
+}
+
+/* ============================================================================
+   CUSTOM CURSOR — dot + magnetic ring (Disabled on touch devices)
+   ========================================================================== */
+function CustomCursor() {
+  const dotRef = useRef<HTMLDivElement>(null)
+  const ringRef = useRef<HTMLDivElement>(null)
+  const [hovering, setHovering] = useState(false)
+
+  useEffect(() => {
+    const isTouch = window.matchMedia('(pointer: coarse)').matches
+    if (isTouch) return
+
+    const dot = dotRef.current!
+    const ring = ringRef.current!
+    let mouseX = window.innerWidth / 2
+    let mouseY = window.innerHeight / 2
+    let ringX = mouseX
+    let ringY = mouseY
+    let raf = 0
+
+    const onMove = (e: MouseEvent) => {
+      mouseX = e.clientX
+      mouseY = e.clientY
+      dot.style.transform = `translate(${mouseX}px, ${mouseY}px) translate(-50%, -50%)`
+
+      const target = e.target as HTMLElement
+      const isInteractive = !!target.closest('a, button, input, textarea, [role="button"], .magnetic, .sphere-item')
+      setHovering(isInteractive)
+    }
+
+    const tick = () => {
+      ringX += (mouseX - ringX) * 0.18
+      ringY += (mouseY - ringY) * 0.18
+      ring.style.transform = `translate(${ringX}px, ${ringY}px) translate(-50%, -50%)`
+      raf = requestAnimationFrame(tick)
+    }
+    tick()
+
+    window.addEventListener('mousemove', onMove)
+    return () => {
+      cancelAnimationFrame(raf)
+      window.removeEventListener('mousemove', onMove)
+    }
+  }, [])
+
+  return (
+    <>
+      <div ref={dotRef} className="cursor-dot" aria-hidden="true" />
+      <div ref={ringRef} className={`cursor-ring ${hovering ? 'is-hovering' : ''}`} aria-hidden="true" />
+    </>
+  )
+}
+
+/* ============================================================================
+   SCROLL PROGRESS BAR
+   ========================================================================== */
+function ScrollProgress() {
+  const [progress, setProgress] = useState(0)
+  useEffect(() => {
+    const onScroll = () => {
+      const max = document.documentElement.scrollHeight - window.innerHeight
+      setProgress(max > 0 ? (window.scrollY / max) * 100 : 0)
+    }
+    onScroll()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+  return <div className="scroll-progress" style={{ width: `${progress}%` }} />
+}
+
+/* ============================================================================
+   SIDE NAV DOTS
+   ========================================================================== */
+function SideNavDots({ activeSection }: { activeSection: string }) {
+  return (
+    <div className="side-nav-dots" aria-hidden="true">
+      {navItems.map((item) => {
+        const id = item.href.slice(1)
+        return (
+          <a
+            key={item.href}
+            href={item.href}
+            className={`side-nav-dot ${activeSection === id ? 'is-active' : ''}`}
+            data-label={item.label}
+            aria-label={`Jump to ${item.label}`}
+          />
+        )
+      })}
+    </div>
+  )
+}
+
+/* ============================================================================
+   SplitText — animates characters of a string in sequence
+   ========================================================================== */
+function SplitText({
+  text,
+  className = '',
+  delay = 0,
+  stagger = 35,
+  trigger = true,
+}: {
+  text: string
+  className?: string
+  delay?: number
+  stagger?: number
+  trigger?: boolean
+}) {
+  return (
+    <span className={className} aria-label={text}>
+      {text.split('').map((char, i) => {
+        if (char === ' ') return <span key={i} className="char-space" />
+        return (
+          <span
+            key={i}
+            className={`char ${trigger ? 'is-in' : ''}`}
+            style={{ transitionDelay: `${delay + i * stagger}ms` }}
+            aria-hidden="true"
+          >
+            {char}
+          </span>
+        )
+      })}
+    </span>
+  )
+}
+
+/* ============================================================================
+   Typewriter — types out text char by char
+   ========================================================================== */
+function Typewriter({ text, start, speed = 18, className = '' }: { text: string; start: boolean; speed?: number; className?: string }) {
+  const [out, setOut] = useState('')
+  useEffect(() => {
+    if (!start) return
+    let i = 0
+    const id = setInterval(() => {
+      i++
+      setOut(text.slice(0, i))
+      if (i >= text.length) clearInterval(id)
+    }, speed)
+    return () => clearInterval(id)
+  }, [start, text, speed])
+  return (
+    <span className={className}>
+      {out}
+      {start && out.length < text.length && <span className="typewriter-caret" />}
+    </span>
+  )
+}
+
+/* ============================================================================
+   Magnetic — wraps an element to make it magnetic toward the cursor
+   ========================================================================== */
+function Magnetic({ children, strength = 0.3 }: { children: ReactNode; strength?: number }) {
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const isTouch = window.matchMedia('(pointer: coarse)').matches
+    if (isTouch) return
+    const el = ref.current
+    if (!el) return
+    const onMove = (e: MouseEvent) => {
+      const rect = el.getBoundingClientRect()
+      const cx = rect.left + rect.width / 2
+      const cy = rect.top + rect.height / 2
+      const dx = (e.clientX - cx) * strength
+      const dy = (e.clientY - cy) * strength
+      el.style.transform = `translate(${dx}px, ${dy}px)`
+    }
+    const onLeave = () => { el.style.transform = 'translate(0,0)' }
+    const parent = el.parentElement
+    if (parent) {
+      parent.addEventListener('mousemove', onMove)
+      parent.addEventListener('mouseleave', onLeave)
+    }
+    return () => {
+      if (parent) {
+        parent.removeEventListener('mousemove', onMove)
+        parent.removeEventListener('mouseleave', onLeave)
+      }
+    }
+  }, [strength])
+  return <div ref={ref} className="magnetic inline-block">{children}</div>
+}
+
 /* ---------------- Reveal wrapper (scroll-triggered) ---------------- */
-function Reveal({ children, className = '', delay = 0 }: { children: ReactNode; className?: string; delay?: number }) {
+function Reveal({
+  children,
+  className = '',
+  delay = 0,
+  variant = 'default',
+}: {
+  children: ReactNode
+  className?: string
+  delay?: number
+  variant?: 'default' | 'blur' | 'scale' | 'left' | 'right'
+}) {
   const ref = useRef<HTMLDivElement>(null)
   const [visible, setVisible] = useState(false)
+
   useEffect(() => {
     const el = ref.current
     if (!el) return
     const io = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting) { setVisible(true); io.disconnect() }
+        if (entry.isIntersecting) {
+          setVisible(true)
+          io.disconnect()
+        }
       },
       { threshold: 0.08, rootMargin: '0px 0px -40px 0px' },
     )
     io.observe(el)
     return () => io.disconnect()
   }, [])
+
+  const variantClass = {
+    default: 'reveal',
+    blur: 'reveal-blur',
+    scale: 'reveal-scale',
+    left: 'reveal-left',
+    right: 'reveal-right',
+  }[variant]
+
   return (
-    <div ref={ref} className={`reveal ${visible ? 'is-visible' : ''} ${className}`} style={{ transitionDelay: `${delay}ms` }}>
+    <div
+      ref={ref}
+      className={`${variantClass} ${visible ? 'is-visible' : ''} ${className}`}
+      style={{ transitionDelay: `${delay}ms` }}
+    >
       {children}
     </div>
   )
@@ -110,15 +547,12 @@ function TechSphere({ items }: { items: string[] }) {
         target.current.y = target.current.y % 360
         target.current.x = -10 + Math.sin(target.current.y * Math.PI / 180) * 5
       }
-
       current.current.x += (target.current.x - current.current.x) * 0.05
-
       let diffY = target.current.y - current.current.y
       while (diffY < -180) diffY += 360
       while (diffY > 180) diffY -= 360
       current.current.y += diffY * 0.05
       current.current.y = current.current.y % 360
-
       if (sphereRef.current) {
         sphereRef.current.style.transform = `rotateX(${current.current.x}deg) rotateY(${current.current.y}deg)`
       }
@@ -136,23 +570,12 @@ function TechSphere({ items }: { items: string[] }) {
     target.current.y = (deltaX / (rect.width / 2)) * 40
     target.current.x = -(deltaY / (rect.height / 2)) * 40 - 10
   }
-
   const handleMouseMove = (e: React.MouseEvent) => {
     const rect = e.currentTarget.getBoundingClientRect()
     updateRotationFromPoint(e.clientX, e.clientY, rect)
   }
-
-  const handleMouseEnter = () => {
-    isHovering.current = true
-    target.current.y = current.current.y % 360
-    target.current.x = current.current.x
-  }
-  const handleMouseLeave = () => {
-    isHovering.current = false
-    target.current.y = current.current.y % 360
-    target.current.x = -10
-  }
-
+  const handleMouseEnter = () => { isHovering.current = true; target.current.y = current.current.y % 360; target.current.x = current.current.x }
+  const handleMouseLeave = () => { isHovering.current = false; target.current.y = current.current.y % 360; target.current.x = -10 }
   const handleTouchStart = (e: React.TouchEvent) => {
     isHovering.current = true
     target.current.y = current.current.y % 360
@@ -163,19 +586,13 @@ function TechSphere({ items }: { items: string[] }) {
       updateRotationFromPoint(touch.clientX, touch.clientY, rect)
     }
   }
-
   const handleTouchMove = (e: React.TouchEvent) => {
     const touch = e.touches[0]
     if (!touch) return
     const rect = e.currentTarget.getBoundingClientRect()
     updateRotationFromPoint(touch.clientX, touch.clientY, rect)
   }
-
-  const handleTouchEnd = () => {
-    isHovering.current = false
-    target.current.y = current.current.y % 360
-    target.current.x = -10
-  }
+  const handleTouchEnd = () => { isHovering.current = false; target.current.y = current.current.y % 360; target.current.x = -10 }
 
   return (
     <div
@@ -234,7 +651,7 @@ const skillIcons: Record<string, typeof Code2> = {
   'AI / ML': Cpu, Mobile: Smartphone, Tools: Wrench,
 }
 
-/* ---------------- Project Gallery (Multi-Screenshot Carousel) ---------------- */
+/* ---------------- Project Gallery ---------------- */
 function ProjectGallery({ project }: { project: typeof projects[0] }) {
   const [active, setActive] = useState(0)
   const [lightboxOpen, setLightboxOpen] = useState(false)
@@ -247,19 +664,14 @@ function ProjectGallery({ project }: { project: typeof projects[0] }) {
 
   useEffect(() => { setActive(0) }, [project.number])
 
-  const handleTouchStart = (e: React.TouchEvent) => {
-    touchStartX.current = e.touches[0]?.clientX ?? null
-  }
+  const handleTouchStart = (e: React.TouchEvent) => { touchStartX.current = e.touches[0]?.clientX ?? null }
   const handleTouchEnd = (e: React.TouchEvent) => {
     if (touchStartX.current === null) return
     const endX = e.changedTouches[0]?.clientX ?? touchStartX.current
     const delta = endX - touchStartX.current
-    if (Math.abs(delta) > 40) {
-      delta > 0 ? prev() : next()
-    }
+    if (Math.abs(delta) > 40) { delta > 0 ? prev() : next() }
     touchStartX.current = null
   }
-
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowLeft') { e.preventDefault(); prev() }
     if (e.key === 'ArrowRight') { e.preventDefault(); next() }
@@ -268,7 +680,6 @@ function ProjectGallery({ project }: { project: typeof projects[0] }) {
   return (
     <>
       <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
-        {/* Browser chrome bar */}
         <div className="flex items-center justify-between border-b border-border px-3.5 py-2.5 sm:px-4">
           <div className="flex shrink-0 gap-1.5">
             <span className="size-2.5 rounded-full bg-destructive/50" />
@@ -280,18 +691,10 @@ function ProjectGallery({ project }: { project: typeof projects[0] }) {
               {project.name}.app
             </div>
           </div>
-          <a
-            href={project.live}
-            target="_blank"
-            rel="noreferrer"
-            className="grid size-6 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            aria-label={`Open ${project.name} live site`}
-          >
+          <a href={project.live} target="_blank" rel="noreferrer" className="grid size-6 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground" aria-label={`Open ${project.name} live site`}>
             <MoveUpRight className="size-3.5" />
           </a>
         </div>
-
-        {/* Slide viewport */}
         <div
           className="group/gallery relative aspect-[16/10] w-full touch-pan-y select-none overflow-hidden bg-secondary outline-none sm:aspect-[16/10]"
           tabIndex={0}
@@ -302,111 +705,44 @@ function ProjectGallery({ project }: { project: typeof projects[0] }) {
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
         >
-          <img
-            src={project.images[active]}
-            alt={`${project.name} screenshot ${active + 1} of ${total}`}
-            className="absolute inset-0 h-full w-full cursor-zoom-in object-contain p-2 transition-opacity duration-300"
-            key={active}
-            onClick={() => setLightboxOpen(true)}
-          />
-
-          {/* Year badge */}
-          <span className="pointer-events-none absolute left-3 top-3 rounded-full bg-background/80 px-2.5 py-1 font-mono text-[9px] tracking-[0.14em] text-foreground/80 uppercase backdrop-blur sm:left-4 sm:top-4 sm:px-3 sm:text-[10px]">
-            {project.year}
-          </span>
-
-          {/* Slide counter */}
-          {total > 1 && (
-            <span className="pointer-events-none absolute right-3 top-3 rounded-full bg-background/80 px-2.5 py-1 font-mono text-[9px] tracking-[0.14em] text-foreground/80 backdrop-blur sm:right-4 sm:top-4 sm:px-3 sm:text-[10px]">
-              {active + 1} / {total}
-            </span>
-          )}
-
-          {/* Expand / lightbox trigger */}
-          <button
-            type="button"
-            onClick={() => setLightboxOpen(true)}
-            className="absolute bottom-3 right-3 grid size-8 place-items-center rounded-full bg-background/80 text-foreground/80 opacity-0 backdrop-blur transition-opacity hover:bg-background hover:text-foreground focus-visible:opacity-100 group-hover/gallery:opacity-100 sm:bottom-4 sm:right-4"
-            aria-label="View screenshot full size"
-          >
+          <img src={project.images[active]} alt={`${project.name} screenshot ${active + 1} of ${total}`} className="absolute inset-0 h-full w-full cursor-zoom-in object-contain p-2 transition-opacity duration-300" key={active} onClick={() => setLightboxOpen(true)} />
+          <span className="pointer-events-none absolute left-3 top-3 rounded-full bg-background/80 px-2.5 py-1 font-mono text-[9px] tracking-[0.14em] text-foreground/80 uppercase backdrop-blur sm:left-4 sm:top-4 sm:px-3 sm:text-[10px]">{project.year}</span>
+          {total > 1 && <span className="pointer-events-none absolute right-3 top-3 rounded-full bg-background/80 px-2.5 py-1 font-mono text-[9px] tracking-[0.14em] text-foreground/80 backdrop-blur sm:right-4 sm:top-4 sm:px-3 sm:text-[10px]">{active + 1} / {total}</span>}
+          <button type="button" onClick={() => setLightboxOpen(true)} className="absolute bottom-3 right-3 grid size-8 place-items-center rounded-full bg-background/80 text-foreground/80 opacity-0 backdrop-blur transition-opacity hover:bg-background hover:text-foreground focus-visible:opacity-100 group-hover/gallery:opacity-100 sm:bottom-4 sm:right-4" aria-label="View screenshot full size">
             <ZoomIn className="size-3.5" />
           </button>
-
-          {/* Left / right arrow navigation */}
           {total > 1 && (
             <>
-              <button
-                type="button"
-                onClick={prev}
-                className="absolute left-2 top-1/2 grid size-9 -translate-y-1/2 place-items-center rounded-full border border-border/60 bg-background/80 text-foreground shadow-lg backdrop-blur transition-all hover:border-primary hover:bg-primary hover:text-primary-foreground active:scale-90 sm:left-3 sm:size-10 sm:opacity-0 sm:group-hover/gallery:opacity-100 sm:focus-visible:opacity-100"
-                aria-label="Previous screenshot"
-              >
+              <button type="button" onClick={prev} className="absolute left-2 top-1/2 grid size-9 -translate-y-1/2 place-items-center rounded-full border border-border/60 bg-background/80 text-foreground shadow-lg backdrop-blur transition-all hover:border-primary hover:bg-primary hover:text-primary-foreground active:scale-90 sm:left-3 sm:size-10 sm:opacity-0 sm:group-hover/gallery:opacity-100 sm:focus-visible:opacity-100" aria-label="Previous screenshot">
                 <ChevronLeft className="size-4 sm:size-5" />
               </button>
-              <button
-                type="button"
-                onClick={next}
-                className="absolute right-2 top-1/2 grid size-9 -translate-y-1/2 place-items-center rounded-full border border-border/60 bg-background/80 text-foreground shadow-lg backdrop-blur transition-all hover:border-primary hover:bg-primary hover:text-primary-foreground active:scale-90 sm:right-3 sm:size-10 sm:opacity-0 sm:group-hover/gallery:opacity-100 sm:focus-visible:opacity-100"
-                aria-label="Next screenshot"
-              >
+              <button type="button" onClick={next} className="absolute right-2 top-1/2 grid size-9 -translate-y-1/2 place-items-center rounded-full border border-border/60 bg-background/80 text-foreground shadow-lg backdrop-blur transition-all hover:border-primary hover:bg-primary hover:text-primary-foreground active:scale-90 sm:right-3 sm:size-10 sm:opacity-0 sm:group-hover/gallery:opacity-100 sm:focus-visible:opacity-100" aria-label="Next screenshot">
                 <ChevronRight className="size-4 sm:size-5" />
               </button>
             </>
           )}
-
-          {/* Progress dots */}
           {total > 1 && total <= 8 && (
             <div className="pointer-events-none absolute bottom-3 left-1/2 flex -translate-x-1/2 gap-1.5 sm:bottom-4">
               {project.images.map((_, i) => (
-                <span
-                  key={i}
-                  className={`pointer-events-auto h-1.5 cursor-pointer rounded-full transition-all ${
-                    i === active ? 'w-5 bg-primary' : 'w-1.5 bg-background/70 hover:bg-background'
-                  }`}
-                  onClick={() => goTo(i)}
-                />
+                <span key={i} className={`pointer-events-auto h-1.5 cursor-pointer rounded-full transition-all ${i === active ? 'w-5 bg-primary' : 'w-1.5 bg-background/70 hover:bg-background'}`} onClick={() => goTo(i)} />
               ))}
             </div>
           )}
         </div>
-
-        {/* Thumbnail strip */}
         <div className="flex gap-2 overflow-x-auto border-t border-border p-2 [scrollbar-width:thin]">
           {project.images.map((img, i) => (
-            <button
-              key={i}
-              onClick={() => goTo(i)}
-              className={`relative h-11 w-[4.75rem] shrink-0 overflow-hidden rounded-md border transition-all sm:h-12 sm:w-20 ${
-                i === active ? 'border-primary ring-1 ring-primary' : 'border-border opacity-50 hover:opacity-100'
-              }`}
-              aria-label={`Go to screenshot ${i + 1}`}
-              aria-current={i === active}
-            >
+            <button key={i} onClick={() => goTo(i)} className={`relative h-11 w-[4.75rem] shrink-0 overflow-hidden rounded-md border transition-all sm:h-12 sm:w-20 ${i === active ? 'border-primary ring-1 ring-primary' : 'border-border opacity-50 hover:opacity-100'}`} aria-label={`Go to screenshot ${i + 1}`} aria-current={i === active}>
               <img src={img} alt="" className="h-full w-full object-cover" />
             </button>
           ))}
         </div>
       </div>
-
-      {/* Full-screen viewer */}
-      <ImageViewer
-        images={project.images}
-        index={active}
-        onIndexChange={setActive}
-        open={lightboxOpen}
-        onClose={() => setLightboxOpen(false)}
-        alt={project.name}
-      />
+      <ImageViewer images={project.images} index={active} onIndexChange={setActive} open={lightboxOpen} onClose={() => setLightboxOpen(false)} alt={project.name} />
     </>
   )
 }
 
-/* ---------------- Project Card (redesigned: lean right column, full-width challenges/metrics strip) ----------------
-   Layout on desktop (lg+):
-     Row 1: [ gallery (sticky) ] | [ badge/title/pitch/problem/links/features/stack ]
-     Row 2: full-width strip — Challenges (left, wider) + Metrics (right, compact) — below both columns
-   On mobile everything just stacks in reading order: gallery -> details -> challenges -> metrics.
-*/
+/* ---------------- Project Card ---------------- */
 function ProjectCard({ project, index }: { project: typeof projects[0]; index: number }) {
   const [expanded, setExpanded] = useState(false)
   const FEATURES_COLLAPSED_COUNT = 6
@@ -415,59 +751,35 @@ function ProjectCard({ project, index }: { project: typeof projects[0]; index: n
 
   return (
     <article className="project-card group flex flex-col gap-8 md:gap-10">
-      {/* Top row: gallery + core details side by side */}
       <div className={`flex flex-col gap-8 md:gap-10 lg:flex-row ${index % 2 === 1 ? 'lg:flex-row-reverse' : ''}`}>
-        {/* Gallery column */}
         <div className="min-w-0 lg:flex-1">
           <div className="lg:sticky lg:top-24">
             <ProjectGallery project={project} />
           </div>
         </div>
-
-        {/* Detail column — kept lean: identity, pitch, problem, links, features, stack */}
         <div className="flex min-w-0 flex-1 flex-col gap-5 lg:justify-center">
           <div className="flex items-center gap-3">
-            <span className={`grid size-10 shrink-0 place-items-center rounded-full ${project.theme} font-mono text-xs font-bold`}>
-              {project.number}
-            </span>
+            <span className={`grid size-10 shrink-0 place-items-center rounded-full ${project.theme} font-mono text-xs font-bold`}>{project.number}</span>
             <span className="font-mono text-[10px] tracking-[0.16em] text-muted-foreground uppercase">{project.year}</span>
-            <span className="rounded-full border border-border px-2.5 py-1 font-mono text-[9px] tracking-[0.12em] text-muted-foreground uppercase">
-              {project.category}
-            </span>
+            <span className="rounded-full border border-border px-2.5 py-1 font-mono text-[9px] tracking-[0.12em] text-muted-foreground uppercase">{project.category}</span>
           </div>
-
           <h3 className="text-3xl font-medium tracking-[-0.04em] text-balance sm:text-4xl">{project.name}</h3>
           <p className="text-sm leading-6 text-muted-foreground">{project.short}</p>
-
           <div className="rounded-xl border border-border/70 bg-muted/20 p-4">
             <p className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">The problem</p>
             <p className="mt-1.5 text-xs leading-5 text-foreground/80">{project.problem}</p>
           </div>
-
           <div className="flex flex-wrap gap-2 pt-1">
-            <a
-              href={project.live}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-full bg-primary px-4 py-2 font-mono text-[10px] tracking-[0.12em] text-primary-foreground uppercase transition-colors hover:bg-primary/90"
-            >
+            <a href={project.live} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-full bg-primary px-4 py-2 font-mono text-[10px] tracking-[0.12em] text-primary-foreground uppercase transition-colors hover:bg-primary/90">
               Live <ExternalLink className="size-3" />
             </a>
-            <a
-              href={project.github}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-full border border-border px-4 py-2 font-mono text-[10px] tracking-[0.12em] uppercase transition-colors hover:border-primary hover:bg-primary hover:text-primary-foreground"
-            >
+            <a href={project.github} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-full border border-border px-4 py-2 font-mono text-[10px] tracking-[0.12em] uppercase transition-colors hover:border-primary hover:bg-primary hover:text-primary-foreground">
               GitHub <GithubIcon className="size-3" />
             </a>
           </div>
-
           <div className="mt-2 grid gap-5 border-t border-border pt-4 sm:grid-cols-2">
             <div className="min-w-0">
-              <p className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">
-                Features {project.features.length > 0 && `(${project.features.length})`}
-              </p>
+              <p className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">Features {project.features.length > 0 && `(${project.features.length})`}</p>
               <ul className="mt-2.5 space-y-1.5">
                 {visibleFeatures.map((f) => (
                   <li key={f} className="flex items-start gap-2 text-xs leading-5 text-foreground/80">
@@ -476,11 +788,7 @@ function ProjectCard({ project, index }: { project: typeof projects[0]; index: n
                 ))}
               </ul>
               {hasMoreFeatures && (
-                <button
-                  type="button"
-                  onClick={() => setExpanded((v) => !v)}
-                  className="mt-2.5 font-mono text-[10px] tracking-[0.12em] text-primary uppercase hover:underline"
-                >
+                <button type="button" onClick={() => setExpanded((v) => !v)} className="mt-2.5 font-mono text-[10px] tracking-[0.12em] text-primary uppercase hover:underline">
                   {expanded ? 'Show less' : `+${project.features.length - FEATURES_COLLAPSED_COUNT} more`}
                 </button>
               )}
@@ -489,17 +797,13 @@ function ProjectCard({ project, index }: { project: typeof projects[0]; index: n
               <p className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">Stack</p>
               <div className="mt-2.5 flex flex-wrap gap-1.5">
                 {project.stack.map((s) => (
-                  <span key={s} className="rounded-full border border-border px-2.5 py-1 font-mono text-[10px] text-muted-foreground">
-                    {s}
-                  </span>
+                  <span key={s} className="rounded-full border border-border px-2.5 py-1 font-mono text-[10px] text-muted-foreground">{s}</span>
                 ))}
               </div>
             </div>
           </div>
         </div>
       </div>
-
-      {/* Bottom strip: Challenges + Metrics, full width beneath both columns (desktop) */}
       {(project.challenges || project.metrics) && (
         <div className="flex flex-col gap-4 border-t border-border pt-5 md:flex-row md:items-start md:justify-between md:gap-10">
           {project.challenges && (
@@ -520,6 +824,93 @@ function ProjectCard({ project, index }: { project: typeof projects[0]; index: n
   )
 }
 
+/* ============================================================================
+   HERO — animated name reveal
+   ========================================================================== */
+function Hero({ introComplete }: { introComplete: boolean }) {
+  const glyphs = useMemo(
+    () => Array.from({ length: 12 }).map((_, i) => ({
+      char: ['{', '}', '<', '>', '/', '*', '=', ';', '(', ')', '[', ']'][i % 13],
+      left: `${Math.random() * 90 + 5}%`,
+      top: `${Math.random() * 80 + 10}%`,
+      delay: `${Math.random() * 4}s`,
+      duration: `${4 + Math.random() * 4}s`,
+    })),
+    [],
+  )
+
+  return (
+    <section id="top" className="relative mx-auto flex min-h-[calc(100vh-73px)] min-h-[calc(100svh-73px)] max-w-350 flex-col justify-between px-5 pb-8 pt-10 md:px-10 md:pb-10 md:pt-12 lg:px-14">
+      {/* Floating code glyphs (hidden on mobile via CSS) */}
+      {glyphs.map((g, i) => (
+        <span key={i} className="hero-glyph" style={{ left: g.left, top: g.top, animationDelay: g.delay, animationDuration: g.duration }}>
+          {g.char}
+        </span>
+      ))}
+
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-8 stagger-item" data-stagger>
+        <p className="max-w-52 font-mono text-[10px] leading-5 tracking-[0.14em] text-muted-foreground uppercase md:max-w-64">
+          {siteConfig.title}<br />Based in {siteConfig.location} / working everywhere
+        </p>
+        <div className="flex items-center gap-2 font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">
+          <span className="size-2 animate-pulse rounded-full bg-primary" /> {siteConfig.availability}
+        </div>
+      </div>
+
+      <div className="relative py-8 md:py-12">
+        <p className="mb-4 font-mono text-[11px] tracking-[0.16em] text-primary uppercase stagger-item" data-stagger style={{ transitionDelay: '300ms' }}>
+          Hello, I&apos;m {siteConfig.firstName} — I make useful things feel inevitable.
+        </p>
+
+        {/* Animated name - Responsive font sizing */}
+        <h1 className="max-w-6xl text-[clamp(2.5rem,12vw,10rem)] font-semibold leading-[0.86] tracking-[-0.075em] text-balance">
+          <SplitText text={siteConfig.firstName} delay={600} stagger={45} trigger={introComplete} />
+          <br />
+          <span className="text-muted-foreground">
+            <SplitText text={siteConfig.lastName} delay={1300} stagger={45} trigger={introComplete} />
+            <span className={`char ${introComplete ? 'is-in' : ''}`} style={{ transitionDelay: '2200ms', color: 'var(--primary)' }}>.</span>
+          </span>
+        </h1>
+
+        <div className="mt-8 flex flex-col gap-6 md:absolute md:bottom-2 md:right-0 md:mt-0 md:max-w-80">
+          <p className="text-pretty text-sm leading-6 text-muted-foreground">
+            <Typewriter text={siteConfig.oneLiner} start={introComplete} speed={12} />
+          </p>
+          <div className="flex flex-wrap gap-3 stagger-item" data-stagger style={{ transitionDelay: '2400ms' }}>
+            <Magnetic strength={0.25}>
+              <a href={siteConfig.resumeUrl} download className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 font-mono text-[11px] tracking-[0.12em] text-primary-foreground uppercase transition-transform hover:-translate-y-0.5">
+                Download Resume <Download className="size-3.5" />
+              </a>
+            </Magnetic>
+            <Magnetic strength={0.25}>
+              <a href="#work" className="inline-flex items-center gap-2 rounded-full border border-border px-5 py-2.5 font-mono text-[11px] tracking-[0.12em] uppercase transition-colors hover:border-primary hover:bg-primary hover:text-primary-foreground">
+                View Projects <ArrowDownRight className="size-3.5" />
+              </a>
+            </Magnetic>
+            <Magnetic strength={0.25}>
+              <a href="#contact" className="inline-flex items-center gap-2 rounded-full border border-border px-5 py-2.5 font-mono text-[11px] tracking-[0.12em] uppercase transition-colors hover:border-primary hover:bg-primary hover:text-primary-foreground">
+                Contact Me
+              </a>
+            </Magnetic>
+          </div>
+          <div className="flex items-center gap-2 stagger-item" data-stagger style={{ transitionDelay: '2600ms' }}>
+            {Object.entries(siteConfig.social).map(([key, href]) => (
+              <a key={key} href={href} target={key === 'email' ? undefined : '_blank'} rel="noreferrer" className="grid size-9 place-items-center rounded-full border border-border transition-colors hover:border-primary hover:bg-primary hover:text-primary-foreground" aria-label={key}>
+                <SocialIcon platform={key} />
+              </a>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex items-end justify-between border-t border-border pt-4 font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase stagger-item" data-stagger style={{ transitionDelay: '2800ms' }}>
+        <span>Scroll to explore</span>
+        <span>Est. {siteConfig.established} — ∞</span>
+      </div>
+    </section>
+  )
+}
+
 /* ============================ MAIN ============================ */
 export function PortfolioSite() {
   const [menuOpen, setMenuOpen] = useState(false)
@@ -529,11 +920,28 @@ export function PortfolioSite() {
   const [activeFilter, setActiveFilter] = useState('All')
   const [query, setQuery] = useState('')
   const [activeSection, setActiveSection] = useState('')
+  const [introComplete, setIntroComplete] = useState(false)
 
   const [formStatus, setFormStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const [form, setForm] = useState({ name: '', email: '', subject: '', message: '' })
 
   useEffect(() => { document.documentElement.setAttribute('data-theme', theme) }, [theme])
+
+  useEffect(() => {
+    if (!introComplete) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = ''
+    }
+  }, [introComplete])
+
+  useEffect(() => {
+    if (!introComplete) return
+    const items = document.querySelectorAll('[data-stagger]')
+    items.forEach((el, i) => {
+      setTimeout(() => el.classList.add('is-in'), 50)
+    })
+  }, [introComplete])
 
   useEffect(() => {
     const ids = navItems.map((n) => n.href.slice(1))
@@ -544,7 +952,7 @@ export function PortfolioSite() {
     )
     sections.forEach((s) => io.observe(s))
     return () => io.disconnect()
-  }, [])
+  }, [introComplete])
 
   const copyEmail = async () => {
     try {
@@ -596,6 +1004,21 @@ export function PortfolioSite() {
 
   return (
     <main className="min-h-screen overflow-hidden bg-background text-foreground">
+      {/* Intro loader */}
+      {!introComplete && <IntroLoader onComplete={() => setIntroComplete(true)} />}
+
+      {/* Custom cursor */}
+      <CustomCursor />
+
+      {/* Scroll progress */}
+      <ScrollProgress />
+
+      {/* Side nav dots */}
+      <SideNavDots activeSection={activeSection} />
+
+      {/* Particle field */}
+      <ParticleField />
+
       <div className="grain pointer-events-none fixed inset-0 z-50" aria-hidden="true" />
 
       {/* Aurora background */}
@@ -667,48 +1090,7 @@ export function PortfolioSite() {
       </nav>
 
       {/* HERO */}
-      <section id="top" className="relative mx-auto flex min-h-[calc(100svh-73px)] max-w-350 flex-col justify-between px-5 pb-8 pt-10 md:px-10 md:pb-10 md:pt-12 lg:px-14">
-        <div className="flex items-start justify-between gap-8">
-          <p className="max-w-52 font-mono text-[10px] leading-5 tracking-[0.14em] text-muted-foreground uppercase md:max-w-64">
-            {siteConfig.title}<br />Based in {siteConfig.location} / working everywhere
-          </p>
-          <div className="flex items-center gap-2 font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">
-            <span className="size-2 animate-pulse rounded-full bg-primary" /> {siteConfig.availability}
-          </div>
-        </div>
-        <div className="relative py-8 md:py-12">
-          <p className="mb-4 font-mono text-[11px] tracking-[0.16em] text-primary uppercase">Hello, I&apos;m {siteConfig.firstName} — I make useful things feel inevitable.</p>
-          <h1 className="max-w-6xl text-[clamp(3.4rem,10.8vw,10rem)] font-semibold leading-[0.86] tracking-[-0.075em] text-balance">
-            {siteConfig.firstName}<br />
-            <span className="text-muted-foreground">{siteConfig.lastName}<span className="text-primary">.</span></span>
-          </h1>
-          <div className="mt-8 flex flex-col gap-6 md:absolute md:bottom-2 md:right-0 md:mt-0 md:max-w-80">
-            <p className="text-pretty text-sm leading-6 text-muted-foreground">{siteConfig.oneLiner}</p>
-            <div className="flex flex-wrap gap-3">
-              <a href={siteConfig.resumeUrl} download className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 font-mono text-[11px] tracking-[0.12em] text-primary-foreground uppercase transition-transform hover:-translate-y-0.5">
-                Download Resume <Download className="size-3.5" />
-              </a>
-              <a href="#work" className="inline-flex items-center gap-2 rounded-full border border-border px-5 py-2.5 font-mono text-[11px] tracking-[0.12em] uppercase transition-colors hover:border-primary hover:bg-primary hover:text-primary-foreground">
-                View Projects <ArrowDownRight className="size-3.5" />
-              </a>
-              <a href="#contact" className="inline-flex items-center gap-2 rounded-full border border-border px-5 py-2.5 font-mono text-[11px] tracking-[0.12em] uppercase transition-colors hover:border-primary hover:bg-primary hover:text-primary-foreground">
-                Contact Me
-              </a>
-            </div>
-            <div className="flex items-center gap-2">
-              {Object.entries(siteConfig.social).map(([key, href]) => (
-                <a key={key} href={href} target={key === 'email' ? undefined : '_blank'} rel="noreferrer" className="grid size-9 place-items-center rounded-full border border-border transition-colors hover:border-primary hover:bg-primary hover:text-primary-foreground" aria-label={key}>
-                  <SocialIcon platform={key} />
-                </a>
-              ))}
-            </div>
-          </div>
-        </div>
-        <div className="flex items-end justify-between border-t border-border pt-4 font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">
-          <span>Scroll to explore</span>
-          <span>Est. {siteConfig.established} — ∞</span>
-        </div>
-      </section>
+      <Hero introComplete={introComplete} />
 
       {/* MARQUEE */}
       <div className="overflow-hidden border-y border-border bg-secondary py-3">
@@ -731,23 +1113,23 @@ export function PortfolioSite() {
       {/* ABOUT */}
       <section id="about" className="border-y border-border bg-secondary">
         <div className="mx-auto grid max-w-350 gap-16 px-5 py-24 md:grid-cols-[0.75fr_1.25fr] md:px-10 md:py-36 lg:px-14">
-          <Reveal>
+          <Reveal variant="left">
             <p className="eyebrow">A little context</p>
             <p className="mt-6 max-w-48 font-mono text-[10px] leading-5 tracking-[0.12em] text-muted-foreground uppercase">
               {about.college}<br />{about.currentYear}
             </p>
           </Reveal>
           <div>
-            <Reveal>
+            <Reveal variant="blur">
               <p className="max-w-4xl text-3xl leading-[1.12] tracking-[-0.05em] text-pretty md:text-5xl">{about.paragraphs[0]}</p>
             </Reveal>
-            <Reveal delay={80}>
+            <Reveal delay={80} variant="blur">
               <p className="mt-6 max-w-3xl text-lg leading-7 text-muted-foreground">{about.paragraphs[1]} {about.paragraphs[2]}</p>
             </Reveal>
             <Reveal delay={160}>
               <div className="mt-10 flex flex-wrap gap-2">
                 {about.interests.map((i) => (
-                  <span key={i} className="rounded-full border border-border px-3 py-1.5 font-mono text-[10px] tracking-[0.12em] text-muted-foreground uppercase">{i}</span>
+                  <span key={i} className="rounded-full border border-border px-3 py-1.5 font-mono text-[10px] tracking-[0.12em] text-muted-foreground uppercase transition-all hover:border-primary hover:text-primary hover:-translate-y-0.5">{i}</span>
                 ))}
               </div>
             </Reveal>
@@ -765,9 +1147,9 @@ export function PortfolioSite() {
         </div>
       </section>
 
-      {/* STATS - Redesigned Theme Cards */}
+      {/* STATS */}
       <section className="mx-auto max-w-350 px-5 py-24 md:px-10 md:py-28 lg:px-14">
-        <Reveal>
+        <Reveal variant="blur">
           <div className="flex flex-col md:flex-row md:items-end md:justify-between mb-14">
             <div>
               <p className="eyebrow">By the numbers</p>
@@ -782,8 +1164,8 @@ export function PortfolioSite() {
         </Reveal>
         <div className="grid grid-cols-2 gap-4 md:grid-cols-3 md:gap-6">
           {stats.map((s, i) => (
-            <Reveal key={s.label} delay={i * 60}>
-              <div className="group relative h-full overflow-hidden rounded-2xl border border-border bg-muted/30 p-6 backdrop-blur-sm transition-all hover:-translate-y-1 hover:border-primary/50 md:p-8">
+            <Reveal key={s.label} delay={i * 60} variant="scale">
+              <div className="stat-card group relative h-full overflow-hidden rounded-2xl border border-border bg-muted/30 p-6 backdrop-blur-sm transition-all hover:-translate-y-1 hover:border-primary/50 md:p-8">
                 <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-transparent opacity-50 transition-opacity group-hover:opacity-100" />
                 <div className="relative z-10">
                   <div className="text-4xl font-semibold tracking-tight text-foreground md:text-5xl">
@@ -792,6 +1174,7 @@ export function PortfolioSite() {
                   <p className="mt-2 font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">{s.label}</p>
                 </div>
                 <div className="absolute -right-8 -top-8 size-24 rounded-full bg-primary/10 blur-3xl transition-opacity group-hover:opacity-70" />
+                <div className="stat-card-shine" />
               </div>
             </Reveal>
           ))}
@@ -801,7 +1184,7 @@ export function PortfolioSite() {
       {/* SKILLS */}
       <section id="skills" className="border-y border-border bg-secondary">
         <div className="mx-auto max-w-350 px-5 py-24 md:px-10 md:py-36 lg:px-14">
-          <Reveal>
+          <Reveal variant="blur">
             <div className="flex flex-col md:flex-row md:items-end md:justify-between mb-14">
               <div>
                 <p className="eyebrow">Toolkit</p>
@@ -818,7 +1201,7 @@ export function PortfolioSite() {
             {skillGroups.map((group, i) => {
               const Icon = skillIcons[group.category] || Layers
               return (
-                <Reveal key={group.category} delay={i * 60}>
+                <Reveal key={group.category} delay={i * 60} variant="scale">
                   <div className="group h-full rounded-2xl border border-border bg-background/50 p-5 backdrop-blur-sm transition-colors hover:border-primary/50 md:p-6">
                     <div className="flex items-center gap-2.5 mb-4">
                       <span className="grid size-8 place-items-center rounded-lg bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
@@ -842,7 +1225,7 @@ export function PortfolioSite() {
       {/* PROJECTS */}
       <section id="work" className="mx-auto max-w-350 px-5 py-24 md:px-10 md:py-36 lg:px-14">
         <div className="mb-10 flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
-          <Reveal>
+          <Reveal variant="blur">
             <div>
               <p className="eyebrow">Selected work</p>
               <h2 className="mt-4 max-w-xl text-4xl font-medium tracking-[-0.05em] md:text-6xl">
@@ -850,13 +1233,13 @@ export function PortfolioSite() {
               </h2>
             </div>
           </Reveal>
-          <Reveal delay={80}>
+          <Reveal delay={80} variant="right">
             <div className="flex items-center gap-2 rounded-full border border-border bg-background px-3 py-2">
               <Search className="size-3.5 shrink-0 text-muted-foreground" />
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search projects, stack, features..."
+                placeholder="Search projects..."
                 className="w-full min-w-0 bg-transparent font-mono text-[11px] tracking-[0.08em] uppercase placeholder:text-muted-foreground focus:outline-none md:w-72"
               />
               {query && (
@@ -874,7 +1257,7 @@ export function PortfolioSite() {
               <button
                 key={f}
                 onClick={() => setActiveFilter(f)}
-                className={`rounded-full border px-4 py-2 font-mono text-[10px] tracking-[0.14em] uppercase transition-colors ${
+                className={`rounded-full border px-4 py-2 font-mono text-[10px] tracking-[0.14em] uppercase transition-all ${
                   activeFilter === f
                     ? 'border-primary bg-primary text-primary-foreground'
                     : 'border-border text-muted-foreground hover:border-foreground hover:text-foreground'
@@ -893,7 +1276,7 @@ export function PortfolioSite() {
         ) : (
           <div className="flex flex-col gap-20 md:gap-28 lg:gap-32">
             {filteredProjects.map((project, index) => (
-              <Reveal key={`${project.number}-${project.name}`} delay={Math.min(index, 4) * 40}>
+              <Reveal key={`${project.number}-${project.name}`} delay={Math.min(index, 4) * 40} variant="blur">
                 <ProjectCard project={project} index={index} />
               </Reveal>
             ))}
@@ -905,7 +1288,7 @@ export function PortfolioSite() {
       <section className="border-y border-border bg-secondary">
         <div className="mx-auto max-w-350 px-5 py-24 md:px-10 md:py-36 lg:px-14">
           <div className="grid gap-12 md:grid-cols-[0.6fr_0.4fr] md:items-center">
-            <Reveal>
+            <Reveal variant="left">
               <div>
                 <p className="eyebrow">In rotation</p>
                 <h2 className="mt-4 max-w-xl text-4xl font-medium tracking-[-0.05em] md:text-6xl">
@@ -916,7 +1299,7 @@ export function PortfolioSite() {
                 </p>
               </div>
             </Reveal>
-            <Reveal delay={120}>
+            <Reveal delay={120} variant="scale">
               <TechSphere items={techStack} />
             </Reveal>
           </div>
@@ -929,7 +1312,7 @@ export function PortfolioSite() {
       {/* TIMELINE */}
       <section id="timeline" className="border-y border-border bg-secondary">
         <div className="mx-auto max-w-350 px-5 py-24 md:px-10 md:py-36 lg:px-14">
-          <Reveal>
+          <Reveal variant="blur">
             <div className="flex flex-col md:flex-row md:items-end md:justify-between mb-16">
               <div>
                 <p className="eyebrow">The path so far</p>
@@ -946,7 +1329,7 @@ export function PortfolioSite() {
             <div className="absolute left-4 top-2 bottom-2 w-px bg-border md:left-1/2 md:-translate-x-1/2" />
             <div className="space-y-8 md:space-y-12">
               {timeline.map((item, i) => (
-                <Reveal key={i} delay={i * 40}>
+                <Reveal key={i} delay={i * 40} variant={i % 2 === 0 ? 'left' : 'right'}>
                   <div className={`relative flex items-start gap-6 md:gap-0 ${i % 2 === 0 ? 'md:flex-row-reverse' : ''}`}>
                     <div className="absolute left-4 top-3 z-10 grid size-4 -translate-x-1/2 place-items-center md:left-1/2">
                       <span className={`size-3 rounded-full border-2 transition-colors ${item.year === 'Future' ? 'border-primary bg-primary' : 'border-border bg-background group-hover:border-primary'}`} />
@@ -970,7 +1353,7 @@ export function PortfolioSite() {
       {/* RESUME */}
       <section id="resume" className="mx-auto max-w-350 px-5 py-24 md:px-10 md:py-36 lg:px-14">
         <div className="grid gap-12 md:grid-cols-[0.6fr_0.4fr] md:items-center">
-          <Reveal>
+          <Reveal variant="left">
             <div>
               <p className="eyebrow">Resume</p>
               <h2 className="mt-4 max-w-xl text-4xl font-medium tracking-[-0.05em] md:text-6xl">
@@ -989,7 +1372,7 @@ export function PortfolioSite() {
               </div>
             </div>
           </Reveal>
-          <Reveal delay={120}>
+          <Reveal delay={120} variant="scale">
             <PdfViewer url={siteConfig.resumeUrl} fileName="resume.pdf" />
           </Reveal>
         </div>
@@ -999,14 +1382,14 @@ export function PortfolioSite() {
       <section id="contact" className="border-t border-border bg-primary text-primary-foreground">
         <div className="mx-auto max-w-350 px-5 py-24 md:px-10 md:py-36 lg:px-14">
           <div className="grid gap-16 md:grid-cols-[1fr_1fr]">
-            <Reveal>
+            <Reveal variant="left">
               <div>
                 <p className="font-mono text-[10px] tracking-[0.16em] uppercase opacity-70">Have a good one?</p>
                 <h2 className="mt-5 max-w-4xl text-[clamp(3rem,7vw,7rem)] font-semibold leading-[0.85] tracking-[-0.08em]">
                   Let&apos;s make<br />something <span className="text-background/50">real.</span>
                 </h2>
                 <p className="mt-8 max-w-md text-sm leading-6 opacity-80">
-                  Open to internships, collaborations, and freelance opportunities. Whether you have a project, an idea, or just want to connect, I'd love to hear from you.
+                  Open to internships, collaborations, and freelance opportunities. Whether you have a project, an idea, or just want to connect, I&apos;d love to hear from you.
                 </p>
                 <div className="mt-8 space-y-3">
                   <button type="button" onClick={copyEmail} className="group flex items-center gap-3 border-b border-primary-foreground/40 pb-3 font-mono text-xs tracking-[0.12em] uppercase transition-colors hover:border-primary-foreground">
@@ -1026,11 +1409,8 @@ export function PortfolioSite() {
                 </div>
               </div>
             </Reveal>
-            <Reveal delay={120}>
-              <form
-                onSubmit={handleFormSubmit}
-                className="rounded-3xl border border-primary-foreground/20 bg-primary-foreground/5 p-6 backdrop-blur md:p-8"
-              >
+            <Reveal delay={120} variant="right">
+              <form onSubmit={handleFormSubmit} className="rounded-3xl border border-primary-foreground/20 bg-primary-foreground/5 p-6 backdrop-blur md:p-8">
                 {formStatus === 'success' ? (
                   <div className="flex h-full min-h-[300px] flex-col items-center justify-center text-center">
                     <span className="grid size-14 place-items-center rounded-full bg-background text-foreground">
@@ -1071,13 +1451,9 @@ export function PortfolioSite() {
                     </label>
                     <button type="submit" disabled={formStatus === 'loading'} className="flex w-full items-center justify-center gap-2 rounded-full bg-background px-5 py-3 font-mono text-[11px] tracking-[0.14em] text-foreground uppercase transition-transform hover:-translate-y-0.5 disabled:translate-y-0 disabled:opacity-70">
                       {formStatus === 'loading' ? (
-                        <>
-                          <Loader2 className="size-3.5 animate-spin" /> Sending...
-                        </>
+                        <><Loader2 className="size-3.5 animate-spin" /> Sending...</>
                       ) : (
-                        <>
-                          Send message <Send className="size-3.5" />
-                        </>
+                        <>Send message <Send className="size-3.5" /></>
                       )}
                     </button>
                   </div>
