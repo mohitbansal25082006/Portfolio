@@ -344,7 +344,7 @@ body {
   box-shadow: 0 0 0 3px color-mix(in oklch, var(--primary-foreground) 15%, transparent);
 }
 
-/* ============================ RESUME PREVIEW ============================ */
+/* ============================ RESUME PREVIEW (legacy container) ============================ */
 .resume-preview {
   border: 1px solid var(--border);
   border-radius: 0.75rem;
@@ -355,6 +355,87 @@ body {
   transition: transform 500ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 .resume-preview:hover { transform: perspective(1000px) rotateY(0deg) rotateX(0deg); }
+
+/* ============================================================================
+   RESUME TRIGGER — animated terminal card (replaces raw PDF thumbnail)
+   ========================================================================== */
+.resume-trigger {
+  box-shadow: 0 24px 60px -20px oklch(0 0 0 / 50%);
+  transform: perspective(1000px) rotateY(-5deg) rotateX(2deg);
+  transition: transform 500ms cubic-bezier(0.22, 1, 0.36, 1), border-color 300ms ease;
+}
+.resume-trigger:hover,
+.resume-trigger:focus-visible {
+  transform: perspective(1000px) rotateY(0deg) rotateX(0deg);
+  border-color: color-mix(in oklch, var(--primary) 40%, var(--border));
+}
+
+.resume-trigger-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(color-mix(in oklch, var(--primary) 7%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in oklch, var(--primary) 7%, transparent) 1px, transparent 1px);
+  background-size: 34px 34px;
+  mask-image: radial-gradient(ellipse at center, black 0%, transparent 72%);
+  -webkit-mask-image: radial-gradient(ellipse at center, black 0%, transparent 72%);
+  pointer-events: none;
+}
+
+.resume-doc-glow {
+  position: absolute;
+  inset: -20px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--primary) 0%, transparent 70%);
+  opacity: 0.16;
+  filter: blur(28px);
+  animation: glow-pulse 4s ease-in-out infinite;
+}
+
+.resume-doc-outline {
+  stroke: var(--primary);
+  opacity: 0.9;
+}
+
+.resume-doc-line {
+  stroke: var(--primary);
+  stroke-width: 2;
+  stroke-linecap: round;
+  opacity: 0;
+  animation: resume-line-in 500ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+@keyframes resume-line-in {
+  from { opacity: 0; transform: scaleX(0); transform-origin: left; }
+  to   { opacity: 0.55; transform: scaleX(1); transform-origin: left; }
+}
+
+.resume-doc-sweep {
+  position: absolute;
+  left: -6px;
+  right: -6px;
+  top: 0;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, var(--primary), transparent);
+  opacity: 0.7;
+  filter: drop-shadow(0 0 6px color-mix(in oklch, var(--primary) 60%, transparent));
+  animation: resume-sweep 1.8s cubic-bezier(0.65, 0, 0.35, 1);
+  pointer-events: none;
+}
+@keyframes resume-sweep {
+  0%   { top: 4px; opacity: 0; }
+  8%   { opacity: 0.7; }
+  90%  { opacity: 0.5; }
+  100% { top: 84px; opacity: 0; }
+}
+
+.resume-trigger-caret {
+  display: inline-block;
+  width: 6px;
+  height: 12px;
+  background: var(--primary);
+  animation: blink-caret 800ms step-end infinite;
+  flex-shrink: 0;
+}
 
 /* ============================================================================
    INTRO LOADER — Gamified boot sequence
@@ -711,4 +792,8 @@ body {
   .stagger-item { opacity: 1 !important; transform: none !important; }
   .intro-overlay { display: none !important; }
   .particle-canvas { display: none !important; }
+  .resume-trigger { transform: none !important; }
+  .resume-doc-sweep { display: none !important; }
+  .resume-doc-line { opacity: 0.55 !important; animation: none !important; transform: none !important; }
+  .resume-doc-glow { animation: none !important; }
 }

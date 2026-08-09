@@ -3,6 +3,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type WheelEvent as ReactWheelEvent,
@@ -13,13 +14,12 @@ import {
   ChevronRight,
   Download,
   ExternalLink,
+  FileText,
   Loader2,
-  Maximize2,
   Minus,
   Plus,
   RotateCw,
   X,
-  ZoomIn,
 } from 'lucide-react'
 
 /**
@@ -79,6 +79,24 @@ import {
  * `position: fixed; inset: 0` to be relative to the transformed ancestor
  * instead of the viewport, making the modal appear tiny and mispositioned.
  * Rendering into document.body via a portal sidesteps this entirely.
+ * ---------------------------------------------------------------------------
+ *
+ * TRIGGER CARD (v6 — animated terminal trigger, no thumbnail render)
+ * ---------------------------------------------------------------------------
+ * The inline preview used to eagerly load pdf.js and rasterize page 1 into
+ * a thumbnail canvas just so the user had something to look at before
+ * opening the real viewer. That's a second PDF parse/render pass paid on
+ * every page load for a preview that's immediately thrown away once the
+ * full modal opens (which renders every page itself). It also generally
+ * looked like a broken embed on odd aspect ratios / slow connections.
+ *
+ * The trigger is now a self-contained animated "terminal" card — a typed
+ * boot sequence, a document glyph, and a scanning sweep — built entirely
+ * from CSS/SVG already loaded on the page. It costs nothing over the wire,
+ * never shows a loading/error state for something the user hasn't asked to
+ * open yet, and matches the mono/terminal language used by IntroLoader and
+ * the rest of the site (see globals.css `.intro-*` classes for the sibling
+ * animation vocabulary this reuses).
  * ---------------------------------------------------------------------------
  */
 
@@ -906,139 +924,149 @@ function PdfModal({ url, fileName, onClose }: { url: string; fileName: string; o
   )
 }
 
-/* ============================== Inline Preview + Trigger ============================== */
-export function PdfViewer({ url, fileName = 'resume.pdf' }: { url: string; fileName?: string }) {
-  const [open, setOpen] = useState(false)
-  const [thumbPage, setThumbPage] = useState<PDFPageProxy | null>(null)
-  const [thumbStatus, setThumbStatus] = useState<'loading' | 'ready' | 'error'>('loading')
-  const thumbCanvasRef = useRef<HTMLCanvasElement>(null)
+/* ============================== Animated Trigger Card ============================== */
+/**
+ * Terminal-style boot line used inside the trigger card. Each line types
+ * itself out in sequence (line N doesn't start until line N-1 finishes),
+ * echoing the boot-sequence vocabulary used by IntroLoader on first page
+ * load, so opening the resume feels like a small callback to that moment
+ * rather than an unrelated UI pattern.
+ */
+const BOOT_LINES = [
+  '> locating resume.pdf',
+  '> verifying document integrity',
+  '> ready to render',
+]
 
-  /* Render a lightweight first-page thumbnail for the inline preview card */
+function ResumeTerminalTrigger({ fileName }: { fileName: string }) {
+  const [lineIndex, setLineIndex] = useState(0)
+  const [charCount, setCharCount] = useState(0)
+  const [sweepKey, setSweepKey] = useState(0)
+
+  // Types the boot lines out once on mount, then periodically re-triggers
+  // the scan-line sweep so the card stays quietly alive without looping
+  // the (more attention-grabbing) typing animation forever.
   useEffect(() => {
+    const prefersReduced =
+      typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (prefersReduced) {
+      setLineIndex(BOOT_LINES.length - 1)
+      setCharCount(BOOT_LINES[BOOT_LINES.length - 1].length)
+      return
+    }
+
     let cancelled = false
-    loadPdfJs()
-      .then((pdfjsLib) => pdfjsLib.getDocument(url).promise)
-      .then((doc: PDFDocumentProxy) => doc.getPage(1))
-      .then((page: PDFPageProxy | undefined) => {
-        if (cancelled || !page) return
-        setThumbPage(page)
-        setThumbStatus('ready')
-      })
-      .catch((err) => {
-        console.error('Failed to load PDF thumbnail', err)
-        if (!cancelled) setThumbStatus('error')
-      })
+    let typeTimer: ReturnType<typeof setTimeout>
+
+    const typeLine = (li: number, ci: number) => {
+      if (cancelled) return
+      const line = BOOT_LINES[li]
+      if (ci <= line.length) {
+        setLineIndex(li)
+        setCharCount(ci)
+        typeTimer = setTimeout(() => typeLine(li, ci + 1), 22 + Math.random() * 18)
+      } else if (li < BOOT_LINES.length - 1) {
+        typeTimer = setTimeout(() => typeLine(li + 1, 0), 260)
+      }
+    }
+    typeTimer = setTimeout(() => typeLine(0, 0), 200)
+
     return () => {
       cancelled = true
+      clearTimeout(typeTimer)
     }
-  }, [url])
+  }, [])
 
+  // Ambient re-sweep every so often once booted, purely decorative.
   useEffect(() => {
-    if (!thumbPage || !thumbCanvasRef.current) return
+    const prefersReduced =
+      typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (prefersReduced) return
+    const id = setInterval(() => setSweepKey((k) => k + 1), 4200)
+    return () => clearInterval(id)
+  }, [])
 
-    const renderThumb = () => {
-      const canvas = thumbCanvasRef.current
-      const ctx = canvas?.getContext('2d')
-      if (!canvas || !ctx) return
+  const displayedLines = useMemo(() => {
+    return BOOT_LINES.slice(0, lineIndex + 1).map((line, i) => (i === lineIndex ? line.slice(0, charCount) : line))
+  }, [lineIndex, charCount])
 
-      const container = canvas.parentElement
-      const containerWidth = container?.clientWidth || 400
-      const containerHeight = container?.clientHeight || 400
-      const padding = 24 // matches the p-3 (12px each side) wrapper around the canvas
-      const availableWidth = Math.max(containerWidth - padding, 1)
-      const availableHeight = Math.max(containerHeight - padding, 1)
+  return (
+    <div className="resume-trigger group relative isolate overflow-hidden rounded-2xl border border-border bg-card">
+      {/* Title bar — mirrors the ProjectGallery browser-chrome header for a
+          consistent "app window" language across the site. */}
+      <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
+        <span className="flex gap-1.5">
+          <span className="size-2 rounded-full bg-destructive/60" />
+          <span className="size-2 rounded-full bg-primary/60" />
+          <span className="size-2 rounded-full bg-accent/60" />
+        </span>
+        <span className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">{fileName}</span>
+      </div>
 
-      const unscaledViewport = thumbPage.getViewport({ scale: 1 })
+      {/* Body */}
+      <div className="relative flex h-[400px] w-full flex-col items-center justify-center gap-7 overflow-hidden bg-secondary px-8 py-10">
+        {/* Faint grid, matching .intro-grid's vocabulary */}
+        <div className="resume-trigger-grid" aria-hidden="true" />
 
-      // The canvas is displayed via `max-h-full` inside a fixed-height flex
-      // container, i.e. its *height* is what's actually constrained — width
-      // just follows the page's aspect ratio. Rendering at a scale derived
-      // from width alone (the old approach) meant the pixel buffer's
-      // resolution didn't match what the height-constrained CSS box was
-      // actually displaying it at, so the browser had to rescale the
-      // bitmap — producing visible blur. Fit against whichever dimension
-      // is tighter so the render resolution always matches (or exceeds)
-      // the final on-screen size.
-      const fitScaleForWidth = availableWidth / unscaledViewport.width
-      const fitScaleForHeight = availableHeight / unscaledViewport.height
-      const displayScale = Math.min(fitScaleForWidth, fitScaleForHeight)
+        {/* Document glyph */}
+        <div className="relative">
+          <div className="resume-doc-glow" aria-hidden="true" />
+          <svg width="72" height="88" viewBox="0 0 72 88" className="relative" aria-hidden="true">
+            <path
+              d="M8 4h38l18 18v62a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4V8a4 4 0 0 1 4-4Z"
+              className="resume-doc-outline"
+              fill="none"
+              strokeWidth="2"
+            />
+            <path d="M46 4v14a4 4 0 0 0 4 4h14" className="resume-doc-outline" fill="none" strokeWidth="2" />
+            <line x1="16" y1="40" x2="52" y2="40" className="resume-doc-line" style={{ animationDelay: '0ms' }} />
+            <line x1="16" y1="50" x2="56" y2="50" className="resume-doc-line" style={{ animationDelay: '120ms' }} />
+            <line x1="16" y1="60" x2="44" y2="60" className="resume-doc-line" style={{ animationDelay: '240ms' }} />
+          </svg>
+          <span key={sweepKey} className="resume-doc-sweep" aria-hidden="true" />
+        </div>
 
-      // Render at a genuinely high pixel density — this is one small
-      // thumbnail (not the dozens of full-res pages in the modal), so
-      // there's no perf reason to cap it at the same MAX_OUTPUT_SCALE used
-      // to protect GPU texture limits for the full-screen zoomed viewer.
-      // A higher, uncapped DPR plus a bit of oversampling keeps it crisp on
-      // 3x-DPR phone screens instead of being rendered soft and upscaled.
-      const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1
-      const renderScale = displayScale * Math.min(dpr, 3) * 1.5
+        {/* Typed boot sequence */}
+        <div className="flex min-h-[4.5rem] w-full max-w-64 flex-col items-start gap-1.5 font-mono text-[11px] tracking-[0.08em]">
+          {displayedLines.map((line, i) => {
+            const isLast = i === lineIndex
+            const isDone = i < lineIndex || (isLast && charCount >= BOOT_LINES[i].length)
+            return (
+              <span key={i} className={`flex items-center gap-2 ${isDone ? 'text-primary' : 'text-muted-foreground'}`}>
+                <span className="whitespace-nowrap">{line}</span>
+                {isLast && charCount < BOOT_LINES[i].length && <span className="resume-trigger-caret" />}
+              </span>
+            )
+          })}
+        </div>
 
-      const viewport = thumbPage.getViewport({ scale: renderScale })
-      canvas.width = Math.ceil(viewport.width)
-      canvas.height = Math.ceil(viewport.height)
-      // CSS size matches the *intended display* size (displayScale, not
-      // the oversampled renderScale) — the browser then downsamples the
-      // high-res bitmap to fit, which looks sharp, rather than upsampling
-      // a low-res bitmap, which looks blurry.
-      canvas.style.width = `${Math.ceil(unscaledViewport.width * displayScale)}px`
-      canvas.style.height = `${Math.ceil(unscaledViewport.height * displayScale)}px`
+        {/* CTA */}
+        <span className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 font-mono text-[11px] tracking-[0.12em] text-primary-foreground uppercase transition-transform duration-300 group-hover:-translate-y-0.5 group-active:translate-y-0">
+          <FileText className="size-3.5" /> View resume
+        </span>
+      </div>
 
-      thumbPage.render({ canvasContext: ctx, viewport }).promise.catch(() => {})
-    }
+      <div className="flex items-center justify-center gap-2 border-t border-border py-2.5">
+        <span className="size-1.5 animate-pulse rounded-full bg-primary" />
+        <span className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">Click to open full-screen viewer</span>
+      </div>
+    </div>
+  )
+}
 
-    renderThumb()
-
-    // Re-render on resize/orientation-change so the thumbnail stays sharp
-    // (and correctly proportioned) if the card's container size changes.
-    let resizeTimer: ReturnType<typeof setTimeout>
-    const onResize = () => {
-      clearTimeout(resizeTimer)
-      resizeTimer = setTimeout(renderThumb, 150)
-    }
-    window.addEventListener('resize', onResize)
-    return () => {
-      clearTimeout(resizeTimer)
-      window.removeEventListener('resize', onResize)
-    }
-  }, [thumbPage])
+/* ============================== Inline Trigger ============================== */
+export function PdfViewer({ url, fileName = 'resume.pdf' }: { url: string; fileName?: string }) {
+  const [open, setOpen] = useState(false)
 
   return (
     <>
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="resume-preview group relative block w-full overflow-hidden text-left"
+        className="block w-full text-left"
         aria-label="Open resume in full-screen viewer"
       >
-        <div className="flex items-center justify-between border-b border-border px-4 py-2">
-          <span className="flex gap-1.5">
-            <span className="size-2 rounded-full bg-destructive/60" />
-            <span className="size-2 rounded-full bg-primary/60" />
-            <span className="size-2 rounded-full bg-accent/60" />
-          </span>
-          <span className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">{fileName}</span>
-        </div>
-
-        <div className="relative flex h-[400px] w-full items-center justify-center overflow-hidden bg-secondary p-3">
-          {thumbStatus === 'loading' && <Loader2 className="size-5 animate-spin text-muted-foreground" />}
-          {thumbStatus === 'error' && (
-            <p className="px-6 text-center font-mono text-[10px] tracking-[0.1em] text-muted-foreground uppercase">
-              Preview unavailable — tap to open
-            </p>
-          )}
-          <canvas ref={thumbCanvasRef} className={`max-h-full rounded-md shadow-md ${thumbStatus === 'ready' ? '' : 'hidden'}`} />
-
-          {/* Hover/tap overlay */}
-          <div className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all duration-200 group-hover:bg-black/40 group-hover:opacity-100 group-active:bg-black/40 group-active:opacity-100">
-            <span className="flex items-center gap-2 rounded-full bg-white px-4 py-2 font-mono text-[10px] tracking-[0.12em] text-black uppercase shadow-lg">
-              <ZoomIn className="size-3.5" /> Tap to view
-            </span>
-          </div>
-        </div>
-
-        <div className="flex items-center justify-center gap-2 border-t border-border py-2.5">
-          <Maximize2 className="size-3.5 text-muted-foreground" />
-          <span className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">Open full-screen viewer</span>
-        </div>
+        <ResumeTerminalTrigger fileName={fileName} />
       </button>
 
       {open && <PdfModal url={url} fileName={fileName} onClose={() => setOpen(false)} />}
