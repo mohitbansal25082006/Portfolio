@@ -605,6 +605,14 @@ const skillIcons: Record<string, typeof Code2> = {
   'AI / ML': Cpu, Mobile: Smartphone, Tools: Wrench,
 }
 
+/* ---------------- Category label mapper ---------------- */
+const categoryLabels: Record<string, string> = {
+  ai: 'AI',
+  web: 'Web',
+  mobile: 'Mobile',
+  'open-source': 'Open Source',
+}
+
 /* ---------------- Project Gallery ---------------- */
 function ProjectGallery({ project }: { project: typeof projects[0] }) {
   const [active, setActive] = useState(0)
@@ -712,10 +720,16 @@ function ProjectCard({ project, index }: { project: typeof projects[0]; index: n
           </div>
         </div>
         <div className="flex min-w-0 flex-1 flex-col gap-5 lg:justify-center">
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <span className={`grid size-10 shrink-0 place-items-center rounded-full ${project.theme} font-mono text-xs font-bold`}>{project.number}</span>
             <span className="font-mono text-[10px] tracking-[0.16em] text-muted-foreground uppercase">{project.year}</span>
-            <span className="rounded-full border border-border px-2.5 py-1 font-mono text-[9px] tracking-[0.12em] text-muted-foreground uppercase">{project.category}</span>
+            <div className="flex flex-wrap gap-1.5">
+              {project.categories.map((cat) => (
+                <span key={cat} className="rounded-full border border-border px-2.5 py-1 font-mono text-[9px] tracking-[0.12em] text-muted-foreground uppercase">
+                  {categoryLabels[cat] || cat}
+                </span>
+              ))}
+            </div>
           </div>
           <h3 className="text-3xl font-medium tracking-[-0.04em] text-balance sm:text-4xl">{project.name}</h3>
           <p className="text-sm leading-6 text-muted-foreground">{project.short}</p>
@@ -936,10 +950,10 @@ export function PortfolioSite() {
       const f = activeFilter
       const matchesFilter =
         f === 'All' ||
-        (f === 'AI' && p.category === 'ai') ||
-        (f === 'Web' && p.category === 'web') ||
-        (f === 'Mobile' && p.category === 'mobile') ||
-        (f === 'Open Source' && p.category === 'open-source')
+        (f === 'AI' && p.categories.includes('ai')) ||
+        (f === 'Web' && p.categories.includes('web')) ||
+        (f === 'Mobile' && p.categories.includes('mobile')) ||
+        (f === 'Open Source' && p.categories.includes('open-source'))
       const q = query.toLowerCase().trim()
       const matchesQuery =
         !q ||

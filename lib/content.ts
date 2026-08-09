@@ -123,7 +123,7 @@ export const projects = [
     name: 'DeepDive AI',
     mark: 'D',
     year: '2026',
-    category: 'ai',
+    categories: ['ai', 'web', 'mobile'],
 
     theme: 'project-deepdive',
 
@@ -207,7 +207,7 @@ export const projects = [
     ],
   },
   {
-    number: '02', name: 'MannSahay', mark: 'M', year: '2025', category: 'ai',
+    number: '02', name: 'MannSahay', mark: 'M', year: '2025', categories: ['ai', 'web', 'open-source'],
     theme: 'project-MannSahay',
     short:
       'AI-powered digital mental health companion for Indian students — an empathetic multilingual chatbot, counselor booking, and an anonymous peer-support forum, built for Smart India Hackathon 2025.',
@@ -268,7 +268,7 @@ export const projects = [
     ],
   },
   {
-    number: '03', name: 'NeuraFusion', mark: 'N', year: '2025', category: 'ai',
+    number: '03', name: 'NeuraFusion', mark: 'N', year: '2025', categories: ['ai', 'web', 'open-source'],
     theme: 'project-neurafusion',
 
     short:
@@ -319,7 +319,7 @@ export const projects = [
     ],
   },
   {
-    number: '04', name: 'TeamScript', mark: 'T', year: '2025', category: 'web',
+    number: '04', name: 'TeamScript', mark: 'T', year: '2025', categories: ['web', 'open-source'],
     theme: 'project-teamscript',
 
     short:
@@ -370,7 +370,7 @@ export const projects = [
     ],
   },
   {
-    number: '05', name: 'FinSight AI', mark: 'F', year: '2025', category: 'web',
+    number: '05', name: 'FinSight AI', mark: 'F', year: '2025', categories: ['ai', 'web', 'open-source'],
     theme: 'project-finsight-ai',
 
     short:
