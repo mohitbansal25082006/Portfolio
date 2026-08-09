@@ -370,65 +370,60 @@ export const projects = [
     ],
   },
   {
-    number: '05', name: 'AI Image Editor', mark: 'I', year: '2023', category: 'web',
-    theme: 'project-imageeditor',
-    short: 'Browser-based image editor with generative fill and style transfer.',
-    problem: 'Pro photo tools are heavy and expensive.',
-    features: ['Generative Fill', 'Style Transfer', 'Layer System', 'Export Presets'],
-    stack: ['React', 'Canvas API', 'Gemini', 'Tailwind'],
-    challenges: 'Real-time canvas compositing without jank.',
-    metrics: '8k+ images edited',
-    live: '#', github: '#', caseStudy: '#',
-    images: [
-      'https://images.unsplash.com/photo-1505739679850-7a3a3024d44b?q=80&w=2070&auto=format&fit=crop',
-      'https://images.unsplash.com/photo-1542038784456-1ea8e935640e?q=80&w=2070&auto=format&fit=crop',
+    number: '05', name: 'FinSight AI', mark: 'F', year: '2025', category: 'web',
+    theme: 'project-finsight-ai',
+
+    short:
+      'AI-powered financial analytics platform combining real-time market data, AI news sentiment analysis, and a portfolio simulator to help investors make smarter decisions.',
+
+    problem:
+      'Retail investors have to piece together market data, news, and portfolio tracking from separate tools — none of which explain *why* a stock is moving or what a decision might do to a portfolio before making it. FinSight AI unifies live market data, AI-summarized news sentiment, and a risk-free "what-if" portfolio simulator into one platform, so users can test decisions before committing real money.',
+
+    features: [
+      'Real-Time Stock & Crypto Prices',
+      'Interactive Historical Charts',
+      'AI News Summarization & Sentiment Analysis',
+      'AI Market Predictions with Confidence Scoring',
+      'Portfolio Simulator with What-If Scenarios',
+      'Live Profit/Loss Tracking',
+      'Google & GitHub OAuth Authentication',
+      'Dark Mode & Responsive Design',
     ],
-  },
-  {
-    number: '06', name: 'Stream Chat App', mark: 'S', year: '2023', category: 'web',
-    theme: 'project-streamchat',
-    short: 'Low-latency chat platform with channels, threads, and presence.',
-    problem: 'Communities need a fast, familiar chat experience.',
-    features: ['Real-time Messaging', 'Threads', 'Presence', 'File Sharing', 'Notifications'],
-    stack: ['Next.js', 'Socket.io', 'MongoDB', 'Redis'],
-    challenges: 'Scaling WebSocket connections under load.',
-    metrics: '5k messages / day',
-    live: '#', github: '#', caseStudy: '#',
-    images: [
-      'https://images.unsplash.com/photo-1611606063065-ee7946f0787a?q=80&w=2070&auto=format&fit=crop',
-      'https://images.unsplash.com/photo-1521737604893-d14cc237f11d?q=80&w=2070&auto=format&fit=crop',
+
+    stack: [
+      'Next.js 15',
+      'TypeScript',
+      'Tailwind CSS',
+      'shadcn/ui',
+      'Framer Motion',
+      'Recharts',
+      'NextAuth.js',
+      'Prisma ORM',
+      'Neon PostgreSQL',
+      'OpenAI API',
+      'Finnhub API',
+      'Yahoo Finance API',
     ],
-  },
-  {
-    number: '07', name: 'Medical Chatbot', mark: 'M', year: '2023', category: 'ai',
-    theme: 'project-medical',
-    short: 'Symptom-aware assistant that triages common medical queries responsibly.',
-    problem: 'Reliable first-line medical info is hard to access.',
-    features: ['Symptom Triage', 'RAG over Medical Corpus', 'Disclaimers', 'Voice Input'],
-    stack: ['Python', 'LangChain', 'ChromaDB', 'FastAPI'],
-    challenges: 'Balancing helpfulness with safety guardrails.',
-    metrics: '2k+ consultations',
-    live: '#', github: '#', caseStudy: '#',
+
+    challenges:
+      'Merging two different market-data sources — Finnhub for live prices and Yahoo Finance for historical charts — into one consistent view without gaps or mismatched timestamps. AI-generated predictions needed honest confidence scoring rather than false certainty, and the portfolio simulator had to recalculate profit/loss in real time as live prices moved, without the UI feeling laggy under frequent updates.',
+
+    metrics:
+      'Real-time data refresh every minute · AI-scored market predictions · runs on free-tier infrastructure at ~$5–15/month in production',
+
+    live: 'https://finsight-ai-phi.vercel.app/',
+    github: 'https://github.com/mohitbansal25082006/finsight-ai',
     images: [
-      'https://images.unsplash.com/photo-1576091160550-2173dba999ef?q=80&w=2070&auto=format&fit=crop',
-      'https://images.unsplash.com/photo-1587854692152-cbe660dbde88?q=80&w=2070&auto=format&fit=crop',
+      '/finsight-ai/finsight-ai1.png',
+      '/finsight-ai/finsight-ai2.png',
+      '/finsight-ai/finsight-ai3.png',
+      '/finsight-ai/finsight-ai4.png',
+      '/finsight-ai/finsight-ai5.png',
+      '/finsight-ai/finsight-ai6.png',
+      '/finsight-ai/finsight-ai7.png',
+      '/finsight-ai/finsight-ai8.png',
     ],
-  },
-  {
-    number: '08', name: 'Semantic Book Recommender', mark: 'B', year: '2023', category: 'ai',
-    theme: 'project-bookrec',
-    short: 'Find your next read by meaning, not just keyword matches.',
-    problem: 'Keyword search misses the vibe of a book.',
-    features: ['Semantic Search', 'Embedding Index', 'Taste Profile', 'Reading List'],
-    stack: ['Next.js', 'OpenAI', 'Pinecone', 'PostgreSQL'],
-    challenges: 'Tuning retrieval for serendipity vs accuracy.',
-    metrics: '15k recommendations',
-    live: '#', github: '#', caseStudy: '#',
-    images: [
-      'https://images.unsplash.com/photo-1543002588-bfa74002ed7e?q=80&w=2070&auto=format&fit=crop',
-      'https://images.unsplash.com/photo-1512820790803-83ca734da794?q=80&w=2070&auto=format&fit=crop',
-    ],
-  },
+  }
 ]
 
 export const techStack = [
