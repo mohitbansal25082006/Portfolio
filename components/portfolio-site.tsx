@@ -44,6 +44,7 @@ function IntroLoader({ onComplete }: { onComplete: () => void }) {
   const [exiting, setExiting] = useState(false)
   const [drawPath, setDrawPath] = useState(false)
   const [fillLogo, setFillLogo] = useState(false)
+  const [titleText, setTitleText] = useState('')
 
   const bootMessages = useMemo(() => [
     '> initializing portfolio',
@@ -56,38 +57,51 @@ function IntroLoader({ onComplete }: { onComplete: () => void }) {
     '> ready.',
   ], [])
 
+  const fullTitle = '> booting portfolio'
+
   useEffect(() => {
     setDrawPath(true)
-    const fillTimer = setTimeout(() => setFillLogo(true), 1400)
-    
+    // Fill starts once the hex outline has finished drawing (~1.2s).
+    // NOTE: the CSS animation for .intro-logo-fill.is-filled has no
+    // built-in delay — this setTimeout is the only delay, so it can't
+    // stack with a second delay baked into the stylesheet.
+    const fillTimer = setTimeout(() => setFillLogo(true), 1200)
+
+    // JS-driven typing (instead of a CSS width/steps() animation) so
+    // letter-spacing can never clip the tail of the string.
+    let charIndex = 0
+    const typeInterval = setInterval(() => {
+      charIndex++
+      setTitleText(fullTitle.slice(0, charIndex))
+      if (charIndex >= fullTitle.length) clearInterval(typeInterval)
+    }, 45)
+
     let currentProgress = 0
     const intervalId = setInterval(() => {
       currentProgress += 2
       if (currentProgress > 100) currentProgress = 100
       setProgress(currentProgress)
-      
+
       const idx = Math.min(bootMessages.length - 1, Math.floor((currentProgress / 100) * bootMessages.length))
       setStatusIdx(idx)
 
       if (currentProgress >= 100) {
         clearInterval(intervalId)
+        // Hold on the finished state long enough for the logo fill-in
+        // (which lands at ~1.7s) to be visible before the curtain closes.
         setTimeout(() => {
           setExiting(true)
           setTimeout(onComplete, 900)
-        }, 300)
+        }, 500)
       }
-    }, 64)
+    }, 30)
 
     return () => {
       clearInterval(intervalId)
+      clearInterval(typeInterval)
       clearTimeout(fillTimer)
     }
   }, [onComplete, bootMessages])
-
-  const skip = () => {
-    setExiting(true)
-    setTimeout(onComplete, 900)
-  }
 
   return (
     <div className={`intro-overlay ${exiting ? 'is-exiting' : ''}`} role="dialog" aria-label="Loading portfolio">
@@ -95,27 +109,28 @@ function IntroLoader({ onComplete }: { onComplete: () => void }) {
 
       <div className="relative mb-10 flex flex-col items-center px-4">
         <svg width="110" height="110" viewBox="0 0 120 120" className="mb-6">
-          {/* Hexagon frame */}
           <polygon
             points="60,8 108,34 108,86 60,112 12,86 12,34"
             className={`intro-logo-path ${drawPath ? 'is-drawing' : ''}`}
             pathLength={1}
           />
-          {/* MB Monogram Text - perfectly crisp and responsive */}
-          <text 
-            x="60" 
-            y="75" 
-            textAnchor="middle" 
-            fontSize="40" 
-            fontFamily="var(--font-mono)" 
-            fontWeight="700" 
+          <text
+            x="60"
+            y="75"
+            textAnchor="middle"
+            fontSize="40"
+            fontFamily="var(--font-mono)"
+            fontWeight="700"
             className={`intro-logo-fill ${fillLogo ? 'is-filled' : ''}`}
           >
             MB
           </text>
         </svg>
 
-        <p className="intro-title">{'> booting portfolio'}</p>
+        <p className="intro-title" aria-label={fullTitle}>
+          <span aria-hidden="true">{titleText}</span>
+          <span className="intro-caret" aria-hidden="true" />
+        </p>
       </div>
 
       <div className="flex flex-col items-center gap-3 w-full max-w-sm">
@@ -129,10 +144,6 @@ function IntroLoader({ onComplete }: { onComplete: () => void }) {
           <span className="intro-progress-pct">{progress.toString().padStart(3, '0')}%</span>
         </div>
       </div>
-
-      <button className="intro-skip" onClick={skip} aria-label="Skip intro">
-        Skip intro →
-      </button>
     </div>
   )
 }
@@ -155,10 +166,10 @@ function ParticleField() {
 
     let width = (canvas.width = window.innerWidth)
     let height = (canvas.height = window.innerHeight)
-    
+
     const isMobile = window.innerWidth < 768
     const COUNT = Math.min(isMobile ? 35 : 90, Math.floor((width * height) / (isMobile ? 25000 : 18000)))
-    
+
     const particles = Array.from({ length: COUNT }, () => ({
       x: Math.random() * width,
       y: Math.random() * height,
@@ -179,8 +190,6 @@ function ParticleField() {
 
       for (let i = 0; i < particles.length; i++) {
         const p = particles[i]
-        
-        // Mouse interaction — repel softly
         const mdx = p.x - mouseRef.current.x
         const mdy = p.y - mouseRef.current.y
         const md = Math.hypot(mdx, mdy)
@@ -238,9 +247,7 @@ function ParticleField() {
     }
     const onMouse = (e: MouseEvent) => { mouseRef.current = { x: e.clientX, y: e.clientY } }
     const onTouch = (e: TouchEvent) => {
-      if (e.touches.length > 0) {
-        mouseRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
-      }
+      if (e.touches.length > 0) mouseRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
     }
     const onLeave = () => { mouseRef.current = { x: -1000, y: -1000 } }
 
@@ -259,59 +266,6 @@ function ParticleField() {
   }, [])
 
   return <canvas ref={canvasRef} className="particle-canvas" aria-hidden="true" />
-}
-
-/* ============================================================================
-   CUSTOM CURSOR — dot + magnetic ring (Disabled on touch devices)
-   ========================================================================== */
-function CustomCursor() {
-  const dotRef = useRef<HTMLDivElement>(null)
-  const ringRef = useRef<HTMLDivElement>(null)
-  const [hovering, setHovering] = useState(false)
-
-  useEffect(() => {
-    const isTouch = window.matchMedia('(pointer: coarse)').matches
-    if (isTouch) return
-
-    const dot = dotRef.current!
-    const ring = ringRef.current!
-    let mouseX = window.innerWidth / 2
-    let mouseY = window.innerHeight / 2
-    let ringX = mouseX
-    let ringY = mouseY
-    let raf = 0
-
-    const onMove = (e: MouseEvent) => {
-      mouseX = e.clientX
-      mouseY = e.clientY
-      dot.style.transform = `translate(${mouseX}px, ${mouseY}px) translate(-50%, -50%)`
-
-      const target = e.target as HTMLElement
-      const isInteractive = !!target.closest('a, button, input, textarea, [role="button"], .magnetic, .sphere-item')
-      setHovering(isInteractive)
-    }
-
-    const tick = () => {
-      ringX += (mouseX - ringX) * 0.18
-      ringY += (mouseY - ringY) * 0.18
-      ring.style.transform = `translate(${ringX}px, ${ringY}px) translate(-50%, -50%)`
-      raf = requestAnimationFrame(tick)
-    }
-    tick()
-
-    window.addEventListener('mousemove', onMove)
-    return () => {
-      cancelAnimationFrame(raf)
-      window.removeEventListener('mousemove', onMove)
-    }
-  }, [])
-
-  return (
-    <>
-      <div ref={dotRef} className="cursor-dot" aria-hidden="true" />
-      <div ref={ringRef} className={`cursor-ring ${hovering ? 'is-hovering' : ''}`} aria-hidden="true" />
-    </>
-  )
 }
 
 /* ============================================================================
@@ -841,7 +795,6 @@ function Hero({ introComplete }: { introComplete: boolean }) {
 
   return (
     <section id="top" className="relative mx-auto flex min-h-[calc(100vh-73px)] min-h-[calc(100svh-73px)] max-w-350 flex-col justify-between px-5 pb-8 pt-10 md:px-10 md:pb-10 md:pt-12 lg:px-14">
-      {/* Floating code glyphs (hidden on mobile via CSS) */}
       {glyphs.map((g, i) => (
         <span key={i} className="hero-glyph" style={{ left: g.left, top: g.top, animationDelay: g.delay, animationDuration: g.duration }}>
           {g.char}
@@ -862,7 +815,6 @@ function Hero({ introComplete }: { introComplete: boolean }) {
           Hello, I&apos;m {siteConfig.firstName} — I make useful things feel inevitable.
         </p>
 
-        {/* Animated name - Responsive font sizing */}
         <h1 className="max-w-6xl text-[clamp(2.5rem,12vw,10rem)] font-semibold leading-[0.86] tracking-[-0.075em] text-balance">
           <SplitText text={siteConfig.firstName} delay={600} stagger={45} trigger={introComplete} />
           <br />
@@ -928,11 +880,8 @@ export function PortfolioSite() {
   useEffect(() => { document.documentElement.setAttribute('data-theme', theme) }, [theme])
 
   useEffect(() => {
-    if (!introComplete) {
-      document.body.style.overflow = 'hidden'
-    } else {
-      document.body.style.overflow = ''
-    }
+    if (!introComplete) document.body.style.overflow = 'hidden'
+    else document.body.style.overflow = ''
   }, [introComplete])
 
   useEffect(() => {
@@ -1004,31 +953,22 @@ export function PortfolioSite() {
 
   return (
     <main className="min-h-screen overflow-hidden bg-background text-foreground">
-      {/* Intro loader */}
       {!introComplete && <IntroLoader onComplete={() => setIntroComplete(true)} />}
 
-      {/* Custom cursor */}
-      <CustomCursor />
+      {/* Custom Cursor Removed entirely as requested */}
 
-      {/* Scroll progress */}
       <ScrollProgress />
-
-      {/* Side nav dots */}
       <SideNavDots activeSection={activeSection} />
-
-      {/* Particle field */}
       <ParticleField />
 
       <div className="grain pointer-events-none fixed inset-0 z-50" aria-hidden="true" />
 
-      {/* Aurora background */}
       <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden" aria-hidden="true">
         <div className="aurora aurora-1" />
         <div className="aurora aurora-2" />
         <div className="aurora aurora-3" />
       </div>
 
-      {/* Theme switcher */}
       <div className="fixed bottom-5 right-5 z-50 flex flex-col items-end gap-2">
         {paletteOpen && (
           <div className="flex flex-col gap-1 rounded-2xl border border-border bg-card/90 p-2 shadow-2xl backdrop-blur-xl">
@@ -1053,7 +993,6 @@ export function PortfolioSite() {
         </button>
       </div>
 
-      {/* NAV */}
       <nav className="sticky top-0 z-40 border-b border-border/70 bg-background/80 backdrop-blur-xl" aria-label="Primary navigation">
         <div className="mx-auto flex max-w-350 items-center justify-between px-5 py-4 md:px-10 lg:px-14">
           <a href="#top" className="group flex items-center gap-3 font-mono text-xs tracking-[0.18em] uppercase">
@@ -1089,10 +1028,8 @@ export function PortfolioSite() {
         )}
       </nav>
 
-      {/* HERO */}
       <Hero introComplete={introComplete} />
 
-      {/* MARQUEE */}
       <div className="overflow-hidden border-y border-border bg-secondary py-3">
         <div className="marquee flex min-w-max gap-8 font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
           {Array.from({ length: 2 }).map((_, index) => (
@@ -1110,7 +1047,6 @@ export function PortfolioSite() {
         </div>
       </div>
 
-      {/* ABOUT */}
       <section id="about" className="border-y border-border bg-secondary">
         <div className="mx-auto grid max-w-350 gap-16 px-5 py-24 md:grid-cols-[0.75fr_1.25fr] md:px-10 md:py-36 lg:px-14">
           <Reveal variant="left">
@@ -1147,7 +1083,6 @@ export function PortfolioSite() {
         </div>
       </section>
 
-      {/* STATS */}
       <section className="mx-auto max-w-350 px-5 py-24 md:px-10 md:py-28 lg:px-14">
         <Reveal variant="blur">
           <div className="flex flex-col md:flex-row md:items-end md:justify-between mb-14">
@@ -1181,7 +1116,6 @@ export function PortfolioSite() {
         </div>
       </section>
 
-      {/* SKILLS */}
       <section id="skills" className="border-y border-border bg-secondary">
         <div className="mx-auto max-w-350 px-5 py-24 md:px-10 md:py-36 lg:px-14">
           <Reveal variant="blur">
@@ -1222,7 +1156,6 @@ export function PortfolioSite() {
         </div>
       </section>
 
-      {/* PROJECTS */}
       <section id="work" className="mx-auto max-w-350 px-5 py-24 md:px-10 md:py-36 lg:px-14">
         <div className="mb-10 flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
           <Reveal variant="blur">
@@ -1284,7 +1217,6 @@ export function PortfolioSite() {
         )}
       </section>
 
-      {/* TECH SPHERE */}
       <section className="border-y border-border bg-secondary">
         <div className="mx-auto max-w-350 px-5 py-24 md:px-10 md:py-36 lg:px-14">
           <div className="grid gap-12 md:grid-cols-[0.6fr_0.4fr] md:items-center">
@@ -1306,10 +1238,8 @@ export function PortfolioSite() {
         </div>
       </section>
 
-      {/* GITHUB */}
       <GitHubSection username={githubConfig.username} />
 
-      {/* TIMELINE */}
       <section id="timeline" className="border-y border-border bg-secondary">
         <div className="mx-auto max-w-350 px-5 py-24 md:px-10 md:py-36 lg:px-14">
           <Reveal variant="blur">
@@ -1350,7 +1280,6 @@ export function PortfolioSite() {
         </div>
       </section>
 
-      {/* RESUME */}
       <section id="resume" className="mx-auto max-w-350 px-5 py-24 md:px-10 md:py-36 lg:px-14">
         <div className="grid gap-12 md:grid-cols-[0.6fr_0.4fr] md:items-center">
           <Reveal variant="left">
@@ -1378,7 +1307,6 @@ export function PortfolioSite() {
         </div>
       </section>
 
-      {/* CONTACT */}
       <section id="contact" className="border-t border-border bg-primary text-primary-foreground">
         <div className="mx-auto max-w-350 px-5 py-24 md:px-10 md:py-36 lg:px-14">
           <div className="grid gap-16 md:grid-cols-[1fr_1fr]">
@@ -1464,7 +1392,6 @@ export function PortfolioSite() {
         </div>
       </section>
 
-      {/* FOOTER */}
       <footer className="border-t border-border bg-background">
         <div className="mx-auto max-w-350 px-5 py-10 md:px-10 lg:px-14">
           <div className="flex flex-col justify-between gap-8 md:flex-row md:items-center">

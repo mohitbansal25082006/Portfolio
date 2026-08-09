@@ -16,7 +16,7 @@
 
 'use client'
 
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   BookOpen, ChevronDown, Flame, GitCommitHorizontal, GitFork, GitPullRequest,
   RefreshCw, Star, Tag, TrendingUp, Users, AlertTriangle, X, ExternalLink,
@@ -25,10 +25,33 @@ import { useGitHubProfile } from '@/hooks/use-github-profile'
 import { useDayCommits } from '@/hooks/use-day-commits'
 import type { RecentActivityItem } from '@/lib/github'
 
+// Proper scroll-triggered Reveal component to match the rest of the site
 function Reveal({ children, delay = 0 }: { children: React.ReactNode; delay?: number }) {
-  // Lightweight local reveal to avoid a circular import with portfolio-site.tsx.
+  const ref = useRef<HTMLDivElement>(null)
+  const [visible, setVisible] = useState(false)
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setVisible(true)
+          io.disconnect()
+        }
+      },
+      { threshold: 0.08, rootMargin: '0px 0px -40px 0px' },
+    )
+    io.observe(el)
+    return () => io.disconnect()
+  }, [])
+
   return (
-    <div className="reveal is-visible" style={{ transitionDelay: `${delay}ms` }}>
+    <div 
+      ref={ref} 
+      className={`reveal ${visible ? 'is-visible' : ''}`} 
+      style={{ transitionDelay: `${delay}ms` }}
+    >
       {children}
     </div>
   )

@@ -400,7 +400,7 @@ body {
   filter: drop-shadow(0 0 8px color-mix(in oklch, var(--primary) 60%, transparent));
 }
 .intro-logo-path.is-drawing {
-  animation: draw-path 1.6s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+  animation: draw-path 1.2s cubic-bezier(0.65, 0, 0.35, 1) forwards;
 }
 @keyframes draw-path {
   to { stroke-dashoffset: 0; }
@@ -411,8 +411,11 @@ body {
   fill: var(--primary);
   stroke: none;
 }
+/* No animation-delay here — timing is controlled entirely by the JS
+   setTimeout that adds the .is-filled class, so the two delays can't
+   stack and push the reveal past the point where the intro exits. */
 .intro-logo-fill.is-filled {
-  animation: fill-in 600ms ease 1.4s forwards;
+  animation: fill-in 500ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
 @keyframes fill-in {
   from { opacity: 0; transform: scale(0.8); transform-origin: center; }
@@ -426,16 +429,19 @@ body {
   text-transform: uppercase;
   color: var(--primary);
   white-space: nowrap;
-  overflow: hidden;
-  border-right: 2px solid var(--primary);
-  width: 0;
-  animation: typing 1.4s steps(20, end) 200ms forwards, blink-caret 800ms step-end infinite;
+  display: inline-flex;
+  align-items: center;
 }
-@keyframes typing {
-  to { width: 20ch; }
+.intro-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 4px;
+  background: var(--primary);
+  animation: blink-caret 800ms step-end infinite;
 }
 @keyframes blink-caret {
-  50% { border-color: transparent; }
+  50% { opacity: 0; }
 }
 
 .intro-progress-track {
@@ -453,7 +459,7 @@ body {
   background-size: 200% 100%;
   border-radius: 999px;
   box-shadow: 0 0 12px color-mix(in oklch, var(--primary) 60%, transparent);
-  transition: width 80ms linear;
+  transition: width 30ms linear;
   animation: shimmer 1.4s linear infinite;
 }
 @keyframes shimmer {
@@ -484,27 +490,6 @@ body {
 }
 @keyframes status-in {
   to { opacity: 1; transform: none; }
-}
-
-.intro-skip {
-  position: absolute;
-  bottom: 24px;
-  right: 24px;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.16em;
-  color: var(--muted-foreground);
-  text-transform: uppercase;
-  padding: 8px 14px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: transparent;
-  cursor: pointer;
-  transition: all 200ms;
-}
-.intro-skip:hover {
-  color: var(--foreground);
-  border-color: var(--primary);
 }
 
 /* ============================================================================
@@ -550,46 +535,6 @@ body {
 }
 @keyframes caret-blink {
   50% { opacity: 0; }
-}
-
-/* ============================================================================
-   CUSTOM CURSOR
-   ========================================================================== */
-.cursor-dot {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--primary);
-  pointer-events: none;
-  z-index: 9998;
-  transform: translate(-50%, -50%);
-  mix-blend-mode: difference;
-  transition: width 200ms, height 200ms, opacity 200ms;
-}
-.cursor-ring {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 36px;
-  height: 36px;
-  border: 1.5px solid color-mix(in oklch, var(--primary) 60%, transparent);
-  border-radius: 50%;
-  pointer-events: none;
-  z-index: 9997;
-  transform: translate(-50%, -50%);
-  transition: width 250ms cubic-bezier(0.22, 1, 0.36, 1), height 250ms cubic-bezier(0.22, 1, 0.36, 1), border-color 200ms, background 200ms;
-}
-.cursor-ring.is-hovering {
-  width: 56px;
-  height: 56px;
-  background: color-mix(in oklch, var(--primary) 12%, transparent);
-  border-color: var(--primary);
-}
-@media (hover: none), (pointer: coarse) {
-  .cursor-dot, .cursor-ring { display: none; }
 }
 
 /* ============================================================================
@@ -757,6 +702,5 @@ body {
   .char { opacity: 1 !important; transform: none !important; filter: none !important; }
   .stagger-item { opacity: 1 !important; transform: none !important; }
   .intro-overlay { display: none !important; }
-  .cursor-dot, .cursor-ring { display: none !important; }
   .particle-canvas { display: none !important; }
 }
