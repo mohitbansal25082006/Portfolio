@@ -159,7 +159,7 @@ To run this project locally, you will need to set up the following environment v
 
 ### 1. Clone the repository
 ```bash
-git clone https://github.com/mohitbansal/portfolio-website.git
+git clone https://github.com/mohitbansal25082006/Portfolio.git
 cd portfolio-website
 ```
 
