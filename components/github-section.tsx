@@ -3,30 +3,39 @@
 //  Real-time GitHub section — pulls live data via useGitHubProfile (hits
 //  /api/github, backed by lib/github.ts + GitHub's GraphQL/REST APIs).
 //
-//  Features:
-//   - Total (all-time) contributions instead of a static followers count
-//   - Year selector for the contribution calendar
-//   - Month labels above the heatmap
-//   - Click a day to see that day's actual commits, linked to GitHub
-//   - All languages (byte-weighted) / Pinned repos (max 4) / Recent activity
-//     in one
-//     equal-height row on desktop
-//   - Fully responsive down to small mobile widths
+//  Upgraded to match the rest of the portfolio:
+//   - Reveal variants (blur / scale / left / right) matching portfolio-site
+//   - stat-card pattern with shine effect + CountUp animations
+//   - Consistent header pattern (eyebrow + two-tone title + side description)
+//   - Group-hover icon cards matching the skills section
+//   - Day-of-week labels on the heatmap
+//   - Polished modal with entrance animation
 // ============================================================================
 
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  BookOpen, ChevronDown, Flame, GitCommitHorizontal, GitFork, GitPullRequest,
-  RefreshCw, Star, Tag, TrendingUp, Users, AlertTriangle, X, ExternalLink,
+  Activity, AlertTriangle, BookOpen, ChevronDown, ExternalLink, Flame,
+  GitBranch, GitCommitHorizontal, GitFork, GitPullRequest, RefreshCw,
+  Star, Tag, TrendingUp, X,
 } from 'lucide-react'
 import { useGitHubProfile } from '@/hooks/use-github-profile'
 import { useDayCommits } from '@/hooks/use-day-commits'
 import type { RecentActivityItem } from '@/lib/github'
 
-// Proper scroll-triggered Reveal component to match the rest of the site
-function Reveal({ children, delay = 0 }: { children: React.ReactNode; delay?: number }) {
+/* ========================================================================
+   Reveal — scroll-triggered entrance animation (matches portfolio-site)
+   ======================================================================== */
+function Reveal({
+  children,
+  delay = 0,
+  variant = 'default',
+}: {
+  children: React.ReactNode
+  delay?: number
+  variant?: 'default' | 'blur' | 'scale' | 'left' | 'right'
+}) {
   const ref = useRef<HTMLDivElement>(null)
   const [visible, setVisible] = useState(false)
 
@@ -46,10 +55,18 @@ function Reveal({ children, delay = 0 }: { children: React.ReactNode; delay?: nu
     return () => io.disconnect()
   }, [])
 
+  const variantClass = {
+    default: 'reveal',
+    blur: 'reveal-blur',
+    scale: 'reveal-scale',
+    left: 'reveal-left',
+    right: 'reveal-right',
+  }[variant]
+
   return (
-    <div 
-      ref={ref} 
-      className={`reveal ${visible ? 'is-visible' : ''}`} 
+    <div
+      ref={ref}
+      className={`${variantClass} ${visible ? 'is-visible' : ''}`}
       style={{ transitionDelay: `${delay}ms` }}
     >
       {children}
@@ -57,6 +74,41 @@ function Reveal({ children, delay = 0 }: { children: React.ReactNode; delay?: nu
   )
 }
 
+/* ========================================================================
+   CountUp — animated stat counter (matches portfolio-site)
+   ======================================================================== */
+function CountUp({ end, suffix = '', duration = 1600 }: { end: number; suffix?: string; duration?: number }) {
+  const ref = useRef<HTMLSpanElement>(null)
+  const [value, setValue] = useState(0)
+  const started = useRef(false)
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const io = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting && !started.current) {
+        started.current = true
+        const start = performance.now()
+        const tick = (now: number) => {
+          const t = Math.min(1, (now - start) / duration)
+          const eased = 1 - Math.pow(1 - t, 3)
+          setValue(Math.round(end * eased))
+          if (t < 1) requestAnimationFrame(tick)
+        }
+        requestAnimationFrame(tick)
+        io.disconnect()
+      }
+    }, { threshold: 0.4 })
+    io.observe(el)
+    return () => io.disconnect()
+  }, [end, duration])
+
+  return <span ref={ref}>{value.toLocaleString()}{suffix}</span>
+}
+
+/* ========================================================================
+   Helpers
+   ======================================================================== */
 function timeAgo(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime()
   const minutes = Math.floor(diffMs / 60000)
@@ -77,7 +129,7 @@ function formatDayLabel(dateStr: string): string {
 }
 
 const activityIcon: Record<RecentActivityItem['type'], typeof Star> = {
-  commit: GitPullRequest,
+  commit: GitCommitHorizontal,
   pr: GitPullRequest,
   issue: AlertTriangle,
   star: Star,
@@ -89,13 +141,16 @@ const activityIcon: Record<RecentActivityItem['type'], typeof Star> = {
 
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
-/** GitHub-brand-accurate contribution level colors, theme-tinted via oklch mix. */
+/** GitHub-brand-accurate contribution level colors, theme-tinted via oklch. */
 function levelColor(level: number): string {
   if (level === 0) return 'var(--muted)'
   const lightness = 0.42 + level * 0.11
   return `oklch(${lightness} 0.16 130)`
 }
 
+/* ========================================================================
+   Main component
+   ======================================================================== */
 export function GitHubSection({ username }: { username: string }) {
   const [selectedYear, setSelectedYear] = useState<number | undefined>(undefined)
   const [yearMenuOpen, setYearMenuOpen] = useState(false)
@@ -112,6 +167,18 @@ export function GitHubSection({ username }: { username: string }) {
     setRefreshing(false)
   }
 
+  // Close year menu on outside click
+  useEffect(() => {
+    if (!yearMenuOpen) return
+    const handler = (e: MouseEvent) => {
+      if (yearMenuRef.current && !yearMenuRef.current.contains(e.target as Node)) {
+        setYearMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [yearMenuOpen])
+
   // Group days into week-columns for the heatmap grid.
   const weeks = useMemo(() => {
     if (!data) return []
@@ -123,8 +190,7 @@ export function GitHubSection({ username }: { username: string }) {
     return out
   }, [data])
 
-  // Compute which week-column each month label should sit above, so labels
-  // line up with the heatmap without repeating.
+  // Compute which week-column each month label should sit above.
   const monthMarkers = useMemo(() => {
     const markers: { weekIndex: number; label: string }[] = []
     let lastMonth = -1
@@ -143,40 +209,51 @@ export function GitHubSection({ username }: { username: string }) {
   const displayedYear = data?.selectedYear ?? selectedYear ?? new Date().getFullYear()
   const pinnedRepos = data?.pinnedRepos.slice(0, 4) ?? []
 
+  const stats = data ? [
+    { label: 'Repositories', value: data.publicRepos, icon: BookOpen, suffix: '' },
+    { label: 'Stars earned', value: data.totalStars, icon: Star, suffix: '' },
+    { label: 'Total contributions', value: data.allTimeContributions, icon: Activity, suffix: '' },
+    { label: 'Longest streak', value: data.longestStreak, icon: Flame, suffix: ' days' },
+  ] : []
+
   return (
     <section id="github" className="mx-auto max-w-350 px-5 py-24 md:px-10 md:py-36 lg:px-14">
-      <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
-        <Reveal>
+      {/* ====== HEADER ====== */}
+      <Reveal variant="blur">
+        <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
           <div>
             <p className="eyebrow">Open source · Live</p>
             <h2 className="mt-4 max-w-xl text-4xl font-medium tracking-[-0.05em] md:text-6xl">
               Code in<br /><span className="text-muted-foreground">the open.</span>
             </h2>
           </div>
-        </Reveal>
-        <Reveal delay={80}>
-          <div className="flex flex-wrap items-center gap-3">
-            {data && (
-              <span className="flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 font-mono text-[10px] tracking-[0.12em] text-muted-foreground uppercase">
-                <span className="size-1.5 rounded-full bg-primary" />
-                Synced {timeAgo(data.fetchedAt)}
-              </span>
-            )}
-            <button
-              type="button"
-              onClick={handleRefresh}
-              disabled={loading || refreshing}
-              className="grid size-9 shrink-0 place-items-center rounded-full border border-border transition-colors hover:border-primary hover:bg-primary hover:text-primary-foreground disabled:opacity-50"
-              aria-label="Refresh GitHub data"
-              title="Refresh GitHub data"
-            >
-              <RefreshCw className={`size-3.5 ${loading || refreshing ? 'animate-spin' : ''}`} />
-            </button>
+          <div className="flex flex-col items-start gap-3 md:items-end">
+            <p className="max-w-xs text-sm leading-6 text-muted-foreground md:text-right">
+              Real-time data from the GitHub API — contributions, repositories, languages, and recent activity, synced on every visit.
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              {data && (
+                <span className="flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 font-mono text-[10px] tracking-[0.12em] text-muted-foreground uppercase">
+                  <span className="size-1.5 animate-pulse rounded-full bg-primary" />
+                  Synced {timeAgo(data.fetchedAt)}
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={handleRefresh}
+                disabled={loading || refreshing}
+                className="group grid size-9 shrink-0 place-items-center rounded-full border border-border transition-all hover:border-primary hover:bg-primary hover:text-primary-foreground disabled:opacity-50"
+                aria-label="Refresh GitHub data"
+                title="Refresh GitHub data"
+              >
+                <RefreshCw className={`size-3.5 ${loading || refreshing ? 'animate-spin' : ''} transition-transform duration-500 group-hover:rotate-180`} />
+              </button>
+            </div>
           </div>
-        </Reveal>
-      </div>
+        </div>
+      </Reveal>
 
-      {/* ERROR STATE */}
+      {/* ====== ERROR STATE ====== */}
       {error && !data && (
         <Reveal delay={100}>
           <div className="mt-14 flex flex-col items-center gap-3 rounded-2xl border border-dashed border-destructive/40 bg-destructive/5 px-6 py-16 text-center">
@@ -194,76 +271,80 @@ export function GitHubSection({ username }: { username: string }) {
         </Reveal>
       )}
 
-      {/* LOADING SKELETON */}
+      {/* ====== LOADING SKELETON ====== */}
       {loading && !data && (
         <div className="mt-14 animate-pulse space-y-6">
           <div className="grid gap-4 sm:gap-6 grid-cols-2 md:grid-cols-4">
             {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="h-24 rounded-2xl border border-border bg-muted/30" />
+              <div key={i} className="h-28 rounded-2xl border border-border bg-muted/30" />
             ))}
           </div>
-          <div className="h-48 rounded-2xl border border-border bg-muted/30" />
+          <div className="h-56 rounded-2xl border border-border bg-muted/30" />
           <div className="grid gap-6 md:grid-cols-3">
             {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="h-64 rounded-2xl border border-border bg-muted/30" />
+              <div key={i} className="h-72 rounded-2xl border border-border bg-muted/30" />
             ))}
           </div>
         </div>
       )}
 
-      {/* LIVE CONTENT */}
+      {/* ====== LIVE CONTENT ====== */}
       {data && (
         <>
+          {/* --- STATS GRID (stat-card pattern with shine + CountUp) --- */}
           <div className="mt-14 grid grid-cols-2 gap-4 sm:gap-6 md:grid-cols-4">
-            {[
-              { label: 'Repositories', value: data.publicRepos, icon: BookOpen },
-              { label: 'Stars earned', value: data.totalStars, icon: Star },
-              { label: 'Total contributions', value: data.allTimeContributions, icon: Users },
-              { label: 'Longest streak', value: data.longestStreak, icon: Flame, suffix: ' days' },
-            ].map((s, i) => (
-              <Reveal key={s.label} delay={i * 60}>
-                <div className="flex h-full items-center gap-3 rounded-2xl border border-border bg-muted/30 p-4 backdrop-blur-sm sm:gap-4 sm:p-6">
-                  <span className="grid size-9 shrink-0 place-items-center rounded-full bg-primary/10 text-primary sm:size-11">
-                    <s.icon className="size-4 sm:size-5" />
-                  </span>
-                  <div className="min-w-0">
-                    <div className="truncate text-2xl font-semibold sm:text-3xl">
-                      {s.value.toLocaleString()}
-                      {s.suffix ?? ''}
+            {stats.map((s, i) => (
+              <Reveal key={s.label} delay={i * 60} variant="scale">
+                <div className="stat-card group relative h-full overflow-hidden rounded-2xl border border-border bg-muted/30 p-5 backdrop-blur-sm transition-all hover:-translate-y-1 hover:border-primary/50 sm:p-6 md:p-7">
+                  <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-transparent opacity-50 transition-opacity group-hover:opacity-100" />
+                  <div className="relative z-10 flex h-full flex-col gap-3">
+                    <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground sm:size-10">
+                      <s.icon className="size-4 sm:size-5" />
+                    </span>
+                    <div>
+                      <div className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+                        <CountUp end={s.value} suffix={s.suffix} />
+                      </div>
+                      <p className="mt-1 font-mono text-[9px] tracking-[0.14em] text-muted-foreground uppercase sm:text-[10px]">{s.label}</p>
                     </div>
-                    <p className="font-mono text-[9px] tracking-[0.1em] text-muted-foreground uppercase sm:text-[10px] sm:tracking-[0.14em]">{s.label}</p>
                   </div>
+                  <div className="absolute -right-8 -top-8 size-24 rounded-full bg-primary/10 blur-3xl transition-opacity group-hover:opacity-70" />
+                  <div className="stat-card-shine" />
                 </div>
               </Reveal>
             ))}
           </div>
 
-          {/* CONTRIBUTION HEATMAP */}
-          <Reveal delay={80}>
-            <div className="mt-6 rounded-2xl border border-border bg-muted/30 p-4 backdrop-blur-sm sm:p-6 md:p-8">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <TrendingUp className="size-4 shrink-0 text-primary" />
-                  <p className="font-mono text-[10px] tracking-[0.12em] uppercase sm:text-[11px] sm:tracking-[0.14em]">
-                    {data.totalContributions.toLocaleString()} contributions in {displayedYear}
-                  </p>
-                </div>
+          {/* --- CONTRIBUTION HEATMAP --- */}
+          <Reveal delay={80} variant="blur">
+            <div className="group relative mt-6 overflow-hidden rounded-2xl border border-border bg-muted/30 p-4 backdrop-blur-sm transition-colors hover:border-primary/40 sm:p-6 md:p-8">
+              <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-50" />
+              <div className="relative z-10">
+                {/* Header row */}
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <span className="grid size-8 place-items-center rounded-lg bg-primary/10 text-primary">
+                      <TrendingUp className="size-4" />
+                    </span>
+                    <p className="font-mono text-[10px] tracking-[0.14em] uppercase sm:text-[11px]">
+                      <span className="text-foreground">{data.totalContributions.toLocaleString()}</span>{' '}
+                      <span className="text-muted-foreground">contributions in {displayedYear}</span>
+                    </p>
+                  </div>
 
-                <div className="flex items-center gap-2">
-                  {/* YEAR SELECTOR */}
-                  {data.contributionYears.length > 0 && (
-                    <div className="relative" ref={yearMenuRef}>
-                      <button
-                        type="button"
-                        onClick={() => setYearMenuOpen((v) => !v)}
-                        className="flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 font-mono text-[10px] tracking-[0.12em] uppercase transition-colors hover:border-primary hover:bg-primary hover:text-primary-foreground"
-                      >
-                        {displayedYear} <ChevronDown className={`size-3 transition-transform ${yearMenuOpen ? 'rotate-180' : ''}`} />
-                      </button>
-                      {yearMenuOpen && (
-                        <>
-                          <div className="fixed inset-0 z-10" onClick={() => setYearMenuOpen(false)} />
-                          <div className="absolute right-0 z-20 mt-2 max-h-56 min-w-24 overflow-y-auto rounded-xl border border-border bg-card p-1.5 shadow-2xl backdrop-blur-xl">
+                  <div className="flex items-center gap-2">
+                    {/* Year selector */}
+                    {data.contributionYears.length > 0 && (
+                      <div className="relative" ref={yearMenuRef}>
+                        <button
+                          type="button"
+                          onClick={() => setYearMenuOpen((v) => !v)}
+                          className="flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 font-mono text-[10px] tracking-[0.12em] uppercase transition-colors hover:border-primary hover:bg-primary hover:text-primary-foreground"
+                        >
+                          {displayedYear} <ChevronDown className={`size-3 transition-transform ${yearMenuOpen ? 'rotate-180' : ''}`} />
+                        </button>
+                        {yearMenuOpen && (
+                          <div className="absolute right-0 z-30 mt-2 max-h-56 min-w-24 overflow-y-auto rounded-xl border border-border bg-card p-1.5 shadow-2xl backdrop-blur-xl">
                             {data.contributionYears.map((y) => (
                               <button
                                 key={y}
@@ -274,89 +355,113 @@ export function GitHubSection({ username }: { username: string }) {
                               </button>
                             ))}
                           </div>
-                        </>
-                      )}
-                    </div>
-                  )}
-                  <a
-                    href={data.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase hover:text-foreground"
-                  >
-                    @{data.username} ↗
-                  </a>
-                </div>
-              </div>
-
-              {data.currentStreak > 0 && (
-                <p className="mt-2 flex items-center gap-1.5 font-mono text-[10px] tracking-[0.12em] text-primary uppercase">
-                  <Flame className="size-3.5" /> {data.currentStreak}-day current streak
-                </p>
-              )}
-
-              {/* HEATMAP + MONTH LABELS (horizontally scrollable on small screens) */}
-              <div className="mt-5 overflow-x-auto pb-2">
-                <div className="inline-block min-w-full">
-                  <div className="relative mb-1 h-4" style={{ minWidth: weeks.length * 13 }}>
-                    {monthMarkers.map((m) => (
-                      <span
-                        key={`${m.label}-${m.weekIndex}`}
-                        className="absolute font-mono text-[9px] tracking-[0.08em] text-muted-foreground uppercase"
-                        style={{ left: m.weekIndex * 13 }}
-                      >
-                        {m.label}
-                      </span>
-                    ))}
+                        )}
+                      </div>
+                    )}
+                    <a
+                      href={data.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase transition-colors hover:text-foreground"
+                    >
+                      @{data.username} ↗
+                    </a>
                   </div>
-                  <div className="flex gap-[3px]" style={{ minWidth: weeks.length * 13 }}>
-                    {weeks.map((week, wi) => (
-                      <div key={wi} className="flex flex-col gap-[3px]">
-                        {week.map((day) => (
-                          <button
-                            key={day.date}
-                            type="button"
-                            onClick={() => setSelectedDay(day.date)}
-                            className="size-[10px] rounded-[2px] transition-transform hover:scale-125 focus-visible:scale-125 focus-visible:outline focus-visible:outline-1 focus-visible:outline-primary"
-                            style={{ background: levelColor(day.level) }}
-                            title={`${day.count} contribution${day.count === 1 ? '' : 's'} on ${day.date} — click to view commits`}
-                            aria-label={`${day.count} contributions on ${day.date}`}
-                          />
+                </div>
+
+                {/* Current streak badge */}
+                {data.currentStreak > 0 && (
+                  <p className="mt-3 flex items-center gap-1.5 font-mono text-[10px] tracking-[0.12em] text-primary uppercase">
+                    <Flame className="size-3.5" /> {data.currentStreak}-day current streak
+                  </p>
+                )}
+
+                {/* Heatmap + month labels + day-of-week labels */}
+                <div className="mt-5 overflow-x-auto pb-2">
+                  <div className="flex gap-2">
+                    {/* Day-of-week labels */}
+                    <div className="flex shrink-0 flex-col gap-[3px] pt-[20px]">
+                      {['', 'Mon', '', 'Wed', '', 'Fri', ''].map((label, i) => (
+                        <span key={i} className="h-[10px] font-mono text-[8px] leading-[10px] text-muted-foreground/60">
+                          {label}
+                        </span>
+                      ))}
+                    </div>
+
+                    {/* Month labels + heatmap grid */}
+                    <div className="inline-block min-w-full">
+                      <div className="relative mb-1 h-4" style={{ minWidth: weeks.length * 13 }}>
+                        {monthMarkers.map((m) => (
+                          <span
+                            key={`${m.label}-${m.weekIndex}`}
+                            className="absolute font-mono text-[9px] tracking-[0.08em] text-muted-foreground uppercase"
+                            style={{ left: m.weekIndex * 13 }}
+                          >
+                            {m.label}
+                          </span>
                         ))}
                       </div>
-                    ))}
+                      <div className="flex gap-[3px]" style={{ minWidth: weeks.length * 13 }}>
+                        {weeks.map((week, wi) => (
+                          <div key={wi} className="flex flex-col gap-[3px]">
+                            {week.map((day) => (
+                              <button
+                                key={day.date}
+                                type="button"
+                                onClick={() => setSelectedDay(day.date)}
+                                className="size-[10px] rounded-[2px] transition-transform hover:scale-125 hover:ring-1 hover:ring-primary focus-visible:scale-125 focus-visible:outline focus-visible:outline-1 focus-visible:outline-primary"
+                                style={{ background: levelColor(day.level) }}
+                                title={`${day.count} contribution${day.count === 1 ? '' : 's'} on ${day.date} — click to view commits`}
+                                aria-label={`${day.count} contributions on ${day.date}`}
+                              />
+                            ))}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="mt-3 flex items-center justify-between gap-2">
-                <p className="font-mono text-[9px] tracking-[0.1em] text-muted-foreground/70 uppercase sm:text-[10px]">
-                  Click a square to see that day&apos;s commits
-                </p>
-                <div className="flex items-center gap-2 font-mono text-[9px] tracking-[0.14em] text-muted-foreground uppercase">
-                  <span>Less</span>
-                  {[0, 1, 2, 3, 4].map((l) => (
-                    <span key={l} className="size-[10px] rounded-[2px]" style={{ background: levelColor(l) }} />
-                  ))}
-                  <span>More</span>
+                {/* Legend */}
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                  <p className="font-mono text-[9px] tracking-[0.1em] text-muted-foreground/70 uppercase sm:text-[10px]">
+                    Click a square to see that day&apos;s commits
+                  </p>
+                  <div className="flex items-center gap-2 font-mono text-[9px] tracking-[0.14em] text-muted-foreground uppercase">
+                    <span>Less</span>
+                    {[0, 1, 2, 3, 4].map((l) => (
+                      <span key={l} className="size-[10px] rounded-[2px]" style={{ background: levelColor(l) }} />
+                    ))}
+                    <span>More</span>
+                  </div>
                 </div>
               </div>
             </div>
           </Reveal>
 
-          {/* TOP LANGUAGES / PINNED REPOS / RECENT ACTIVITY — equal height row */}
+          {/* --- LANGUAGES / PINNED REPOS / RECENT ACTIVITY (equal-height row) --- */}
           <div className="mt-6 grid gap-6 md:grid-cols-3 md:items-stretch">
-            {/* ALL LANGUAGES (byte-weighted, full breakdown) */}
-            <Reveal>
-              <div className="flex h-full flex-col rounded-2xl border border-border bg-muted/30 p-6 backdrop-blur-sm md:p-8">
-                <p className="font-mono text-[11px] tracking-[0.14em] uppercase">All languages</p>
+            {/* ALL LANGUAGES */}
+            <Reveal variant="scale">
+              <div className="group flex h-full flex-col rounded-2xl border border-border bg-muted/30 p-6 backdrop-blur-sm transition-colors hover:border-primary/40 md:p-8">
+                <div className="flex items-center gap-2.5">
+                  <span className="grid size-8 place-items-center rounded-lg bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
+                    <GitBranch className="size-4" />
+                  </span>
+                  <h3 className="font-mono text-[11px] tracking-[0.16em] uppercase">All languages</h3>
+                </div>
                 {data.topLanguages.length === 0 ? (
-                  <p className="mt-5 text-xs text-muted-foreground">No language data available yet.</p>
+                  <p className="mt-6 text-xs text-muted-foreground">No language data available yet.</p>
                 ) : (
                   <>
-                    <div className="mt-5 flex h-2.5 overflow-hidden rounded-full">
+                    <div className="mt-6 flex h-2.5 overflow-hidden rounded-full ring-1 ring-border/50">
                       {data.topLanguages.map((l) => (
-                        <div key={l.name} style={{ width: `${l.pct}%`, background: l.color }} title={`${l.name} — ${l.pct}%`} />
+                        <div
+                          key={l.name}
+                          style={{ width: `${l.pct}%`, background: l.color }}
+                          title={`${l.name} — ${l.pct}%`}
+                          className="transition-all"
+                        />
                       ))}
                     </div>
                     <div className="mt-5 max-h-64 space-y-2 overflow-y-auto pr-1">
@@ -374,11 +479,16 @@ export function GitHubSection({ username }: { username: string }) {
               </div>
             </Reveal>
 
-            {/* PINNED REPOS (max 4) */}
-            <Reveal delay={80}>
-              <div className="flex h-full flex-col rounded-2xl border border-border bg-muted/30 p-6 backdrop-blur-sm md:p-8">
-                <p className="font-mono text-[11px] tracking-[0.14em] uppercase">Pinned repositories</p>
-                <div className="mt-5 flex-1 space-y-3">
+            {/* PINNED REPOS */}
+            <Reveal delay={80} variant="scale">
+              <div className="group flex h-full flex-col rounded-2xl border border-border bg-muted/30 p-6 backdrop-blur-sm transition-colors hover:border-primary/40 md:p-8">
+                <div className="flex items-center gap-2.5">
+                  <span className="grid size-8 place-items-center rounded-lg bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
+                    <BookOpen className="size-4" />
+                  </span>
+                  <h3 className="font-mono text-[11px] tracking-[0.16em] uppercase">Pinned repositories</h3>
+                </div>
+                <div className="mt-6 flex-1 space-y-3">
                   {pinnedRepos.length === 0 && (
                     <p className="text-xs text-muted-foreground">No pinned repositories yet — pin some on GitHub to feature them here.</p>
                   )}
@@ -388,7 +498,7 @@ export function GitHubSection({ username }: { username: string }) {
                       href={r.url}
                       target="_blank"
                       rel="noreferrer"
-                      className="block rounded-xl border border-border p-4 transition-colors hover:border-primary/50"
+                      className="block rounded-xl border border-border p-4 transition-all hover:-translate-y-0.5 hover:border-primary/50 hover:bg-background/50"
                     >
                       <div className="flex items-center justify-between gap-2">
                         <span className="truncate font-medium">{r.name}</span>
@@ -397,8 +507,8 @@ export function GitHubSection({ username }: { username: string }) {
                           <span className="flex items-center gap-1"><GitFork className="size-3" /> {r.forks}</span>
                         </span>
                       </div>
-                      <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{r.desc}</p>
-                      <span className="mt-2 inline-flex items-center gap-1.5 font-mono text-[10px] text-muted-foreground">
+                      <p className="mt-1.5 line-clamp-2 text-xs leading-5 text-muted-foreground">{r.desc}</p>
+                      <span className="mt-2.5 inline-flex items-center gap-1.5 font-mono text-[10px] text-muted-foreground">
                         <span className="size-2 rounded-full" style={{ background: r.languageColor }} /> {r.language}
                       </span>
                     </a>
@@ -408,22 +518,33 @@ export function GitHubSection({ username }: { username: string }) {
             </Reveal>
 
             {/* RECENT ACTIVITY */}
-            <Reveal delay={160}>
-              <div className="flex h-full flex-col rounded-2xl border border-border bg-muted/30 p-6 backdrop-blur-sm md:p-8">
-                <p className="font-mono text-[11px] tracking-[0.14em] uppercase">Recent activity</p>
-                <div className="mt-5 flex-1 space-y-4">
+            <Reveal delay={160} variant="scale">
+              <div className="group flex h-full flex-col rounded-2xl border border-border bg-muted/30 p-6 backdrop-blur-sm transition-colors hover:border-primary/40 md:p-8">
+                <div className="flex items-center gap-2.5">
+                  <span className="grid size-8 place-items-center rounded-lg bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
+                    <Activity className="size-4" />
+                  </span>
+                  <h3 className="font-mono text-[11px] tracking-[0.16em] uppercase">Recent activity</h3>
+                </div>
+                <div className="mt-6 flex-1 space-y-4">
                   {data.recentActivity.length === 0 && (
                     <p className="text-xs text-muted-foreground">No recent public activity found.</p>
                   )}
                   {data.recentActivity.map((a, i) => {
                     const Icon = activityIcon[a.type] ?? BookOpen
                     return (
-                      <a key={i} href={a.url} target="_blank" rel="noreferrer" className="group flex gap-3">
-                        <span className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
+                      <a
+                        key={i}
+                        href={a.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="group/item flex gap-3"
+                      >
+                        <span className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-full bg-primary/10 text-primary transition-colors group-hover/item:bg-primary group-hover/item:text-primary-foreground">
                           <Icon className="size-3" />
                         </span>
                         <div className="min-w-0">
-                          <p className="text-xs leading-5 text-foreground/80 group-hover:text-foreground">{a.text}</p>
+                          <p className="text-xs leading-5 text-foreground/80 transition-colors group-hover/item:text-foreground">{a.text}</p>
                           <p className="mt-0.5 font-mono text-[10px] text-muted-foreground uppercase">{timeAgo(a.time)}</p>
                         </div>
                       </a>
@@ -433,23 +554,43 @@ export function GitHubSection({ username }: { username: string }) {
               </div>
             </Reveal>
           </div>
+
+          {/* --- CTA: View full profile --- */}
+          <Reveal delay={200}>
+            <div className="mt-8 flex justify-center">
+              <a
+                href={data.url}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 rounded-full border border-border px-6 py-3 font-mono text-[11px] tracking-[0.14em] uppercase transition-all hover:-translate-y-0.5 hover:border-primary hover:bg-primary hover:text-primary-foreground"
+              >
+                View full profile on GitHub <ExternalLink className="size-3.5" />
+              </a>
+            </div>
+          </Reveal>
         </>
       )}
 
-      {/* DAY-COMMITS POPOVER (modal) */}
+      {/* ====== DAY-COMMITS MODAL ====== */}
       {selectedDay && (
         <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-background/70 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+          className="modal-backdrop fixed inset-0 z-50 flex items-end justify-center bg-background/70 p-0 backdrop-blur-sm sm:items-center sm:p-4"
           onClick={() => setSelectedDay(null)}
         >
           <div
-            className="max-h-[80vh] w-full overflow-y-auto rounded-t-2xl border border-border bg-card shadow-2xl sm:max-w-lg sm:rounded-2xl"
+            className="modal-panel max-h-[80vh] w-full overflow-y-auto rounded-t-2xl border border-border bg-card shadow-2xl sm:max-w-lg sm:rounded-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="sticky top-0 flex items-center justify-between border-b border-border bg-card px-5 py-4">
-              <div>
-                <p className="font-mono text-[10px] tracking-[0.12em] text-primary uppercase">Contribution activity</p>
-                <h3 className="mt-1 text-sm font-medium">{formatDayLabel(selectedDay)}</h3>
+            {/* Modal header */}
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-card/95 px-5 py-4 backdrop-blur-xl">
+              <div className="flex items-center gap-3">
+                <span className="grid size-9 place-items-center rounded-full bg-primary/10 text-primary">
+                  <GitCommitHorizontal className="size-4" />
+                </span>
+                <div>
+                  <p className="font-mono text-[10px] tracking-[0.12em] text-primary uppercase">Contribution activity</p>
+                  <h3 className="mt-0.5 text-sm font-medium">{formatDayLabel(selectedDay)}</h3>
+                </div>
               </div>
               <button
                 type="button"
@@ -461,6 +602,7 @@ export function GitHubSection({ username }: { username: string }) {
               </button>
             </div>
 
+            {/* Modal body */}
             <div className="p-5">
               {dayCommits.loading && (
                 <div className="space-y-3">
@@ -495,13 +637,13 @@ export function GitHubSection({ username }: { username: string }) {
                         href={c.url}
                         target="_blank"
                         rel="noreferrer"
-                        className="group flex items-start gap-3 rounded-xl border border-border p-3.5 transition-colors hover:border-primary/50"
+                        className="group flex items-start gap-3 rounded-xl border border-border p-3.5 transition-all hover:-translate-y-0.5 hover:border-primary/50"
                       >
-                        <span className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
+                        <span className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-full bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
                           <GitCommitHorizontal className="size-3.5" />
                         </span>
                         <div className="min-w-0 flex-1">
-                          <p className="text-xs leading-5 text-foreground/90 group-hover:text-foreground">{c.message}</p>
+                          <p className="text-xs leading-5 text-foreground/90 transition-colors group-hover:text-foreground">{c.message}</p>
                           <div className="mt-1 flex flex-wrap items-center gap-2 font-mono text-[10px] text-muted-foreground">
                             <span className="truncate">{c.repo}</span>
                             <span>·</span>
