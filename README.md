@@ -199,4 +199,3 @@ Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
 <p align="center">
   Built with ❤️, ☕, and a lot of <code>100dvh</code> bug fixes by Mohit Bansal.
 </p>
-```
