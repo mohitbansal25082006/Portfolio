@@ -301,14 +301,22 @@ body {
 }
 
 /* ============================ REVEAL ON SCROLL ============================ */
+/* IMPORTANT: The `.is-visible` state for every variant MUST use `transform: none`
+   and `filter: none` (NOT `scale(1)` or `blur(0)`). Per CSS spec, any computed
+   value other than `none` for `transform` or `filter` creates a containing
+   block for `position: fixed` descendants — which breaks full-screen modals
+   (PdfModal, ImageViewer) that are rendered inside a Reveal wrapper. Using
+   `none` once the animation is complete avoids this entirely. The visual
+   transition is identical because browsers interpolate `none` as the identity
+   matrix / no-op filter. */
 .reveal { opacity: 0; transform: translateY(28px); transition: opacity 700ms cubic-bezier(0.22, 1, 0.36, 1), transform 700ms cubic-bezier(0.22, 1, 0.36, 1); }
 .reveal.is-visible { opacity: 1; transform: none; }
 
 .reveal-blur { opacity: 0; filter: blur(12px); transform: translateY(20px) scale(0.96); transition: opacity 800ms cubic-bezier(0.22, 1, 0.36, 1), filter 800ms cubic-bezier(0.22, 1, 0.36, 1), transform 800ms cubic-bezier(0.22, 1, 0.36, 1); }
-.reveal-blur.is-visible { opacity: 1; filter: blur(0); transform: none; }
+.reveal-blur.is-visible { opacity: 1; filter: none; transform: none; }
 
 .reveal-scale { opacity: 0; transform: scale(0.85); transition: opacity 600ms cubic-bezier(0.34, 1.56, 0.64, 1), transform 600ms cubic-bezier(0.34, 1.56, 0.64, 1); }
-.reveal-scale.is-visible { opacity: 1; transform: scale(1); }
+.reveal-scale.is-visible { opacity: 1; transform: none; }
 
 .reveal-left { opacity: 0; transform: translateX(-40px); transition: opacity 700ms cubic-bezier(0.22, 1, 0.36, 1), transform 700ms cubic-bezier(0.22, 1, 0.36, 1); }
 .reveal-left.is-visible { opacity: 1; transform: none; }

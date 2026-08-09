@@ -7,6 +7,7 @@ import {
   useState,
   type WheelEvent as ReactWheelEvent,
 } from 'react'
+import { createPortal } from 'react-dom'
 import {
   ChevronLeft,
   ChevronRight,
@@ -63,6 +64,21 @@ import {
  *
  * On desktop (≥ 768px), the original behavior is preserved: open at scale 1
  * (100%), centered horizontally.
+ * ---------------------------------------------------------------------------
+ *
+ * PORTAL FIX (v5)
+ * ---------------------------------------------------------------------------
+ * The modal is now rendered via React's `createPortal` directly into
+ * `document.body`. This is critical because ancestor elements may have
+ * CSS `transform` or `filter` properties (e.g. the Reveal animation
+ * wrappers in portfolio-site.tsx use `transform: scale(1)` and
+ * `filter: blur(0)`). Per the CSS spec, ANY computed value other than
+ * `none` for `transform`, `filter`, `perspective`, or `will-change`
+ * (with those properties) creates a **containing block** for
+ * `position: fixed` descendants — which would cause the modal's
+ * `position: fixed; inset: 0` to be relative to the transformed ancestor
+ * instead of the viewport, making the modal appear tiny and mispositioned.
+ * Rendering into document.body via a portal sidesteps this entirely.
  * ---------------------------------------------------------------------------
  */
 
@@ -702,7 +718,20 @@ function PdfModal({ url, fileName, onClose }: { url: string; fileName: string; o
   const isZoomed = fitScale != null && transform.scale > fitScale * 1.02
   const displayPercent = fitScale ? Math.round((transform.scale / fitScale) * 100) : Math.round(transform.scale * 100)
 
-  return (
+  /* -------- Render via portal into document.body --------
+   * This is the critical fix: the modal MUST be rendered at document.body
+   * level so that no ancestor element with `transform`, `filter`,
+   * `perspective`, or `will-change` can create a containing block that
+   * would break `position: fixed; inset: 0`.
+   *
+   * In the new UI, the PdfViewer is wrapped in a <Reveal variant="scale">
+   * whose visible state applies `transform: scale(1)` — and even though
+   * scale(1) is visually a no-op, the CSS spec says any transform value
+   * other than `none` creates a containing block for fixed descendants.
+   * Without the portal, the modal would be constrained to the small Reveal
+   * wrapper instead of covering the full viewport.
+   */
+  return createPortal(
     <div className="fixed inset-0 z-[100] flex flex-col bg-black/95 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Resume PDF viewer">
       {/* Top bar */}
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 bg-black/60 px-3 py-2.5 backdrop-blur-xl md:px-5">
@@ -872,7 +901,8 @@ function PdfModal({ url, fileName, onClose }: { url: string; fileName: string; o
           Pinch to zoom · Drag to pan
         </p>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 
