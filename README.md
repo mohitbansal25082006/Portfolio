@@ -7,7 +7,7 @@
 </h1>
 
 <p align="center">
-  <a href="https://mohitbansal-kohl.vercel.app/" target="_blank">
+  <a href="https://www.mohitbansal.online/" target="_blank">
     <img src="https://img.shields.io/badge/LIVE_DEMO-Visit_Website-00F5A0?style=for-the-badge&logo=vercel&logoColor=white" alt="Live Demo" />
   </a>
   <a href="https://github.com/mohitbansal/portfolio-website" target="_blank">
