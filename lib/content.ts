@@ -319,18 +319,54 @@ export const projects = [
     ],
   },
   {
-    number: '04', name: 'TeamScript', mark: 'T', year: '2023', category: 'web',
+    number: '04', name: 'TeamScript', mark: 'T', year: '2025', category: 'web',
     theme: 'project-teamscript',
-    short: 'Real-time collaborative code editor with AI pair-programming baked in.',
-    problem: 'Remote teams need shared, context-aware coding.',
-    features: ['Live Cursors', 'Shared Editing', 'AI Suggestions', 'Version History'],
-    stack: ['Next.js', 'WebSockets', 'Yjs', 'OpenAI', 'PostgreSQL'],
-    challenges: 'CRDT conflict resolution under high concurrency.',
-    metrics: '20+ teams onboarded',
-    live: '#', github: '#', caseStudy: '#',
+
+    short:
+      'A production-grade Google Docs clone — real-time collaborative rich-text editing with comments, mentions, org workspaces, and multi-format export, built on Next.js 15 and Liveblocks.',
+
+    problem:
+      'Teams need a document editor that feels as fluid and shared as Google Docs — live cursors, instant sync, threaded comments — without being locked into Google\'s ecosystem. TeamScript rebuilds that experience from scratch: a TipTap-powered rich text editor with full real-time collaboration, organization-level workspaces, and export to PDF, HTML, TXT, and JSON.',
+
+    features: [
+      'Real-Time Collaborative Editing (Liveblocks)',
+      'Live Cursor Tracking',
+      'Rich Text Editor (TipTap)',
+      'Comments & @Mentions',
+      'Notifications System',
+      'Document Templates',
+      'Tables, Lists & Checklists',
+      'Image Uploads & Link Embedding',
+      'Undo/Redo History',
+      'Export to PDF, HTML, TXT, JSON',
+      'Organization Workspaces & Invites',
+      'Clerk Authentication',
+    ],
+
+    stack: [
+      'Next.js 15',
+      'React 19',
+      'Convex',
+      'Clerk',
+      'Liveblocks',
+      'TipTap',
+      'Tailwind CSS',
+      'Shadcn UI',
+      'Vercel',
+    ],
+
+    challenges:
+      'Keeping a rich-text document — tables, images, formatting, checklists — in sync across multiple simultaneous editors without corrupting structure or losing cursor context, while layering comments and mentions on top of content that could shift under a user mid-edit. Running on React 19 RC ahead of ecosystem support meant working around dependency incompatibilities across the whole stack.',
+
+    metrics:
+      'Full-stack real-time editor with 19+ shipped features across editing, collaboration, and organization management',
+
+    live: 'https://teamscript-nine.vercel.app/',
+    github: 'https://github.com/mohitbansal25082006/teamscript',
     images: [
-      'https://images.unsplash.com/photo-1542831371-29b0f74f9713?q=80&w=2070&auto=format&fit=crop',
-      'https://images.unsplash.com/photo-1517694712202-14dd9538aa97?q=80&w=2070&auto=format&fit=crop',
+      '/teamscript/teamscript1.png',
+      '/teamscript/teamscript2.png',
+      '/teamscript/teamscript3.png', 
     ],
   },
   {
