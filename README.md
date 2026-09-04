@@ -7,7 +7,7 @@
 </h1>
 
 <p align="center">
-  <a href="https://mohitbansal-kohl.vercel.app/" target="_blank">
+  <a href="https://www.mohitbansal.online/" target="_blank">
     <img src="https://img.shields.io/badge/LIVE_DEMO-Visit_Website-00F5A0?style=for-the-badge&logo=vercel&logoColor=white" alt="Live Demo" />
   </a>
   <a href="https://github.com/mohitbansal/portfolio-website" target="_blank">
@@ -29,7 +29,7 @@
 
 A single-page, highly interactive portfolio built for **Mohit Bansal**. This isn't just a static resume—it's a real-time web application featuring live GitHub API integration, an advanced cross-platform resume PDF viewer, a custom-built image lightbox, an OTP-verified & rate-limited contact form, and 6 fully swappable color themes.
 
-🚀 **Live Site:** [https://mohitbansal-kohl.vercel.app/](https://mohitbansal-kohl.vercel.app/)
+🚀 **Live Site:** [https://www.mohitbansal.online/](https://www.mohitbansal.online/)
 
 ## ✨ Key Features
 
