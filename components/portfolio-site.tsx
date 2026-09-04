@@ -5,7 +5,7 @@ import {
   ArrowDownRight, ArrowUpRight, BookOpen, Calendar, Check, ChevronLeft, ChevronRight, Code2, Copy,
   Cpu, Database, Download, ExternalLink, Layers, Loader2, Mail,
   MapPin, Menu, MoveUpRight, Search, Send, Smartphone, Sparkles, Star,
-  Users, Wrench, X, ZoomIn,
+  Users, Wrench, X, ZoomIn, ShieldCheck, RotateCcw,
 } from 'lucide-react'
 import {
   about, contactInfo, githubConfig, navItems, projectFilters, projects,
@@ -61,14 +61,8 @@ function IntroLoader({ onComplete }: { onComplete: () => void }) {
 
   useEffect(() => {
     setDrawPath(true)
-    // Fill starts once the hex outline has finished drawing (~1.2s).
-    // NOTE: the CSS animation for .intro-logo-fill.is-filled has no
-    // built-in delay — this setTimeout is the only delay, so it can't
-    // stack with a second delay baked into the stylesheet.
     const fillTimer = setTimeout(() => setFillLogo(true), 1200)
 
-    // JS-driven typing (instead of a CSS width/steps() animation) so
-    // letter-spacing can never clip the tail of the string.
     let charIndex = 0
     const typeInterval = setInterval(() => {
       charIndex++
@@ -87,8 +81,6 @@ function IntroLoader({ onComplete }: { onComplete: () => void }) {
 
       if (currentProgress >= 100) {
         clearInterval(intervalId)
-        // Hold on the finished state long enough for the logo fill-in
-        // (which lands at ~1.7s) to be visible before the curtain closes.
         setTimeout(() => {
           setExiting(true)
           setTimeout(onComplete, 900)
@@ -367,33 +359,6 @@ function Typewriter({ text, start, speed = 18, className = '' }: { text: string;
 
 /* ============================================================================
    Magnetic — wraps an element to make it magnetic toward the cursor
-   ----------------------------------------------------------------------------
-   FIX (button-row collapse on hover/click)
-   ----------------------------------------------------------------------------
-   Previously this component:
-     1. Rendered its wrapper as `display: inline-block` with no defined
-        box beyond its content.
-     2. Attached the `mousemove`/`mouseleave` listeners to `el.parentElement`
-        instead of `el` itself.
-
-   Point (2) meant that when several <Magnetic> buttons sit side-by-side in
-   a flex row (e.g. the hero's "Download Resume" / "View Projects" /
-   "Contact Me" buttons), moving the mouse ANYWHERE over that shared flex
-   parent fired the mousemove handler for *every* sibling simultaneously —
-   not just the one actually being hovered. Each sibling would then apply
-   its own `translate(dx, dy)` based on distance from *its own* center,
-   so multiple inline-block boxes were being transformed at once while the
-   browser tried to reflow the inline formatting context around them. That
-   fight between simultaneous transforms on adjacent inline-level boxes is
-   what visually reads as the row "collapsing" or jittering shut on hover,
-   and the same bad transform state could persist into a click.
-
-   Fix: listeners are attached to the element itself (`el`), so only the
-   button actually under the cursor ever moves — its siblings are
-   untouched. The wrapper is also switched from `inline-block` to
-   `inline-flex` (see `.magnetic` in globals.css) so it has a well-defined
-   flex-item box that behaves predictably next to its siblings instead of
-   depending on inline text-layout metrics.
    ========================================================================== */
 function Magnetic({ children, strength = 0.3 }: { children: ReactNode; strength?: number }) {
   const ref = useRef<HTMLDivElement>(null)
@@ -411,8 +376,6 @@ function Magnetic({ children, strength = 0.3 }: { children: ReactNode; strength?
       el.style.transform = `translate(${dx}px, ${dy}px)`
     }
     const onLeave = () => { el.style.transform = 'translate(0,0)' }
-    // Scoped to the element itself — NOT el.parentElement — so hovering
-    // one button in a row never moves its siblings.
     el.addEventListener('mousemove', onMove)
     el.addEventListener('mouseleave', onLeave)
     return () => {
@@ -901,6 +864,59 @@ function Hero({ introComplete }: { introComplete: boolean }) {
   )
 }
 
+/* ============================================================================
+   OTP INPUT — 6-digit code entry with auto-advance
+   ========================================================================== */
+function OtpInput({ value, onChange, disabled }: { value: string; onChange: (v: string) => void; disabled?: boolean }) {
+  const inputsRef = useRef<Array<HTMLInputElement | null>>([])
+  const digits = value.padEnd(6, ' ').split('').slice(0, 6)
+
+  const setDigit = (idx: number, char: string) => {
+    const clean = char.replace(/\D/g, '').slice(-1)
+    const next = value.split('')
+    next[idx] = clean || ''
+    const joined = next.join('').slice(0, 6).replace(/ /g, '')
+    onChange(joined)
+    if (clean && idx < 5) inputsRef.current[idx + 1]?.focus()
+  }
+
+  const handleKeyDown = (idx: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Backspace' && !digits[idx]?.trim() && idx > 0) {
+      inputsRef.current[idx - 1]?.focus()
+    }
+  }
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    e.preventDefault()
+    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6)
+    if (pasted) {
+      onChange(pasted)
+      const focusIdx = Math.min(pasted.length, 5)
+      inputsRef.current[focusIdx]?.focus()
+    }
+  }
+
+  return (
+    <div className="flex justify-center gap-2 sm:gap-3" onPaste={handlePaste}>
+      {digits.map((d, i) => (
+        <input
+          key={i}
+          ref={(el) => { inputsRef.current[i] = el }}
+          type="text"
+          inputMode="numeric"
+          maxLength={1}
+          disabled={disabled}
+          value={d.trim()}
+          onChange={(e) => setDigit(i, e.target.value)}
+          onKeyDown={(e) => handleKeyDown(i, e)}
+          className="size-11 rounded-xl border border-primary-foreground/30 bg-primary-foreground/10 text-center font-mono text-lg font-semibold text-primary-foreground outline-none transition-colors focus:border-primary-foreground/70 disabled:opacity-50 sm:size-12"
+          aria-label={`Digit ${i + 1} of verification code`}
+        />
+      ))}
+    </div>
+  )
+}
+
 /* ============================ MAIN ============================ */
 export function PortfolioSite() {
   const [menuOpen, setMenuOpen] = useState(false)
@@ -912,8 +928,34 @@ export function PortfolioSite() {
   const [activeSection, setActiveSection] = useState('')
   const [introComplete, setIntroComplete] = useState(false)
 
-  const [formStatus, setFormStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
+  // ---- Contact form state ----
+  // formStatus stages:
+  //   idle            -> filling out the form
+  //   submitting-otp  -> requesting a verification code
+  //   awaiting-otp    -> code sent, waiting for user to enter it
+  //   verifying       -> verifying the entered code + sending final email
+  //   success         -> message sent
+  //   error           -> something failed (see formError for detail)
+  const [formStatus, setFormStatus] = useState<
+    'idle' | 'submitting-otp' | 'awaiting-otp' | 'verifying' | 'success' | 'error'
+  >('idle')
   const [form, setForm] = useState({ name: '', email: '', subject: '', message: '' })
+  const [formError, setFormError] = useState<string | null>(null)
+  const [otpToken, setOtpToken] = useState<string | null>(null)
+  const [otpCode, setOtpCode] = useState('')
+  const [otpError, setOtpError] = useState<string | null>(null)
+  const [resendCooldown, setResendCooldown] = useState(0)
+
+  const [emailBlurred, setEmailBlurred] = useState(false)
+
+  const EMAIL_REGEX = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/
+  const emailLooksValid = EMAIL_REGEX.test(form.email.trim())
+  const emailTouched = form.email.length > 0
+  // Only surface the invalid-email styling once the user has left the field
+  // (or tried to submit). Showing it on every keystroke was what made the
+  // input's ring + helper text flicker in and out while typing, which read
+  // as the box "squeezing".
+  const emailHasError = emailBlurred && emailTouched && !emailLooksValid
 
   useEffect(() => { document.documentElement.setAttribute('data-theme', theme) }, [theme])
 
@@ -941,6 +983,13 @@ export function PortfolioSite() {
     return () => io.disconnect()
   }, [introComplete])
 
+  // Resend cooldown ticker
+  useEffect(() => {
+    if (resendCooldown <= 0) return
+    const id = setInterval(() => setResendCooldown((c) => Math.max(0, c - 1)), 1000)
+    return () => clearInterval(id)
+  }, [resendCooldown])
+
   const copyEmail = async () => {
     try {
       await navigator.clipboard.writeText(contactInfo.email)
@@ -949,23 +998,105 @@ export function PortfolioSite() {
     } catch { /* noop */ }
   }
 
-  const handleFormSubmit = async (e: React.FormEvent) => {
+  const resetForm = () => {
+    setFormStatus('idle')
+    setForm({ name: '', email: '', subject: '', message: '' })
+    setOtpToken(null)
+    setOtpCode('')
+    setOtpError(null)
+    setFormError(null)
+    setResendCooldown(0)
+    setEmailBlurred(false)
+  }
+
+  // Step 1: validate + request an OTP to be emailed to the address entered.
+  const requestOtp = async (e: React.FormEvent) => {
     e.preventDefault()
-    setFormStatus('loading')
+    setFormError(null)
+
+    if (!emailLooksValid) {
+      setEmailBlurred(true)
+      setFormError('Please enter a valid email address before continuing.')
+      return
+    }
+
+    setFormStatus('submitting-otp')
     try {
-      const res = await fetch('/api/contact', {
+      const res = await fetch('/api/contact/send-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),
       })
-      if (res.ok) {
-        setFormStatus('success')
-        setForm({ name: '', email: '', subject: '', message: '' })
+      const data = await res.json().catch(() => ({}))
+      if (res.ok && data.token) {
+        setOtpToken(data.token)
+        setOtpCode('')
+        setOtpError(null)
+        setFormStatus('awaiting-otp')
+        setResendCooldown(45)
       } else {
+        setFormError(data.error || 'Failed to send verification code. Please try again.')
         setFormStatus('error')
       }
-    } catch (err) {
+    } catch {
+      setFormError('Network error — please check your connection and try again.')
       setFormStatus('error')
+    }
+  }
+
+  // Resend: re-request a fresh OTP (same underlying endpoint).
+  const resendOtp = async () => {
+    if (resendCooldown > 0) return
+    setOtpError(null)
+    setFormStatus('submitting-otp')
+    try {
+      const res = await fetch('/api/contact/send-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (res.ok && data.token) {
+        setOtpToken(data.token)
+        setOtpCode('')
+        setFormStatus('awaiting-otp')
+        setResendCooldown(45)
+      } else {
+        setOtpError(data.error || 'Failed to resend code. Please try again.')
+        setFormStatus('awaiting-otp')
+      }
+    } catch {
+      setOtpError('Network error — please try again.')
+      setFormStatus('awaiting-otp')
+    }
+  }
+
+  // Step 2: verify the code the user entered; on success the server sends
+  // the actual contact email and this becomes the terminal success state.
+  const verifyOtpAndSend = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!otpToken || otpCode.length !== 6) {
+      setOtpError('Enter the 6-digit code sent to your email.')
+      return
+    }
+    setOtpError(null)
+    setFormStatus('verifying')
+    try {
+      const res = await fetch('/api/contact/verify-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: otpToken, code: otpCode }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (res.ok) {
+        setFormStatus('success')
+      } else {
+        setOtpError(data.error || 'Verification failed. Please try again.')
+        setFormStatus('awaiting-otp')
+      }
+    } catch {
+      setOtpError('Network error — please try again.')
+      setFormStatus('awaiting-otp')
     }
   }
 
@@ -992,8 +1123,6 @@ export function PortfolioSite() {
   return (
     <main className="min-h-screen overflow-hidden bg-background text-foreground">
       {!introComplete && <IntroLoader onComplete={() => setIntroComplete(true)} />}
-
-      {/* Custom Cursor Removed entirely as requested */}
 
       <ScrollProgress />
       <SideNavDots activeSection={activeSection} />
@@ -1376,15 +1505,18 @@ export function PortfolioSite() {
               </div>
             </Reveal>
             <Reveal delay={120} variant="right">
-              <form onSubmit={handleFormSubmit} className="rounded-3xl border border-primary-foreground/20 bg-primary-foreground/5 p-6 backdrop-blur md:p-8">
+              <form
+                onSubmit={formStatus === 'awaiting-otp' ? verifyOtpAndSend : requestOtp}
+                className="rounded-3xl border border-primary-foreground/20 bg-primary-foreground/5 p-6 backdrop-blur md:p-8"
+              >
                 {formStatus === 'success' ? (
                   <div className="flex h-full min-h-[300px] flex-col items-center justify-center text-center">
                     <span className="grid size-14 place-items-center rounded-full bg-background text-foreground">
                       <Check className="size-6" />
                     </span>
                     <p className="mt-5 text-xl font-medium">Message sent successfully!</p>
-                    <p className="mt-2 max-w-xs text-sm opacity-80">Thanks for reaching out. I&apos;ll get back to you shortly.</p>
-                    <button type="button" onClick={() => setFormStatus('idle')} className="mt-6 font-mono text-[10px] tracking-[0.14em] uppercase opacity-70 hover:opacity-100">Send another →</button>
+                    <p className="mt-2 max-w-xs text-sm opacity-80">Thanks for reaching out — your email was verified and the message is on its way. I&apos;ll get back to you shortly.</p>
+                    <button type="button" onClick={resetForm} className="mt-6 font-mono text-[10px] tracking-[0.14em] uppercase opacity-70 hover:opacity-100">Send another →</button>
                   </div>
                 ) : formStatus === 'error' ? (
                   <div className="flex h-full min-h-[300px] flex-col items-center justify-center text-center">
@@ -1392,36 +1524,107 @@ export function PortfolioSite() {
                       <X className="size-6" />
                     </span>
                     <p className="mt-5 text-xl font-medium">Something went wrong.</p>
-                    <p className="mt-2 max-w-xs text-sm opacity-80">Please try again or email me directly at {contactInfo.email}.</p>
+                    <p className="mt-2 max-w-xs text-sm opacity-80">{formError || `Please try again or email me directly at ${contactInfo.email}.`}</p>
                     <button type="button" onClick={() => setFormStatus('idle')} className="mt-6 font-mono text-[10px] tracking-[0.14em] uppercase opacity-70 hover:opacity-100">Try again →</button>
+                  </div>
+                ) : formStatus === 'awaiting-otp' || formStatus === 'verifying' ? (
+                  <div className="flex h-full min-h-[300px] flex-col items-center justify-center text-center">
+                    <span className="grid size-14 place-items-center rounded-full bg-background text-foreground">
+                      <ShieldCheck className="size-6" />
+                    </span>
+                    <p className="mt-5 text-xl font-medium">Check your inbox</p>
+                    <p className="mt-2 max-w-xs text-sm opacity-80">
+                      We sent a 6-digit code to <span className="font-medium">{form.email}</span>. Enter it below to verify and send your message.
+                    </p>
+
+                    <div className="mt-6 w-full max-w-xs">
+                      <OtpInput value={otpCode} onChange={setOtpCode} disabled={formStatus === 'verifying'} />
+                    </div>
+
+                    {otpError && (
+                      <p className="mt-3 text-xs text-destructive-foreground/90 bg-destructive/20 rounded-full px-3 py-1.5">{otpError}</p>
+                    )}
+
+                    <button
+                      type="submit"
+                      disabled={formStatus === 'verifying' || otpCode.length !== 6}
+                      className="mt-6 flex w-full max-w-xs items-center justify-center gap-2 rounded-full bg-background px-5 py-3 font-mono text-[11px] tracking-[0.14em] text-foreground uppercase transition-transform hover:-translate-y-0.5 disabled:translate-y-0 disabled:opacity-50"
+                    >
+                      {formStatus === 'verifying' ? (
+                        <><Loader2 className="size-3.5 animate-spin" /> Verifying...</>
+                      ) : (
+                        <>Verify & send <Send className="size-3.5" /></>
+                      )}
+                    </button>
+
+                    <div className="mt-4 flex items-center gap-4 font-mono text-[10px] tracking-[0.12em] uppercase opacity-70">
+                      <button
+                        type="button"
+                        onClick={resendOtp}
+                        disabled={resendCooldown > 0 || formStatus === 'verifying'}
+                        className="inline-flex items-center gap-1.5 hover:opacity-100 disabled:opacity-40"
+                      >
+                        <RotateCcw className="size-3" />
+                        {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend code'}
+                      </button>
+                      <span aria-hidden="true">·</span>
+                      <button type="button" onClick={resetForm} className="hover:opacity-100">
+                        Edit details
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   <div className="space-y-4">
                     <div className="grid gap-4 sm:grid-cols-2">
-                      <label className="block">
+                      <label className="block min-w-0">
                         <span className="font-mono text-[10px] tracking-[0.14em] uppercase opacity-70">Name</span>
-                        <input required type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Your name" className="contact-input mt-2" />
+                        <input required type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Your name" className="contact-input mt-2 box-border w-full min-w-0" />
                       </label>
-                      <label className="block">
+                      <label className="block min-w-0">
                         <span className="font-mono text-[10px] tracking-[0.14em] uppercase opacity-70">Email</span>
-                        <input required type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="you@email.com" className="contact-input mt-2" />
+                        <input
+                          required
+                          type="email"
+                          value={form.email}
+                          onChange={(e) => setForm({ ...form, email: e.target.value })}
+                          onFocus={() => setEmailBlurred(false)}
+                          onBlur={() => setEmailBlurred(true)}
+                          placeholder="you@email.com"
+                          className={`contact-input mt-2 box-border w-full min-w-0 ${emailHasError ? 'ring-1 ring-destructive' : ''}`}
+                          aria-invalid={emailHasError}
+                        />
+                        {emailHasError && (
+                          <span className="mt-1 block text-[10px] normal-case tracking-normal text-destructive-foreground/90">Enter a valid email address.</span>
+                        )}
                       </label>
                     </div>
-                    <label className="block">
+                    <label className="block min-w-0">
                       <span className="font-mono text-[10px] tracking-[0.14em] uppercase opacity-70">Subject</span>
-                      <input required type="text" value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} placeholder="What's this about?" className="contact-input mt-2" />
+                      <input required type="text" value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} placeholder="What's this about?" className="contact-input mt-2 box-border w-full min-w-0" />
                     </label>
-                    <label className="block">
+                    <label className="block min-w-0">
                       <span className="font-mono text-[10px] tracking-[0.14em] uppercase opacity-70">Message</span>
-                      <textarea required rows={5} value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} placeholder="Tell me about your project, idea, or just say hi." className="contact-input mt-2 resize-none" />
+                      <textarea required rows={5} value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} placeholder="Tell me about your project, idea, or just say hi." className="contact-input mt-2 box-border w-full min-w-0 resize-none" />
                     </label>
-                    <button type="submit" disabled={formStatus === 'loading'} className="flex w-full items-center justify-center gap-2 rounded-full bg-background px-5 py-3 font-mono text-[11px] tracking-[0.14em] text-foreground uppercase transition-transform hover:-translate-y-0.5 disabled:translate-y-0 disabled:opacity-70">
-                      {formStatus === 'loading' ? (
-                        <><Loader2 className="size-3.5 animate-spin" /> Sending...</>
+
+                    {formError && (
+                      <p className="text-xs text-destructive-foreground/90 bg-destructive/20 rounded-lg px-3 py-2">{formError}</p>
+                    )}
+
+                    <button
+                      type="submit"
+                      disabled={formStatus === 'submitting-otp' || !emailLooksValid}
+                      className="flex w-full items-center justify-center gap-2 rounded-full bg-background px-5 py-3 font-mono text-[11px] tracking-[0.14em] text-foreground uppercase transition-transform hover:-translate-y-0.5 disabled:translate-y-0 disabled:opacity-70"
+                    >
+                      {formStatus === 'submitting-otp' ? (
+                        <><Loader2 className="size-3.5 animate-spin" /> Sending code...</>
                       ) : (
-                        <>Send message <Send className="size-3.5" /></>
+                        <>Verify email & send <ShieldCheck className="size-3.5" /></>
                       )}
                     </button>
+                    <p className="text-center text-[10px] font-mono uppercase tracking-[0.1em] opacity-50">
+                      We&apos;ll email you a one-time code to confirm it&apos;s really you. Max 2 messages per day.
+                    </p>
                   </div>
                 )}
               </form>

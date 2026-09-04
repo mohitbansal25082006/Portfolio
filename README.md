@@ -27,7 +27,7 @@
 
 ## 🌟 Overview
 
-A single-page, highly interactive portfolio built for **Mohit Bansal**. This isn't just a static resume—it's a real-time web application featuring live GitHub API integration, an advanced cross-platform resume PDF viewer, a custom-built image lightbox, and 6 fully swappable color themes.
+A single-page, highly interactive portfolio built for **Mohit Bansal**. This isn't just a static resume—it's a real-time web application featuring live GitHub API integration, an advanced cross-platform resume PDF viewer, a custom-built image lightbox, an OTP-verified & rate-limited contact form, and 6 fully swappable color themes.
 
 🚀 **Live Site:** [https://mohitbansal-kohl.vercel.app/](https://mohitbansal-kohl.vercel.app/)
 
@@ -44,6 +44,7 @@ A single-page, highly interactive portfolio built for **Mohit Bansal**. This isn
 - **Live GitHub Integration:** Real-time data fetching via GraphQL & REST APIs.
 - **In-Browser PDF Viewer:** Canvas-rendered resume viewer replacing unreliable native `<iframe>` plugins.
 - **Custom Image Lightbox:** A zero-dependency, mobile-safe full-screen image viewer.
+- **OTP-Verified Contact Form:** Two-step email verification via a 6-digit one-time code, plus per-IP daily rate limiting, to keep the inbox spam- and spoof-free.
 
 ---
 
@@ -81,6 +82,20 @@ Both the Resume and Projects sections required handling complex media on mobile 
   - **Smart Thumbnails:** Thumbnail strip only renders if the project has ≤ 8 images to prevent UI overflow.
 </details>
 
+<details>
+  <summary><b>🛡️ OTP-Verified, Rate-Limited Contact Form (Click to expand)</b></summary>
+  <br/>
+
+  **The Problem:** A plain contact form lets anyone type a fake or mistyped email address into the "From" field, and lets bots/spammers hammer the send button with unlimited requests.
+
+  **The Solution:** A two-step, server-verified flow with per-IP throttling.
+  - **Step 1 — Request a code:** The visitor fills out the form. The server validates the email format, checks the sender's daily quota, and emails a 6-digit one-time code to the address entered (not to the site owner).
+  - **Step 2 — Verify & send:** The visitor enters the code in an auto-advancing 6-digit input (with paste support). Only once the code is confirmed does the server send the actual message to the site owner's inbox — with the sender's email marked "(verified ✓)".
+  - **Rate Limiting:** Capped at **2 successfully-sent messages per IP address per day**, tracked server-side (not client-side, so it can't be bypassed by clearing local storage). A separate, slightly more lenient cap on OTP *requests* themselves stops someone from spamming the code-send step without ever completing verification.
+  - **OTP Safety:** Codes expire after 10 minutes, allow a maximum of 5 incorrect attempts before requiring a fresh code, and are single-use (deleted immediately on successful verification).
+  - **UX Details:** Live email-format validation before submitting, a 45-second cooldown on "Resend code," an "Edit details" escape hatch back to the form, and clear inline error states for expired/incorrect codes or a reached rate limit.
+</details>
+
 ---
 
 ## 🐙 Live GitHub Section
@@ -104,7 +119,7 @@ Unlike the rest of the site (which is static), this section pulls **real, real-t
 | **Styling** | Tailwind CSS v4, `oklch()` CSS Variables |
 | **UI Primitives** | `@base-ui/react`, `class-variance-authority`, `lucide-react` |
 | **PDF Rendering** | `pdfjs-dist` (Canvas-based, client-side) |
-| **Backend / API** | Next.js Route Handlers (GitHub GraphQL v4, REST v3) |
+| **Backend / API** | Next.js Route Handlers (GitHub GraphQL v4, REST v3, OTP-verified contact) |
 | **Email** | Nodemailer (Gmail SMTP) |
 | **Analytics** | `@vercel/analytics` |
 | **Deployment** | Vercel |
@@ -116,42 +131,48 @@ Unlike the rest of the site (which is static), this section pulls **real, real-t
 ```text
 portfolio-website/
 ├── app/
-│   ├── api/                  # Next.js Route Handlers
-│   │   ├── contact/          # Nodemailer email integration
-│   │   └── github/           # GitHub GraphQL/REST API proxy
-│   ├── globals.css           # Theme tokens, base styles, animations
-│   └── layout.tsx            # Root layout, fonts, metadata
+│   ├── api/                        # Next.js Route Handlers
+│   │   ├── contact/
+│   │   │   ├── route.ts            # Deprecated — returns 410, points to the two endpoints below
+│   │   │   ├── send-otp/route.ts   # Step 1: validates email, checks quota, emails a 6-digit code
+│   │   │   └── verify-otp/route.ts # Step 2: verifies the code, sends the real message
+│   │   └── github/                 # GitHub GraphQL/REST API proxy
+│   ├── globals.css                 # Theme tokens, base styles, animations
+│   └── layout.tsx                  # Root layout, fonts, metadata
 ├── components/
-│   ├── portfolio-site.tsx    # Main page assembly & sections
-│   ├── image-viewer.tsx      # ★ Custom mobile-safe image lightbox
-│   ├── pdf-viewer.tsx        # ★ Advanced pdfjs-dist viewer
-│   ├── github-section.tsx    # Live GitHub data UI
-│   └── ui/button.tsx         # Shared button component
+│   ├── portfolio-site.tsx          # Main page assembly & sections (incl. OTP contact form UI)
+│   ├── image-viewer.tsx            # ★ Custom mobile-safe image lightbox
+│   ├── pdf-viewer.tsx              # ★ Advanced pdfjs-dist viewer
+│   ├── github-section.tsx          # Live GitHub data UI
+│   └── ui/button.tsx               # Shared button component
 ├── hooks/
-│   ├── use-github-profile.ts # Fetches /api/github
-│   └── use-day-commits.ts    # Fetches day-specific commits
+│   ├── use-github-profile.ts       # Fetches /api/github
+│   └── use-day-commits.ts          # Fetches day-specific commits
 ├── lib/
-│   ├── content.ts            # Single source of truth for static content
-│   ├── github.ts             # Server-only GitHub client
-│   └── utils.ts              # cn() classname helper
+│   ├── content.ts                  # Single source of truth for static content
+│   ├── github.ts                   # Server-only GitHub client
+│   ├── rate-limit.ts               # ★ In-memory IP rate limiter + OTP session store
+│   └── utils.ts                    # cn() classname helper
 └── public/
-    └── resume.pdf            # Resume rendered by the PDF viewer
+    └── resume.pdf                  # Resume rendered by the PDF viewer
 ```
 
 ---
 
 ## ⚙️ Environment Variables
 
-To run this project locally, you will need to set up the following environment variables in a `.env.local` file. See `.env.local.example` for the template.
+To run this project locally, you will need to set up the following environment variables in a `.env.local` file. See `.env.example` for the template.
 
 | Variable | Purpose |
 | --- | --- |
 | `GITHUB_TOKEN` | Fine-grained GitHub PAT (public repos + followers, read-only). |
 | `GITHUB_USERNAME` | Default GitHub login if `?username=` isn't passed. |
-| `EMAIL_USER` | Gmail address the contact form sends from/to. |
+| `EMAIL_USER` | Gmail address used to send OTP codes and to receive contact-form messages. |
 | `EMAIL_PASS` | Gmail App Password for Nodemailer auth. |
 
-> **Note:** The PDF viewer and Image viewer require **no** environment variables. They work entirely client-side against static assets.
+> **Note:** The PDF viewer and Image viewer require **no** environment variables. They work entirely client-side against static assets. The OTP-verified contact form reuses `EMAIL_USER` / `EMAIL_PASS` — no additional variables are needed.
+
+> **Serverless caveat:** Rate limiting and OTP sessions are currently stored in-memory (see `lib/rate-limit.ts`). This is fine for a low-traffic personal site, but on Vercel's serverless functions the store isn't guaranteed to persist across instances. For a hard guarantee at higher traffic, swap it for a shared store such as Vercel KV or Upstash Redis — the module is written so that's a drop-in change.
 
 ---
 
@@ -174,7 +195,7 @@ pnpm install
 ### 3. Set up environment variables
 Copy the example file and fill in your details:
 ```bash
-cp .env.local.example .env.local
+cp .env.example .env.local
 ```
 
 ### 4. Run the development server
