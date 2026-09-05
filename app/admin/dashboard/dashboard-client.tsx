@@ -30,6 +30,7 @@ import {
   Menu,
   X,
   Palette,
+  BarChart2,
 } from 'lucide-react'
 import { themes } from '@/lib/content'
 
@@ -159,6 +160,7 @@ export default function AdminDashboardClient({ adminEmail }: { adminEmail: strin
   const navItems: NavItem[] = [
     { icon: <LayoutDashboard className="h-4 w-4" />, label: 'Dashboard', href: '/admin/dashboard', active: true },
     { icon: <MessageSquare className="h-4 w-4" />, label: 'Messages', href: '/admin/messages', badge: msgStats?.unread ?? 0 },
+    { icon: <BarChart2 className="h-4 w-4" />, label: 'Analytics', href: '/admin/analytics' },
     { icon: <FileText className="h-4 w-4" />, label: 'Content', href: '/admin/content' },
     { icon: <Users className="h-4 w-4" />, label: 'Visitors', href: '/admin/visitors' },
     { icon: <Settings className="h-4 w-4" />, label: 'Settings', href: '/admin/settings' },
@@ -167,7 +169,7 @@ export default function AdminDashboardClient({ adminEmail }: { adminEmail: strin
   const stats: StatCardProps[] = [
     {
       icon: <Eye className="h-5 w-5" style={{ color: 'var(--primary)' }} />,
-      label: 'Page Views', value: '—', sub: 'Connect analytics to view',
+      label: 'Page Views', value: '—', sub: 'See Analytics tab for details',
       color: 'color-mix(in oklch, var(--primary) 15%, transparent)',
     },
     {
