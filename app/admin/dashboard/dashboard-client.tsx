@@ -137,6 +137,15 @@ export default function AdminDashboardClient({ adminEmail }: { adminEmail: strin
   const [loggingOut, setLoggingOut] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [showThemePicker, setShowThemePicker] = useState(false)
+  const [msgStats, setMsgStats] = useState<{ total: number; unread: number } | null>(null)
+
+  // Fetch message stats for the dashboard overview card + sidebar badge
+  useEffect(() => {
+    fetch('/api/admin/messages?filter=all')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.stats) setMsgStats(d.stats) })
+      .catch(() => {})
+  }, [])
 
   const handleLogout = useCallback(async () => {
     setLoggingOut(true)
@@ -149,7 +158,7 @@ export default function AdminDashboardClient({ adminEmail }: { adminEmail: strin
 
   const navItems: NavItem[] = [
     { icon: <LayoutDashboard className="h-4 w-4" />, label: 'Dashboard', href: '/admin/dashboard', active: true },
-    { icon: <MessageSquare className="h-4 w-4" />, label: 'Messages', href: '/admin/messages', badge: 0 },
+    { icon: <MessageSquare className="h-4 w-4" />, label: 'Messages', href: '/admin/messages', badge: msgStats?.unread ?? 0 },
     { icon: <FileText className="h-4 w-4" />, label: 'Content', href: '/admin/content' },
     { icon: <Users className="h-4 w-4" />, label: 'Visitors', href: '/admin/visitors' },
     { icon: <Settings className="h-4 w-4" />, label: 'Settings', href: '/admin/settings' },
@@ -163,7 +172,9 @@ export default function AdminDashboardClient({ adminEmail }: { adminEmail: strin
     },
     {
       icon: <MessageSquare className="h-5 w-5" style={{ color: 'oklch(0.75 0.18 220)' }} />,
-      label: 'Messages', value: '—', sub: 'Total contact form submissions',
+      label: 'Messages',
+      value: msgStats ? msgStats.total : '—',
+      sub: msgStats ? `${msgStats.unread} unread` : 'Total contact form submissions',
       color: 'color-mix(in oklch, oklch(0.75 0.18 220) 15%, transparent)',
     },
     {

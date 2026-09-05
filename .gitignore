@@ -14,5 +14,8 @@ __v0_jsx-dev-runtime.ts
 node_modules
 .next/
 .DS_Store
+*.tsbuildinfo
 
 project-structure.md
+
+.data/

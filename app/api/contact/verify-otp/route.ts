@@ -7,6 +7,7 @@ import {
   verifyOtpSession,
   RATE_LIMIT_CONFIG,
 } from '@/lib/rate-limit'
+import { saveMessage } from '@/lib/messages'
 
 export async function POST(req: NextRequest) {
   try {
@@ -104,6 +105,9 @@ export async function POST(req: NextRequest) {
     }
 
     await transporter.sendMail(mailOptions)
+
+    // Persist the message so it appears in the admin dashboard.
+    await saveMessage({ name, email, subject, message })
 
     // Only consume the daily quota once the message has actually sent.
     consumeRateLimit(ip)

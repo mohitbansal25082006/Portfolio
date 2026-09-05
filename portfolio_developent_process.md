@@ -166,3 +166,49 @@ lib/admin-auth.ts          (re-exports ADMIN_COOKIE_NAME from edge file, removed
 | 5 | Sidebar overflowing viewport height | Root wrapper set to `h-screen overflow-hidden`; nav and main body scroll independently |
 | 6 | `Shield` placeholder icon in header | Replaced with `<img src="/icon.ico">` (actual site favicon) |
 | 7 | Hardcoded `data-theme="midnight"` in layout | Removed; theme now applied per-page via localStorage hook |
+
+# Part 2.2 — Development Process & Change Log
+
+## Features Added
+
+### Messages Inbox UI
+- **Messages Dashboard** at `/admin/messages` — Full-featured inbox to view all contact form submissions.
+- **Live Search & Filters** — Filter by All, Unread, Read, Replied, and search across name, email, subject, and message content.
+- **Bulk Actions** — Select multiple messages to mark as read/unread or delete them in bulk.
+- **Detail Modal & Inline Reply** — Click a message to read the full text and reply directly from the dashboard. Replies are sent via `nodemailer` using the portfolio's connected Gmail account.
+- **Live Stats Integration** — Dashboard overview cards and the sidebar navigation badge now fetch and display the real-time unread messages count.
+
+### Dual-Backend Storage System
+- **Upstash Redis (Production)** — Automatically used when `KV_REST_API_URL` and `KV_REST_API_TOKEN` are present (injected by Vercel KV). Ensures messages persist across serverless deployments.
+- **Local JSON Fallback (Development)** — Automatically falls back to saving a `.data/portfolio-messages.json` file in local dev environments without requiring any external database setup.
+
+### Contact Form Integration
+- **Message Persistence** — Updated the public contact form's `verify-otp` route to save messages into the dual-backend store immediately upon successful verification and email delivery.
+
+---
+
+## Files Created
+
+```
+lib/messages.ts
+app/api/admin/messages/route.ts
+app/api/admin/messages/[id]/route.ts
+app/api/admin/messages/reply/route.ts
+app/admin/messages/page.tsx
+app/admin/messages/messages-client.tsx
+```
+
+## Files Updated
+
+```
+app/api/contact/verify-otp/route.ts       (Added saveMessage call on success)
+app/admin/dashboard/dashboard-client.tsx  (Added live stats fetch and UI wiring)
+.env.example                              (Added Upstash Redis / Vercel KV variables)
+.gitignore                                (Added *.tsbuildinfo rule)
+```
+
+## Packages Installed
+
+```bash
+npm install @upstash/redis
+```
