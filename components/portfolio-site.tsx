@@ -831,7 +831,7 @@ function Hero({ introComplete }: { introComplete: boolean }) {
           </p>
           <div className="flex flex-wrap gap-3 stagger-item" data-stagger style={{ transitionDelay: '2400ms' }}>
             <Magnetic strength={0.25}>
-              <a href={siteConfig.resumeUrl} download className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 font-mono text-[11px] tracking-[0.12em] text-primary-foreground uppercase transition-transform hover:-translate-y-0.5">
+              <a href="/api/resume/download" className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 font-mono text-[11px] tracking-[0.12em] text-primary-foreground uppercase transition-transform hover:-translate-y-0.5">
                 Download Resume <Download className="size-3.5" />
               </a>
             </Magnetic>
@@ -927,6 +927,25 @@ export function PortfolioSite() {
   const [query, setQuery] = useState('')
   const [activeSection, setActiveSection] = useState('')
   const [introComplete, setIntroComplete] = useState(false)
+
+  // ---- Live resume metadata (Part 2.4) ----
+  // Falls back to the static siteConfig.resumeUrl / "resume.pdf" until the
+  // client fetch resolves, so there's no layout shift or broken link during
+  // the brief window before this loads.
+  const [resumeUrl, setResumeUrl] = useState(siteConfig.resumeUrl)
+  const [resumeFileName, setResumeFileName] = useState('resume.pdf')
+
+  useEffect(() => {
+    fetch('/api/resume')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.url) setResumeUrl(d.url)
+        if (d?.fileName) setResumeFileName(d.fileName)
+      })
+      .catch(() => {
+        // Silent fallback — static resumeUrl already covers this case.
+      })
+  }, [])
 
   // ---- Contact form state ----
   // formStatus stages:
@@ -1459,17 +1478,17 @@ export function PortfolioSite() {
                 A concise overview of my skills, projects, experience, and education—all in one place. Updated regularly.
               </p>
               <div className="mt-8 flex flex-wrap gap-3">
-                <a href={siteConfig.resumeUrl} download className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 font-mono text-[11px] tracking-[0.12em] text-primary-foreground uppercase transition-transform hover:-translate-y-0.5">
+                <a href="/api/resume/download" className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 font-mono text-[11px] tracking-[0.12em] text-primary-foreground uppercase transition-transform hover:-translate-y-0.5">
                   Download PDF <Download className="size-3.5" />
                 </a>
-                <a href={siteConfig.resumeUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-full border border-border px-5 py-2.5 font-mono text-[11px] tracking-[0.12em] uppercase transition-colors hover:border-primary hover:bg-primary hover:text-primary-foreground">
+                <a href={resumeUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-full border border-border px-5 py-2.5 font-mono text-[11px] tracking-[0.12em] uppercase transition-colors hover:border-primary hover:bg-primary hover:text-primary-foreground">
                   View in browser <ExternalLink className="size-3.5" />
                 </a>
               </div>
             </div>
           </Reveal>
           <Reveal delay={120} variant="scale">
-            <PdfViewer url={siteConfig.resumeUrl} fileName="resume.pdf" />
+            <PdfViewer url={resumeUrl} fileName={resumeFileName} />
           </Reveal>
         </div>
       </section>

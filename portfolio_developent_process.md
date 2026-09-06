@@ -3,8 +3,6 @@
 ## Overview
 Part 1 covers the initial build of the portfolio site: project scaffolding, the main single-page layout, the live GitHub integration, the custom PDF and image viewers, and the OTP-verified contact form.
 
----
-
 ## Features Added
 
 - **Single-page portfolio layout** (`portfolio-site.tsx`) — hero, about, skills, projects, timeline, contact, all sections assembled with scroll-based reveal animations.
@@ -18,8 +16,6 @@ Part 1 covers the initial build of the portfolio site: project scaffolding, the 
 - **OTP-verified, rate-limited contact form** (`app/api/contact/send-otp`, `app/api/contact/verify-otp`, `lib/rate-limit.ts`) — two-step email verification, per-IP daily send cap, OTP expiry/attempt limits, resend cooldown.
 - **Project gallery component** for browsing per-project screenshots.
 - **Vercel Analytics** integration in `layout.tsx`.
-
----
 
 ## Files Created
 
@@ -69,8 +65,6 @@ public/neurafusion/  (6 images)
 public/teamscript/  (3 images)
 ```
 
----
-
 ## Commands Run
 
 ```bash
@@ -100,31 +94,27 @@ npm run lint
 
 # Part 2.1 — Development Process & Change Log
 
+## Overview
+Part 2.1 introduces the admin dashboard: an authentication system for the site owner, protected `/admin/*` routes, and full integration of the existing 6-theme system into the admin UI.
+
 ## Features Added
 
-### Authentication System
-- **Admin login page** at `/admin` — email + password form with field validation, show/hide password toggle, generic error banner, aurora + grid background, styled with existing design tokens
-- **Admin dashboard shell** at `/admin/dashboard` — responsive sidebar, top nav bar, welcome banner, 4 stat card slots, activity feed placeholder, quick actions panel
-- **Multi-admin credential support** — reads `ADMIN_MAIL1/ADMIN_PASSWORD1`, `ADMIN_MAIL2/ADMIN_PASSWORD2`, … (unlimited) from `.env.local` at runtime
-- **HMAC-SHA256 session tokens** — signed with `ADMIN_SESSION_SECRET`, no external JWT library required, stored in `httpOnly` / `secure` / `sameSite=strict` cookie
-- **Automatic redirects** — already-logged-in users visiting `/admin` → `/admin/dashboard`; unauthenticated users hitting protected routes → `/admin?redirect=<path>`
-- **Logout** — `POST /api/admin/logout` immediately expires the cookie; client redirects to `/admin`
-- **Timing-safe credential comparison** — uses `crypto.timingSafeEqual` to prevent timing attacks
-- **Admin pages excluded from search indexing** — `robots: { index: false }` in admin layout metadata
-
-### Route Protection
-- **Next.js 16 `proxy.ts`** — edge proxy guards all `/admin/*` routes using the Web Crypto API (no Node.js modules), double-layer auth (proxy + server component DAL)
-- **Edge-safe auth split** — `lib/admin-auth-edge.ts` (Web Crypto, edge-compatible) vs `lib/admin-auth.ts` (Node crypto, server-only) to avoid runtime conflicts
-
-### UI & Theme System
-- **Full theme integration** — all 6 portfolio themes (Midnight, Cyberpunk, Glass, Minimal, Neon, Ocean) work in the admin section
-- **Theme switcher** — Palette button on both login page and dashboard header; theme persisted in `localStorage('admin-theme')`; defaults to Midnight
-- **Input text visibility** — inputs use `var(--foreground)` for text (readable on all themes); removed `.contact-input` class which used near-black `var(--primary-foreground)` on dark backgrounds
-- **Sidebar viewport fix** — root wrapper is `h-screen overflow-hidden`; sidebar nav scrolls internally; page body scrolls independently — sidebar never overflows viewport
-- **Logo** — replaced placeholder `<Shield>` icon with actual site favicon (`/icon.ico`) in sidebar header and welcome banner
-- **Admin layout decoupled** — removed hardcoded `data-theme="midnight"` from layout; each page applies its own theme via client-side hook
-
----
+- **Admin login page** at `/admin` — email + password form with field validation, show/hide password toggle, generic error banner, aurora + grid background, styled with existing design tokens.
+- **Admin dashboard shell** at `/admin/dashboard` — responsive sidebar, top nav bar, welcome banner, 4 stat card slots, activity feed placeholder, quick actions panel.
+- **Multi-admin credential support** — reads `ADMIN_MAIL1/ADMIN_PASSWORD1`, `ADMIN_MAIL2/ADMIN_PASSWORD2`, … (unlimited) from `.env.local` at runtime.
+- **HMAC-SHA256 session tokens** — signed with `ADMIN_SESSION_SECRET`, no external JWT library required, stored in `httpOnly` / `secure` / `sameSite=strict` cookie.
+- **Automatic redirects** — already-logged-in users visiting `/admin` → `/admin/dashboard`; unauthenticated users hitting protected routes → `/admin?redirect=<path>`.
+- **Logout** — `POST /api/admin/logout` immediately expires the cookie; client redirects to `/admin`.
+- **Timing-safe credential comparison** — uses `crypto.timingSafeEqual` to prevent timing attacks.
+- **Admin pages excluded from search indexing** — `robots: { index: false }` in admin layout metadata.
+- **Next.js 16 `proxy.ts`** — edge proxy guards all `/admin/*` routes using the Web Crypto API (no Node.js modules), double-layer auth (proxy + server component DAL).
+- **Edge-safe auth split** — `lib/admin-auth-edge.ts` (Web Crypto, edge-compatible) vs `lib/admin-auth.ts` (Node crypto, server-only) to avoid runtime conflicts.
+- **Full theme integration** — all 6 portfolio themes (Midnight, Cyberpunk, Glass, Minimal, Neon, Ocean) work in the admin section.
+- **Theme switcher** — Palette button on both login page and dashboard header; theme persisted in `localStorage('admin-theme')`; defaults to Midnight.
+- **Input text visibility** — inputs use `var(--foreground)` for text (readable on all themes); removed `.contact-input` class which used near-black `var(--primary-foreground)` on dark backgrounds.
+- **Sidebar viewport fix** — root wrapper is `h-screen overflow-hidden`; sidebar nav scrolls internally; page body scrolls independently — sidebar never overflows viewport.
+- **Logo** — replaced placeholder `<Shield>` icon with actual site favicon (`/icon.ico`) in sidebar header and welcome banner.
+- **Admin layout decoupled** — removed hardcoded `data-theme="midnight"` from layout; each page applies its own theme via client-side hook.
 
 ## Files Created
 
@@ -154,23 +144,19 @@ lib/admin-auth.ts          (re-exports ADMIN_COOKIE_NAME from edge file, removed
 
 # Part 2.2 — Development Process & Change Log
 
+## Overview
+Part 2.2 builds the Messages inbox inside the admin dashboard, backed by a dual-storage system (Upstash Redis in production, a local JSON file in development) so contact form submissions persist reliably across serverless deployments.
+
 ## Features Added
 
-### Messages Inbox UI
-- **Messages Dashboard** at `/admin/messages` — Full-featured inbox to view all contact form submissions.
-- **Live Search & Filters** — Filter by All, Unread, Read, Replied, and search across name, email, subject, and message content.
-- **Bulk Actions** — Select multiple messages to mark as read/unread or delete them in bulk.
-- **Detail Modal & Inline Reply** — Click a message to read the full text and reply directly from the dashboard. Replies are sent via `nodemailer` using the portfolio's connected Gmail account.
-- **Live Stats Integration** — Dashboard overview cards and the sidebar navigation badge now fetch and display the real-time unread messages count.
-
-### Dual-Backend Storage System
-- **Upstash Redis (Production)** — Automatically used when `KV_REST_API_URL` and `KV_REST_API_TOKEN` are present (injected by Vercel KV). Ensures messages persist across serverless deployments.
-- **Local JSON Fallback (Development)** — Automatically falls back to saving a `.data/portfolio-messages.json` file in local dev environments without requiring any external database setup.
-
-### Contact Form Integration
-- **Message Persistence** — Updated the public contact form's `verify-otp` route to save messages into the dual-backend store immediately upon successful verification and email delivery.
-
----
+- **Messages Dashboard** at `/admin/messages` — full-featured inbox to view all contact form submissions.
+- **Live Search & Filters** — filter by All, Unread, Read, Replied, and search across name, email, subject, and message content.
+- **Bulk Actions** — select multiple messages to mark as read/unread or delete them in bulk.
+- **Detail Modal & Inline Reply** — click a message to read the full text and reply directly from the dashboard. Replies are sent via `nodemailer` using the portfolio's connected Gmail account.
+- **Live Stats Integration** — dashboard overview cards and the sidebar navigation badge now fetch and display the real-time unread messages count.
+- **Upstash Redis (Production)** — automatically used when `KV_REST_API_URL` and `KV_REST_API_TOKEN` are present (injected by Vercel KV). Ensures messages persist across serverless deployments.
+- **Local JSON Fallback (Development)** — automatically falls back to saving a `.data/portfolio-messages.json` file in local dev environments without requiring any external database setup.
+- **Message Persistence** — updated the public contact form's `verify-otp` route to save messages into the dual-backend store immediately upon successful verification and email delivery.
 
 ## Files Created
 
@@ -192,7 +178,7 @@ app/admin/dashboard/dashboard-client.tsx  (Added live stats fetch and UI wiring)
 .gitignore                                (Added *.tsbuildinfo rule)
 ```
 
-## Packages Installed
+## Commands Run
 
 ```bash
 npm install @upstash/redis
@@ -202,37 +188,27 @@ npm install @upstash/redis
 
 # Part 2.3 — Development Process & Change Log
 
+## Overview
+Part 2.3 adds a full Analytics dashboard to the admin panel, sourced live from the Vercel Web Analytics REST API, including a visit trend chart, device breakdown, referrer table, and a live-wired stat card on the main dashboard overview.
+
 ## Features Added
 
-### Analytics Overview Dashboard
-- **Analytics page** at `/admin/analytics` — Full analytics dashboard showing real-time data from the Vercel Web Analytics REST API.
+- **Analytics page** at `/admin/analytics` — full analytics dashboard showing real-time data from the Vercel Web Analytics REST API.
 - **4 Key Metric Stat Cards** — Total Page Views, Unique Visitors, Average Daily Views, and Top Referrers — displayed as themed cards with icons.
-- **Visit Trend Bar Chart** — Pure SVG bar chart (zero external libs) showing daily page views for the last 7 or 30 days. Y-axis ticks, x-axis date labels, hover tooltips.
-- **Device Breakdown Donut Chart** — Pure SVG donut ring visualising Desktop / Mobile / Tablet split with a percentage legend and a total-visits counter in the center.
-- **Top Referrers Table** — Horizontal bar table showing traffic sources with absolute counts and percentage breakdown.
-- **Period Toggle** — Switch between "7d" and "30d" views; all data (stats, trend, devices, referrers) re-fetches instantly on toggle.
-- **Refresh Button** — Manual data refresh with cache-busting (`_t` timestamp param + `cache: 'no-store'`) to bypass both Next.js server-side cache and browser cache.
-- **Credentials-not-configured Banner** — Amber warning banner shown when `VERCEL_API_TOKEN` or `VERCEL_PROJECT_ID` is missing, with an inline display of the API reason string for debugging.
-- **Per-section error banner** — Distinct from the credentials banner; shown when credentials ARE configured but one or more of the four Vercel calls (count / trend / referrers / devices) still failed, listing which section failed and why.
+- **Visit Trend Bar Chart** — pure SVG bar chart (zero external libs) showing daily page views for the last 7 or 30 days. Y-axis ticks, x-axis date labels, hover tooltips.
+- **Device Breakdown Donut Chart** — pure SVG donut ring visualising Desktop / Mobile / Tablet split with a percentage legend and a total-visits counter in the center.
+- **Top Referrers Table** — horizontal bar table showing traffic sources with absolute counts and percentage breakdown.
+- **Period Toggle** — switch between "7d" and "30d" views; all data (stats, trend, devices, referrers) re-fetches instantly on toggle.
+- **Refresh Button** — manual data refresh with cache-busting (`_t` timestamp param + `cache: 'no-store'`) to bypass both Next.js server-side cache and browser cache.
+- **Credentials-not-configured Banner** — amber warning banner shown when `VERCEL_API_TOKEN` or `VERCEL_PROJECT_ID` is missing, with an inline display of the API reason string for debugging.
+- **Per-section error banner** — distinct from the credentials banner; shown when credentials ARE configured but one or more of the four Vercel calls (count / trend / referrers / devices) still failed, listing which section failed and why.
 - **Dashboard "Page Views" stat card wired to live data** — the Admin Dashboard overview card now fetches the same `/api/admin/analytics?period=7d` data used by the Analytics page and displays real total page views plus a unique-visitors subtext, instead of a static placeholder.
-
-### Vercel Web Analytics REST API Integration
-- **Backend proxy route** at `/api/admin/analytics` — Auth-guarded server route that proxies 4 Vercel API calls in parallel:
-  - `GET /v1/query/web-analytics/visits/count` → total pageviews + visitors
-  - `GET /v1/query/web-analytics/visits/aggregate?by=day` → daily trend
-  - `GET /v1/query/web-analytics/visits/aggregate?by=referrerHostname` → top referrers
-  - `GET /v1/query/web-analytics/visits/aggregate?by=deviceType` → device breakdown
-- **All responses parsed with verified field names** — field mapping confirmed against the Vercel REST API reference: `data.pageviews`, `data.visitors`, `row.timestamp`, `row.referrerHostname`, `row.deviceType`.
+- **Backend proxy route** at `/api/admin/analytics` — auth-guarded server route that proxies 4 Vercel API calls in parallel (visits count, daily trend, top referrers, device breakdown).
 - **Automatic `by` param retry** — sends the simple `by=<dimension>` form first; if that specific call 400s, retries once with the array form (`by[]=<dimension>`) before giving up.
 - **Per-section error propagation** — the route returns an `_errors` object (keyed `count` / `trend` / `referrers` / `devices`) alongside the data whenever a specific call fails, instead of silently returning a zero/empty result for that section.
-- **Avg. Daily Views recalculated from trend data** — derived directly from the same `trend` array the chart renders (sum of daily views ÷ number of days in range) rather than `totalViews / period`, keeping it visually consistent with the chart above it.
+- **Avg. Daily Views recalculated from trend data** — derived directly from the same `trend` array the chart renders, keeping it visually consistent with the chart above it.
 - **Top Referrers stat card corrected** — now shows total referred page views (matching the units of the other three stat cards) instead of a raw source count; source count moved to the card's subtext.
-
-### Dashboard Integration
 - **Analytics nav item** added to the admin sidebar in `dashboard-client.tsx` (between Messages and Content).
-- **Page Views stat card** now shows real data (see above) instead of a static sub-text placeholder.
-
----
 
 ## Files Created
 
@@ -250,4 +226,52 @@ app/layout.tsx                            (Removed NODE_ENV === 'production' gua
 .env.example                              (Added VERCEL_API_TOKEN, VERCEL_PROJECT_ID, VERCEL_TEAM_ID section)
 app/api/admin/analytics/route.ts          (Per-section error handling, `by`/`by[]` retry logic)
 app/admin/analytics/analytics-client.tsx  (Avg. Daily Views and Top Referrers stat card fixes, inline error states)
+```
+
+
+
+# Part 2.4 — Development Process & Change Log
+
+## Overview
+Part 2.4 adds Resume Management to the admin dashboard: uploading a new resume PDF, viewing the current resume inline using the site's own custom PDF viewer, and tracking resume download counts — backed by Vercel Blob for file storage and the existing Upstash Redis instance for metadata.
+
+## Features Added
+
+- **Resume page** at `/admin/resume` — dedicated admin page for managing the single resume PDF visitors download from the live portfolio.
+- **Drag-and-drop upload** — a themed dropzone (click-to-browse or drag a file onto it) that uploads a new resume PDF via `multipart/form-data`, replacing whatever was previously live. Validates the file is actually a PDF by checking its `%PDF-` magic bytes server-side, and enforces a 15MB size ceiling.
+- **Inline resume preview using the site's own custom PDF viewer** — reuses `components/pdf-viewer.tsx` (the same `PdfViewer` from Part 1) instead of a plain `<iframe>`: an animated terminal-style trigger card that opens a full-screen, portal-rendered modal with zoom, pinch-to-zoom, pan, rotate, jump-to-page, and download/print controls. Fully re-themes with the rest of the admin UI since it's already built on the same CSS variables.
+- **Download count tracking** — every time a visitor downloads the resume from the public site, a counter increments; the admin Resume page displays this as a live stat card ("Total downloads").
+- **Additional stat cards** — Last updated (timestamp of the most recent upload) and File size, alongside the download counter.
+- **Storage-not-persistent warning banner** — if Vercel Blob isn't configured, an amber banner explains that uploads are only being saved to local disk and won't survive a redeploy.
+- **Resume nav item** added to the admin sidebar (`dashboard-client.tsx`), between Analytics and Content.
+- **Vercel Blob (Production)** — automatically used when `BLOB_READ_WRITE_TOKEN` is present. Stores the actual PDF bytes with public access and `addRandomSuffix: true` so re-uploads get a fresh URL. The previous blob is deleted (best-effort) on every successful re-upload.
+- **Local disk fallback (Development)** — without a Blob token, uploads are written straight to `public/resume.pdf` on disk, served immediately by `next dev`.
+- **Metadata (both environments)** — reuses the existing Upstash Redis instance from Part 2.2 to store `{ url, fileName, size, uploadedAt, downloadCount, blobPathname }` under the key `resume:meta`, with a `.data/resume-meta.json` local-file fallback when Redis isn't configured.
+- **Public download-tracking route** at `GET /api/resume/download` — increments the download counter (fire-and-forget) and issues a 307 redirect to the current resume's real URL, appending `?download=<filename>` for Vercel Blob URLs to force a native "Save As" dialog.
+- **Public metadata route** at `GET /api/resume` — unauthenticated, returns `{ url, fileName }` so the public portfolio's inline PdfViewer and "View in browser" links always point at the current file.
+- **`portfolio-site.tsx` updated** — both "Download Resume" buttons now point at `/api/resume/download`; the "View in browser" link and the inline PdfViewer now use a `resumeUrl` / `resumeFileName` pair fetched client-side from `/api/resume` on mount, falling back to the original static `siteConfig.resumeUrl` until that fetch resolves.
+
+## Files Created
+
+```
+lib/resume.ts
+app/api/admin/resume/route.ts
+app/api/resume/route.ts
+app/api/resume/download/route.ts
+app/admin/resume/page.tsx
+app/admin/resume/resume-client.tsx
+```
+
+## Files Updated
+
+```
+app/admin/dashboard/dashboard-client.tsx  (Added Resume sidebar nav item, between Analytics and Content)
+components/portfolio-site.tsx             (Download buttons routed through /api/resume/download; inline PdfViewer and "View in browser" link now use live resumeUrl/resumeFileName fetched from /api/resume)
+.env.example                              (Added BLOB_READ_WRITE_TOKEN and NEXT_PUBLIC_SITE_URL under a new "Resume Management (Part 2.4)" section)
+```
+
+## Commands Run
+
+```bash
+npm install @vercel/blob
 ```

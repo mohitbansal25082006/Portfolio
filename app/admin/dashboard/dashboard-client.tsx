@@ -212,6 +212,7 @@ export default function AdminDashboardClient({ adminEmail }: { adminEmail: strin
     { icon: <LayoutDashboard className="h-4 w-4" />, label: 'Dashboard', href: '/admin/dashboard', active: true },
     { icon: <MessageSquare className="h-4 w-4" />, label: 'Messages', href: '/admin/messages', badge: msgStats?.unread ?? 0 },
     { icon: <BarChart2 className="h-4 w-4" />, label: 'Analytics', href: '/admin/analytics' },
+    { icon: <FileText className="h-4 w-4" />, label: 'Resume', href: '/admin/resume' },
     { icon: <FileText className="h-4 w-4" />, label: 'Content', href: '/admin/content' },
     { icon: <Users className="h-4 w-4" />, label: 'Visitors', href: '/admin/visitors' },
     { icon: <Settings className="h-4 w-4" />, label: 'Settings', href: '/admin/settings' },
