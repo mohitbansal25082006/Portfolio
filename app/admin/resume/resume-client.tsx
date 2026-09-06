@@ -32,6 +32,14 @@
  * since pdf-viewer.tsx was already built entirely on the same CSS variables
  * (var(--primary), var(--card), var(--border), etc.), so it re-themes
  * automatically alongside the rest of the admin UI with zero extra work.
+ *
+ * Sidebar fix: added `min-h-0` to the scrollable `<nav>` flex child (same
+ * fix applied to dashboard-client.tsx / messages-client.tsx /
+ * analytics-client.tsx / settings-client.tsx) so it can actually shrink
+ * and scroll internally instead of clipping the bottom-most nav links.
+ * The nav list itself here already included every item, in the canonical
+ * order (Dashboard, Messages, Analytics, Resume, Content, Visitors,
+ * Settings), so no items were added or removed.
  * ---------------------------------------------------------------------------
  */
 
@@ -306,6 +314,9 @@ export default function ResumeClient({ adminEmail }: { adminEmail: string }) {
     setIsDragging(false)
   }
 
+  // Canonical 7-item nav list — kept identical (order + items) across
+  // dashboard-client.tsx, messages-client.tsx, analytics-client.tsx,
+  // resume-client.tsx, and settings-client.tsx.
   const navItems: NavItem[] = [
     { icon: <LayoutDashboard className="h-4 w-4" />, label: 'Dashboard', href: '/admin/dashboard' },
     { icon: <MessageSquare className="h-4 w-4" />, label: 'Messages', href: '/admin/messages', badge: msgStats?.unread ?? 0 },
@@ -363,7 +374,11 @@ export default function ResumeClient({ adminEmail }: { adminEmail: string }) {
           </button>
         </div>
 
-        <nav className="flex-1 overflow-y-auto p-3 space-y-1">
+        {/* Nav items — scrollable middle zone.
+            `min-h-0` is required alongside `flex-1` so this flex child can
+            actually shrink and scroll internally instead of clipping the
+            bottom-most nav links. */}
+        <nav className="flex-1 min-h-0 overflow-y-auto p-3 space-y-1">
           {navItems.map((item) => (
             <SideNavItem key={item.href} {...item} />
           ))}

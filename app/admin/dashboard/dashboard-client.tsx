@@ -3,10 +3,20 @@
 /**
  * app/admin/dashboard/dashboard-client.tsx
  *
- * Part 2.3 update:
- *  - "Page Views" stat card now fetches real data from /api/admin/analytics
- *    (last 7 days) instead of showing a hardcoded "—". Falls back to "—"
- *    only if analytics genuinely isn't configured or the call fails.
+ * Sidebar fix (post Part 2.5):
+ *  - The sidebar `<nav>` is the scrollable middle zone of a flex column
+ *    (`aside` is `flex flex-col`, header/footer are `shrink-0`, nav is
+ *    `flex-1 overflow-y-auto`). Without an explicit `min-h-0` on that flex
+ *    child, some browsers (notably Chrome/Edge under certain viewport /
+ *    zoom combinations) size the flex item to its content's intrinsic
+ *    height instead of letting it shrink to the available space — the
+ *    default `min-height: auto` on flex items. That silently clips the
+ *    bottom-most nav links (Settings, sometimes Visitors/Resume too)
+ *    instead of scrolling to reveal them. Adding `min-h-0` forces the
+ *    flex item to respect the parent's height and scroll internally as
+ *    originally intended.
+ *  - All three admin pages (Dashboard, Messages, Settings) now render the
+ *    exact same 7-item nav list so the sidebar is identical everywhere.
  *
  * Earlier fixes retained:
  *  1. Sidebar height — uses `h-screen` + `overflow-hidden` on the root so
@@ -15,9 +25,6 @@
  *  3. Theme system — theme switcher in the top-right of the header, persisted
  *     in localStorage under "admin-theme". data-theme applied to root wrapper.
  *  4. All colors use CSS vars so every theme applies correctly.
- *
- * GitHub Stars and OTP Requests remain static placeholders — out of scope
- * for Part 2.3 (Analytics only).
  */
 
 import { useState, useCallback, useEffect } from 'react'
@@ -208,6 +215,8 @@ export default function AdminDashboardClient({ adminEmail }: { adminEmail: strin
     }
   }, [router])
 
+  // Canonical 7-item nav list — kept identical (order + items) across
+  // dashboard-client.tsx, messages-client.tsx, and settings-client.tsx.
   const navItems: NavItem[] = [
     { icon: <LayoutDashboard className="h-4 w-4" />, label: 'Dashboard', href: '/admin/dashboard', active: true },
     { icon: <MessageSquare className="h-4 w-4" />, label: 'Messages', href: '/admin/messages', badge: msgStats?.unread ?? 0 },
@@ -306,8 +315,11 @@ export default function AdminDashboardClient({ adminEmail }: { adminEmail: strin
           </button>
         </div>
 
-        {/* Nav items — scrollable middle zone */}
-        <nav className="flex-1 overflow-y-auto p-3 space-y-1">
+        {/* Nav items — scrollable middle zone.
+            `min-h-0` is required alongside `flex-1` so this flex child can
+            actually shrink below its content's intrinsic height and scroll,
+            instead of overflowing/clipping the last nav items. */}
+        <nav className="flex-1 min-h-0 overflow-y-auto p-3 space-y-1">
           {navItems.map(item => (
             <SideNavItem key={item.href} {...item} />
           ))}

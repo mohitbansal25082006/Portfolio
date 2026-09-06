@@ -15,6 +15,25 @@
  * pages: uses `useAdminTheme` (localStorage 'admin-theme', defaults to
  * midnight) so all 6 portfolio themes apply here too, CSS vars for every
  * color, same card/border/shadow treatment, same sidebar + header shell.
+ *
+ * ── Fixes in this revision ──────────────────────────────────────────────
+ * 1. Sidebar: added `min-h-0` to the scrollable `<nav>` flex child (same
+ *    fix as dashboard-client.tsx / messages-client.tsx) so it can actually
+ *    shrink and scroll instead of clipping the last nav items.
+ * 2. Maintenance Mode toggle: the switch's thumb previously had nothing
+ *    clipping it to the track, so the `translateX(22px)` used to slide it
+ *    to the "on" position could render the thumb spilling outside the
+ *    rounded track (visually "outside the toggle button"), especially at
+ *    higher zoom levels or with browser font-size overrides affecting the
+ *    rem-based sizing. Fixed by:
+ *      - giving the track `overflow-hidden` so the thumb is always
+ *        clipped to the pill shape,
+ *      - sizing the thumb slightly smaller than the track's inner height
+ *        and centering it vertically with a fixed `top`/`translateY`
+ *        instead of relying on default box positioning,
+ *      - using an explicit inline-flex + relative box on the track so its
+ *        content-box size (used to compute the thumb's travel distance)
+ *        can't be altered by inherited text/line-height styles.
  * ---------------------------------------------------------------------------
  */
 
@@ -101,6 +120,82 @@ function SideNavItem({ icon, label, href, active, badge }: NavItem) {
         </span>
       )}
     </a>
+  )
+}
+
+// ─── Toggle Switch (extracted, self-contained, overflow-safe) ───────────────
+
+// Fixed pixel geometry for the switch (no Tailwind h-*/w-* + fractional
+// centering math — that combination is exactly what let the thumb clip
+// against the track edge previously). Every dimension below is explicit,
+// in px, computed once, so the thumb's vertical center always lands
+// exactly on the track's vertical center regardless of theme, browser
+// default font-size, or zoom level.
+const SWITCH_TRACK_WIDTH = 44   // px
+const SWITCH_TRACK_HEIGHT = 24  // px
+const SWITCH_THUMB_SIZE = 18    // px
+const SWITCH_THUMB_INSET = 3    // px gap between thumb and track edge, each side
+// Vertical center of the track, minus half the thumb's size, gives the
+// thumb's `top` offset that perfectly centers it — computed, not guessed.
+const SWITCH_THUMB_TOP = (SWITCH_TRACK_HEIGHT - SWITCH_THUMB_SIZE) / 2 // = 3px
+// Horizontal travel distance: track width minus thumb width minus the
+// insets on both sides.
+const SWITCH_THUMB_TRAVEL = SWITCH_TRACK_WIDTH - SWITCH_THUMB_SIZE - SWITCH_THUMB_INSET * 2 // = 20px
+
+function ToggleSwitch({
+  checked,
+  onChange,
+  ariaLabel,
+}: {
+  checked: boolean
+  onChange: () => void
+  ariaLabel?: string
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={ariaLabel}
+      onClick={onChange}
+      className="relative shrink-0 rounded-full transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+      style={{
+        // Explicit box model — no Tailwind h-6/w-11 utilities here, so
+        // nothing else in the stylesheet can ever change this track's
+        // box size out from under the thumb's hand-computed geometry.
+        width: SWITCH_TRACK_WIDTH,
+        height: SWITCH_TRACK_HEIGHT,
+        padding: 0,
+        boxSizing: 'border-box',
+        overflow: 'hidden',
+        display: 'inline-block',
+        background: checked ? 'var(--primary)' : 'var(--muted)',
+        // ring-offset-color / ring-color piggyback on CSS vars so focus
+        // rings stay on-theme across all 6 themes.
+        // @ts-expect-error -- custom properties for tailwind ring utilities
+        '--tw-ring-color': 'var(--primary)',
+        '--tw-ring-offset-color': 'var(--card)',
+      }}
+    >
+      {/* Thumb — absolutely positioned with a hard-coded `top` (not
+          top-1/2 + -translate-y-1/2, whose fractional rounding under
+          overflow:hidden was what let the circle peek outside the
+          track). `left` is fixed at the inset; only `transform:
+          translateX(...)` animates, so the thumb's box never changes
+          size or vertical position — only its horizontal position. */}
+      <span
+        aria-hidden="true"
+        className="absolute rounded-full bg-white shadow transition-transform duration-200"
+        style={{
+          left: SWITCH_THUMB_INSET,
+          top: SWITCH_THUMB_TOP,
+          width: SWITCH_THUMB_SIZE,
+          height: SWITCH_THUMB_SIZE,
+          boxSizing: 'border-box',
+          transform: checked ? `translateX(${SWITCH_THUMB_TRAVEL}px)` : 'translateX(0px)',
+        }}
+      />
+    </button>
   )
 }
 
@@ -299,6 +394,8 @@ export default function SettingsClient() {
     }
   }
 
+  // Canonical 7-item nav list — kept identical (order + items) across
+  // dashboard-client.tsx, messages-client.tsx, and settings-client.tsx.
   const navItems: NavItem[] = [
     { icon: <LayoutDashboard className="h-4 w-4" />, label: 'Dashboard', href: '/admin/dashboard' },
     { icon: <MessageSquare className="h-4 w-4" />, label: 'Messages', href: '/admin/messages', badge: msgStats?.unread ?? 0 },
@@ -351,7 +448,11 @@ export default function SettingsClient() {
           </button>
         </div>
 
-        <nav className="flex-1 overflow-y-auto p-3 space-y-1">
+        {/* Nav items — scrollable middle zone.
+            `min-h-0` is required alongside `flex-1` so this flex child can
+            actually shrink and scroll internally instead of clipping the
+            bottom-most nav links. */}
+        <nav className="flex-1 min-h-0 overflow-y-auto p-3 space-y-1">
           {navItems.map(item => (
             <SideNavItem key={item.href} {...item} />
           ))}
@@ -512,18 +613,11 @@ export default function SettingsClient() {
                       {maintenanceMode ? 'Maintenance banner is visible to visitors' : 'Site is fully available'}
                     </p>
                   </div>
-                  <button
-                    role="switch"
-                    aria-checked={maintenanceMode}
-                    onClick={() => setMaintenanceMode(v => !v)}
-                    className="relative h-6 w-11 shrink-0 rounded-full transition-colors duration-200"
-                    style={{ background: maintenanceMode ? 'var(--primary)' : 'var(--muted)' }}
-                  >
-                    <span
-                      className="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform duration-200"
-                      style={{ transform: maintenanceMode ? 'translateX(22px)' : 'translateX(2px)' }}
-                    />
-                  </button>
+                  <ToggleSwitch
+                    checked={maintenanceMode}
+                    onChange={() => setMaintenanceMode(v => !v)}
+                    ariaLabel="Toggle maintenance mode"
+                  />
                 </div>
 
                 <Field label="Banner message" hint="Shown to visitors while maintenance mode is on.">
