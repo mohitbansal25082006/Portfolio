@@ -3,6 +3,11 @@
 /**
  * app/admin/dashboard/dashboard-client.tsx
  *
+ * Part 2.6 update: added "Security" nav item (8th item, after Settings) —
+ * the canonical nav list now spans Dashboard, Messages, Analytics, Resume,
+ * Content, Visitors, Settings, Security, kept identical in order across
+ * every admin page's client component.
+ *
  * Sidebar fix (post Part 2.5):
  *  - The sidebar `<nav>` is the scrollable middle zone of a flex column
  *    (`aside` is `flex flex-col`, header/footer are `shrink-0`, nav is
@@ -15,8 +20,8 @@
  *    instead of scrolling to reveal them. Adding `min-h-0` forces the
  *    flex item to respect the parent's height and scroll internally as
  *    originally intended.
- *  - All three admin pages (Dashboard, Messages, Settings) now render the
- *    exact same 7-item nav list so the sidebar is identical everywhere.
+ *  - All admin pages now render the exact same 8-item nav list so the
+ *    sidebar is identical everywhere.
  *
  * Earlier fixes retained:
  *  1. Sidebar height — uses `h-screen` + `overflow-hidden` on the root so
@@ -38,6 +43,7 @@ import {
   Settings,
   ExternalLink,
   Shield,
+  ShieldCheck,
   TrendingUp,
   MessageSquare,
   Eye,
@@ -215,8 +221,8 @@ export default function AdminDashboardClient({ adminEmail }: { adminEmail: strin
     }
   }, [router])
 
-  // Canonical 7-item nav list — kept identical (order + items) across
-  // dashboard-client.tsx, messages-client.tsx, and settings-client.tsx.
+  // Canonical 8-item nav list — kept identical (order + items) across every
+  // admin page's client component. "Security" added in Part 2.6.
   const navItems: NavItem[] = [
     { icon: <LayoutDashboard className="h-4 w-4" />, label: 'Dashboard', href: '/admin/dashboard', active: true },
     { icon: <MessageSquare className="h-4 w-4" />, label: 'Messages', href: '/admin/messages', badge: msgStats?.unread ?? 0 },
@@ -225,6 +231,7 @@ export default function AdminDashboardClient({ adminEmail }: { adminEmail: strin
     { icon: <FileText className="h-4 w-4" />, label: 'Content', href: '/admin/content' },
     { icon: <Users className="h-4 w-4" />, label: 'Visitors', href: '/admin/visitors' },
     { icon: <Settings className="h-4 w-4" />, label: 'Settings', href: '/admin/settings' },
+    { icon: <ShieldCheck className="h-4 w-4" />, label: 'Security', href: '/admin/security' },
   ]
 
   // Page Views value: real data when available, "—" only if analytics isn't
@@ -518,6 +525,7 @@ export default function AdminDashboardClient({ adminEmail }: { adminEmail: strin
                   { label: 'View Portfolio', icon: <ExternalLink className="h-4 w-4" />, href: '/', external: true },
                   { label: 'Contact Messages', icon: <MessageSquare className="h-4 w-4" />, href: '/admin/messages' },
                   { label: 'Edit Content', icon: <FileText className="h-4 w-4" />, href: '/admin/content' },
+                  { label: 'Security & Session', icon: <ShieldCheck className="h-4 w-4" />, href: '/admin/security' },
                 ].map(action => (
                   <a
                     key={action.label}

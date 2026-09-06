@@ -18,6 +18,10 @@
  *   3. Track and display the resume's download count, sourced from the same
  *      metadata object the public download-tracking route increments.
  *
+ * Part 2.6 update: added "Security" nav item (8th item, after Settings) —
+ * canonical nav list now spans Dashboard, Messages, Analytics, Resume,
+ * Content, Visitors, Settings, Security.
+ *
  * THEME INTEGRATION
  * ---------------------------------------------------------------------------
  * Same pattern as every other admin page since Part 2.1: reads the
@@ -37,9 +41,6 @@
  * fix applied to dashboard-client.tsx / messages-client.tsx /
  * analytics-client.tsx / settings-client.tsx) so it can actually shrink
  * and scroll internally instead of clipping the bottom-most nav links.
- * The nav list itself here already included every item, in the canonical
- * order (Dashboard, Messages, Analytics, Resume, Content, Visitors,
- * Settings), so no items were added or removed.
  * ---------------------------------------------------------------------------
  */
 
@@ -65,6 +66,7 @@ import {
   CheckCircle2,
   AlertTriangle,
   RefreshCw,
+  ShieldCheck,
 } from 'lucide-react'
 import { themes } from '@/lib/content'
 import { PdfViewer } from '@/components/pdf-viewer'
@@ -314,9 +316,8 @@ export default function ResumeClient({ adminEmail }: { adminEmail: string }) {
     setIsDragging(false)
   }
 
-  // Canonical 7-item nav list — kept identical (order + items) across
-  // dashboard-client.tsx, messages-client.tsx, analytics-client.tsx,
-  // resume-client.tsx, and settings-client.tsx.
+  // Canonical nav list — kept identical (order + items) across every admin
+  // page's client component. "Security" added in Part 2.6.
   const navItems: NavItem[] = [
     { icon: <LayoutDashboard className="h-4 w-4" />, label: 'Dashboard', href: '/admin/dashboard' },
     { icon: <MessageSquare className="h-4 w-4" />, label: 'Messages', href: '/admin/messages', badge: msgStats?.unread ?? 0 },
@@ -325,6 +326,7 @@ export default function ResumeClient({ adminEmail }: { adminEmail: string }) {
     { icon: <FileText className="h-4 w-4" />, label: 'Content', href: '/admin/content' },
     { icon: <Users className="h-4 w-4" />, label: 'Visitors', href: '/admin/visitors' },
     { icon: <Settings className="h-4 w-4" />, label: 'Settings', href: '/admin/settings' },
+    { icon: <ShieldCheck className="h-4 w-4" />, label: 'Security', href: '/admin/security' },
   ]
 
   const notPersistentWarning =

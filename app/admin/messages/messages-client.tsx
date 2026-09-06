@@ -5,15 +5,18 @@
  * ─────────────────────────────────────────────────────────────────────────────
  * Full-featured messages inbox for the admin dashboard.
  *
+ * Part 2.6 update: added "Security" nav item (8th item, after Settings) —
+ * canonical nav list now spans Dashboard, Messages, Analytics, Resume,
+ * Content, Visitors, Settings, Security.
+ *
  * Sidebar fix (applied to match dashboard-client.tsx):
  *  - Added `min-h-0` to the sidebar `<nav>` so the flex item can actually
  *    shrink and scroll internally instead of clipping the bottom-most nav
  *    links (this page's nav list was also missing Analytics and Resume,
  *    which combined with the layout bug made it look like items were
  *    "missing" from the sidebar — both issues are fixed here).
- *  - Nav list now matches the canonical 7-item list used on every other
- *    admin page (Dashboard, Messages, Analytics, Resume, Content, Visitors,
- *    Settings), in the same order, so the sidebar is identical everywhere.
+ *  - Nav list now matches the canonical list used on every other admin
+ *    page, in the same order, so the sidebar is identical everywhere.
  *
  * Features:
  *  • Lists all contact form submissions with live search & filter tabs
@@ -50,6 +53,7 @@ import {
   Send,
   ChevronDown,
   BarChart2,
+  ShieldCheck,
 } from 'lucide-react'
 import { themes } from '@/lib/content'
 import type { ContactMessage } from '@/lib/messages'
@@ -607,8 +611,8 @@ export default function MessagesClient({ adminEmail }: { adminEmail: string }) {
   }
 
   // ── Nav ──────────────────────────────────────────────────────────────────────
-  // Canonical 7-item nav list — kept identical (order + items) across
-  // dashboard-client.tsx, messages-client.tsx, and settings-client.tsx.
+  // Canonical nav list — kept identical (order + items) across every admin
+  // page's client component. "Security" added in Part 2.6.
 
   const navItems: NavItem[] = [
     { icon: <LayoutDashboard className="h-4 w-4" />, label: 'Dashboard', href: '/admin/dashboard' },
@@ -618,6 +622,7 @@ export default function MessagesClient({ adminEmail }: { adminEmail: string }) {
     { icon: <FileText className="h-4 w-4" />, label: 'Content', href: '/admin/content' },
     { icon: <Users className="h-4 w-4" />, label: 'Visitors', href: '/admin/visitors' },
     { icon: <Settings className="h-4 w-4" />, label: 'Settings', href: '/admin/settings' },
+    { icon: <ShieldCheck className="h-4 w-4" />, label: 'Security', href: '/admin/security' },
   ]
 
   const filterTabs: { id: Filter; label: string; count?: number }[] = [
@@ -665,7 +670,7 @@ export default function MessagesClient({ adminEmail }: { adminEmail: string }) {
         {/* Nav items — scrollable middle zone.
             `min-h-0` is required alongside `flex-1` so this flex child can
             actually shrink and scroll internally instead of clipping the
-            bottom-most nav links (Content / Visitors / Settings). */}
+            bottom-most nav links. */}
         <nav className="flex-1 min-h-0 overflow-y-auto p-3 space-y-1">
           {navItems.map(item => <SideNavItem key={item.href} {...item} />)}
         </nav>

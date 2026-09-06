@@ -11,6 +11,10 @@
  *   3. Availability Status — the "Open to Internships..." hero line
  *   4. Social Links        — github / linkedin / email / twitter / leetcode
  *
+ * Part 2.6 update: added "Security" nav item (8th item, after Settings) —
+ * canonical nav list now spans Dashboard, Messages, Analytics, Resume,
+ * Content, Visitors, Settings, Security.
+ *
  * Follows the exact same visual language as the Resume and Analytics admin
  * pages: uses `useAdminTheme` (localStorage 'admin-theme', defaults to
  * midnight) so all 6 portfolio themes apply here too, CSS vars for every
@@ -43,7 +47,7 @@ import {
   LayoutDashboard, LogOut, Mail, Users, FileText, Settings as SettingsIcon,
   ExternalLink, TrendingUp, MessageSquare, Loader2, Menu, X, Palette,
   BarChart2, AlertTriangle, Check, Power, Code2,
-  Save, RotateCcw,
+  Save, RotateCcw, ShieldCheck,
 } from 'lucide-react'
 import { themes } from '@/lib/content'
 import type { SiteSettings } from '@/lib/settings'
@@ -394,8 +398,8 @@ export default function SettingsClient() {
     }
   }
 
-  // Canonical 7-item nav list — kept identical (order + items) across
-  // dashboard-client.tsx, messages-client.tsx, and settings-client.tsx.
+  // Canonical nav list — kept identical (order + items) across every admin
+  // page's client component. "Security" added in Part 2.6.
   const navItems: NavItem[] = [
     { icon: <LayoutDashboard className="h-4 w-4" />, label: 'Dashboard', href: '/admin/dashboard' },
     { icon: <MessageSquare className="h-4 w-4" />, label: 'Messages', href: '/admin/messages', badge: msgStats?.unread ?? 0 },
@@ -404,6 +408,7 @@ export default function SettingsClient() {
     { icon: <FileText className="h-4 w-4" />, label: 'Content', href: '/admin/content' },
     { icon: <Users className="h-4 w-4" />, label: 'Visitors', href: '/admin/visitors' },
     { icon: <SettingsIcon className="h-4 w-4" />, label: 'Settings', href: '/admin/settings', active: true },
+    { icon: <ShieldCheck className="h-4 w-4" />, label: 'Security', href: '/admin/security' },
   ]
 
   return (

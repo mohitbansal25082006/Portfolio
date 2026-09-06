@@ -325,3 +325,61 @@ npm run dev
 # Build check
 npm run build
 ```
+
+
+
+# Part 2.6 — Development Process & Change Log
+
+## Overview
+Part 2.6 adds Security & Session management to the admin dashboard: viewing active sessions with IP and login time, forcing logout across all sessions, changing the admin password at runtime without touching `.env`, and a login attempt log recording failed logins with IP and timestamp — all backed by the same dual-storage pattern (Upstash Redis in production, a local JSON file in development) introduced in Part 2.2, reusing the existing KV store with no new environment variables required.
+
+## Features Added
+
+- **Security & Session page** at `/admin/security` — dedicated admin page split into four independently-scoped panels: Active Sessions, Force Logout, Change Password, and Login Attempts.
+- **Active Sessions list** — shows every tracked session for the signed-in admin: parsed device/browser label, IP address, login time, and a relative "last seen" timestamp, with the session making the current request flagged as "This device."
+- **Session tracking on login** — every successful login registers a session record (unique session id, email, IP, user agent, login timestamp) in the security store; the session id is embedded directly in the signed HMAC token payload alongside a new issued-at timestamp.
+- **Force Logout All Sessions** — a confirm-gated action that immediately revokes every session for the current admin, including the one making the request. Revocation is implemented as a per-email cutoff timestamp so tokens issued before the cutoff are rejected even though their HMAC signature is still valid — this covers sessions the tracking store doesn't have a live row for.
+- **Edge-safe revocation check** — the Next.js proxy (`proxy.ts`, Edge Runtime) checks the revocation cutoff via a direct `fetch` call to the Upstash REST API (no Node `crypto`/`fs`, so the existing `@upstash/redis` SDK and local JSON fallback can't be used at the edge); when Redis isn't configured the proxy fails open and the authoritative check still happens server-side on every protected route.
+- **Change Password without touching `.env`** — a runtime password-override layer: current/new/confirm fields, current password verified against the effective password (override if one exists, otherwise the `.env`-configured password), then a new salted SHA-256 hash is written to the security store. Takes effect on the next login immediately, with no `.env` edit or redeploy. The `.env` credential remains as an automatic fallback if the override is ever cleared.
+- **Password hashing** — salted SHA-256 via Node's built-in `crypto` (no new dependency); constant-time comparison on verification to avoid timing attacks, matching the existing credential-check pattern from Part 2.1.
+- **Login Attempt Log** — every login POST (success or failure) is appended to a rolling, capped log with email, IP, user agent, timestamp, and outcome; visible on the Security page with an "All" / "Failed only" filter, failed attempts visually distinguished from successes.
+- **Storage-not-persistent warning banner** — if Upstash Redis isn't configured, an amber banner explains that sessions, login attempts, and password changes are only saved to a local file and won't survive a redeploy, matching the same warning pattern from Settings and Resume in Parts 2.4/2.5.
+- **Security nav item** added to the admin sidebar as the 8th canonical item, after Settings, across every admin page's client component (Dashboard, Messages, Analytics, Resume, Settings, Security) so the sidebar is identical everywhere.
+- **Security & Session quick action** added to the Dashboard's Quick Actions panel.
+- **Logout now deregisters the tracked session** — `POST /api/admin/logout` looks up the session id from the token being cleared and removes that specific row from the active-sessions store, so a normal logout no longer leaves a stale "still active" entry on the Security page.
+- **Full theme integration** — the Security page uses the same `useAdminTheme` hook, `data-theme` attribute, and CSS-variable styling as every other admin page, so all 6 portfolio themes (Midnight, Cyberpunk, Glass, Minimal, Neon, Ocean) apply consistently, synced via the same `localStorage('admin-theme')` key.
+
+## Files Created
+
+```
+lib/admin-security.ts
+app/api/admin/security/route.ts
+app/admin/security/page.tsx
+app/admin/security/security-client.tsx
+```
+
+## Files Updated
+
+```
+lib/admin-auth.ts                          (verifyAdminCredentials is now async and checks the runtime password override before falling back to .env; createSessionToken embeds a sid + iat; added verifySessionTokenWithRevocation, verifyCurrentPassword, isKnownAdminEmail)
+lib/admin-auth-edge.ts                     (verifySessionTokenEdge now also checks the revocation cutoff via a direct Upstash REST fetch, Edge-safe, fails open when Redis isn't configured)
+app/api/admin/login/route.ts               (logs every login attempt success/failure with IP + user agent, registers a tracked session on success)
+app/api/admin/logout/route.ts              (looks up and removes the session's tracked row, not just clearing the cookie)
+app/admin/dashboard/dashboard-client.tsx   (added Security nav item + Security & Session quick action)
+app/admin/messages/messages-client.tsx     (added Security nav item)
+app/admin/analytics/analytics-client.tsx   (added Security nav item)
+app/admin/resume/resume-client.tsx         (added Security nav item)
+app/admin/settings/settings-client.tsx     (added Security nav item)
+.env.example                               (added Part 2.6 note — no new variables, reuses KV_REST_API_URL/KV_REST_API_TOKEN, documents optional SECURITY_FILE override)
+```
+
+## Commands Run
+
+```bash
+# No new dependencies — password hashing uses Node's built-in crypto,
+# session/login-log storage reuses @upstash/redis already installed in Part 2.2
+npm run dev
+
+# Build check
+npm run build
+```

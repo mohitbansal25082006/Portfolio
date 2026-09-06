@@ -5,6 +5,10 @@
  * ─────────────────────────────────────────────────────────────────────────────
  * Part 2.3 — Analytics Overview
  *
+ * Part 2.6 update: added "Security" nav item (8th item, after Settings) —
+ * canonical nav list now spans Dashboard, Messages, Analytics, Resume,
+ * Content, Visitors, Settings, Security.
+ *
  * Fixes applied:
  *  1. "Avg. Daily Views" now derives from the trend array (sum of daily
  *     pageviews / number of days with data), not totalViews/period. The
@@ -23,8 +27,8 @@
  *     so "no data" and "the call broke" are never visually identical.
  *  4. Sidebar nav list was missing the "Resume" item entirely, which made
  *     it look like the Resume tab disappeared whenever the user was on
- *     the Analytics page. Restored to match the canonical 7-item list
- *     used on every other admin page.
+ *     the Analytics page. Restored to match the canonical list used on
+ *     every other admin page.
  *  5. Sidebar `<nav>` now has `min-h-0` alongside `flex-1` so the flex
  *     child can actually shrink and scroll internally instead of
  *     potentially clipping the bottom-most nav links (same fix already
@@ -58,6 +62,7 @@ import {
   Palette,
   ChevronDown,
   AlertCircle,
+  ShieldCheck,
 } from 'lucide-react'
 import { themes } from '@/lib/content'
 
@@ -466,11 +471,10 @@ export default function AnalyticsClient({ adminEmail }: { adminEmail: string }) 
   }
 
   // ── Nav items ────────────────────────────────────────────────────────────────
-  // Canonical 7-item nav list — kept identical (order + items) across
-  // dashboard-client.tsx, messages-client.tsx, analytics-client.tsx,
-  // resume-client.tsx, and settings-client.tsx. This page was previously
-  // missing the "Resume" item, which made it look like that tab vanished
-  // whenever the user was on Analytics.
+  // Canonical nav list — kept identical (order + items) across every admin
+  // page's client component. This page was previously missing the
+  // "Resume" item, which made it look like that tab vanished whenever the
+  // user was on Analytics. "Security" added in Part 2.6.
 
   const navItems: NavItem[] = [
     { icon: <LayoutDashboard className="h-4 w-4" />, label: 'Dashboard', href: '/admin/dashboard' },
@@ -480,6 +484,7 @@ export default function AnalyticsClient({ adminEmail }: { adminEmail: string }) 
     { icon: <FileText className="h-4 w-4" />, label: 'Content', href: '/admin/content' },
     { icon: <Users className="h-4 w-4" />, label: 'Visitors', href: '/admin/visitors' },
     { icon: <Settings className="h-4 w-4" />, label: 'Settings', href: '/admin/settings' },
+    { icon: <ShieldCheck className="h-4 w-4" />, label: 'Security', href: '/admin/security' },
   ]
 
   // ── Derived stats ────────────────────────────────────────────────────────────
