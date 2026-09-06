@@ -275,3 +275,53 @@ components/portfolio-site.tsx             (Download buttons routed through /api/
 ```bash
 npm install @vercel/blob
 ```
+
+
+
+# Part 2.5 — Development Process & Change Log
+
+## Overview
+Part 2.5 adds Site Settings to the admin dashboard: toggling site-wide maintenance mode with a custom banner message, updating the contact email shown on the public site, updating the "Open to Internships" availability status line, and updating social links — all editable live from the admin panel without a redeploy, backed by the same dual-storage pattern (Upstash Redis in production, a local JSON file in development) introduced in Part 2.2.
+
+## Features Added
+
+- **Settings page** at `/admin/settings` — dedicated admin page for controlling site-wide configuration, split into four independently saveable sections.
+- **Maintenance Mode toggle** — a themed switch to turn maintenance mode on/off, paired with a custom, editable banner message (up to 300 characters) shown to visitors on the live site while enabled.
+- **Contact Email management** — update the email address shown in the hero, contact section, and footer copy-to-clipboard button, without touching source code.
+- **Availability Status editor** — update the short "Open to Internships & Collaborations" status line shown in the hero, with an 80-character limit and live counter.
+- **Social Links management** — update GitHub, LinkedIn, contact email, Twitter/X, and LeetCode links shown across the hero, contact section, and footer; optional links (e.g. Twitter) can be left blank to hide that icon entirely.
+- **Per-section independent saving** — each of the four settings sections (Maintenance, Contact, Availability, Social) saves and reports success/failure independently, so editing one doesn't require resubmitting the others.
+- **Live maintenance banner** — the public portfolio (`portfolio-site.tsx`) fetches current settings on load and renders a sticky, dismiss-free banner at the top of the page whenever maintenance mode is active, using the admin-configured message.
+- **Public settings sync** — the hero availability line, all social icon links (hero, contact, footer), and the contact email copy button on the public site now read live from the settings store instead of static values in `lib/content.ts`, falling back to those static values until the client fetch resolves.
+- **Storage-not-persistent warning banner** — if Upstash Redis isn't configured, an amber banner explains that settings changes are only being saved to a local file and won't survive a redeploy, matching the same warning pattern from the Resume page in Part 2.4.
+- **Settings nav item** added to the admin sidebar (`dashboard-client.tsx`), after Visitors.
+- **Upstash Redis (Production)** — automatically used when `KV_REST_API_URL` and `KV_REST_API_TOKEN` are present, reusing the same KV store already configured for messages and resume metadata. No new environment variables required.
+- **Local JSON fallback (Development)** — automatically falls back to saving a `.data/portfolio-settings.json` file in local dev environments, matching the pattern from Parts 2.2 and 2.4.
+- **Server-side validation** — the settings API validates email format, availability status length, maintenance message length, and that social URLs are well-formed before saving; the email social link is normalized to a `mailto:` prefix automatically.
+- **Full theme integration** — the Settings page uses the same `useAdminTheme` hook, `data-theme` attribute, and CSS-variable styling as the Dashboard, Analytics, and Resume admin pages, so all 6 portfolio themes (Midnight, Cyberpunk, Glass, Minimal, Neon, Ocean) apply consistently, synced via the same `localStorage('admin-theme')` key.
+
+## Files Created
+
+```
+lib/settings.ts
+app/api/admin/settings/route.ts
+app/api/settings/route.ts
+app/admin/settings/page.tsx
+app/admin/settings/settings-client.tsx
+```
+
+## Files Updated
+
+```
+components/portfolio-site.tsx  (Live settings fetched from /api/settings on mount; maintenance banner added; hero availability line, all social icon links, and contact email copy button now read from live settings with static fallback)
+```
+
+## Commands Run
+
+```bash
+# No new dependencies — reuses @upstash/redis already installed in Part 2.2
+npm run dev
+
+# Build check
+npm run build
+```

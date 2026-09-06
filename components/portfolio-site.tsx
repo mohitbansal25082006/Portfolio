@@ -1,11 +1,29 @@
 'use client'
 
+/**
+ * components/portfolio-site.tsx
+ *
+ * Part 2.5 update:
+ *  - Live site settings (maintenance mode banner, contact email, availability
+ *    status, social links) fetched from GET /api/settings on mount, falling
+ *    back to the static values in lib/content.ts until that resolves —
+ *    identical fallback pattern to the resumeUrl/resumeFileName fetch from
+ *    Part 2.4. Every place that previously read siteConfig.availability,
+ *    contactInfo.email, or siteConfig.social now reads from `liveSettings`.
+ *  - A maintenance-mode banner renders at the very top of the page (sticky,
+ *    above the scroll progress bar) whenever an admin has toggled it on.
+ *
+ * All earlier functionality (intro loader, particle field, theme system,
+ * OTP contact form, resume viewer, GitHub section, project gallery, etc.)
+ * is unchanged from Parts 1 and 2.4.
+ */
+
 import { useEffect, useMemo, useRef, useState, type ReactNode, type CSSProperties } from 'react'
 import {
   ArrowDownRight, ArrowUpRight, BookOpen, Calendar, Check, ChevronLeft, ChevronRight, Code2, Copy,
   Cpu, Database, Download, ExternalLink, Layers, Loader2, Mail,
   MapPin, Menu, MoveUpRight, Search, Send, Smartphone, Sparkles, Star,
-  Users, Wrench, X, ZoomIn, ShieldCheck, RotateCcw,
+  Users, Wrench, X, ZoomIn, ShieldCheck, RotateCcw, AlertTriangle,
 } from 'lucide-react'
 import {
   about, contactInfo, githubConfig, navItems, projectFilters, projects,
@@ -275,6 +293,22 @@ function ScrollProgress() {
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
   return <div className="scroll-progress" style={{ width: `${progress}%` }} />
+}
+
+/* ============================================================================
+   MAINTENANCE BANNER (Part 2.5)
+   ========================================================================== */
+function MaintenanceBanner({ message }: { message: string }) {
+  return (
+    <div
+      role="status"
+      className="sticky top-0 z-[60] flex items-center justify-center gap-2 bg-destructive px-4 py-2 text-center text-xs font-medium text-destructive-foreground"
+    >
+      <AlertTriangle className="size-3.5 shrink-0" />
+      <span className="font-mono uppercase tracking-[0.1em]">Notice:</span>
+      <span className="text-pretty">{message}</span>
+    </div>
+  )
 }
 
 /* ============================================================================
@@ -782,7 +816,15 @@ function ProjectCard({ project, index }: { project: typeof projects[0]; index: n
 /* ============================================================================
    HERO — animated name reveal
    ========================================================================== */
-function Hero({ introComplete }: { introComplete: boolean }) {
+function Hero({
+  introComplete,
+  availabilityStatus,
+  socialLinks,
+}: {
+  introComplete: boolean
+  availabilityStatus: string
+  socialLinks: Record<string, string>
+}) {
   const glyphs = useMemo(
     () => Array.from({ length: 12 }).map((_, i) => ({
       char: ['{', '}', '<', '>', '/', '*', '=', ';', '(', ')', '[', ']'][i % 13],
@@ -807,7 +849,7 @@ function Hero({ introComplete }: { introComplete: boolean }) {
           {siteConfig.title}<br />Based in {siteConfig.location} / working everywhere
         </p>
         <div className="flex items-center gap-2 font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">
-          <span className="size-2 animate-pulse rounded-full bg-primary" /> {siteConfig.availability}
+          <span className="size-2 animate-pulse rounded-full bg-primary" /> {availabilityStatus}
         </div>
       </div>
 
@@ -847,10 +889,12 @@ function Hero({ introComplete }: { introComplete: boolean }) {
             </Magnetic>
           </div>
           <div className="flex items-center gap-2 stagger-item" data-stagger style={{ transitionDelay: '2600ms' }}>
-            {Object.entries(siteConfig.social).map(([key, href]) => (
-              <a key={key} href={href} target={key === 'email' ? undefined : '_blank'} rel="noreferrer" className="grid size-9 place-items-center rounded-full border border-border transition-colors hover:border-primary hover:bg-primary hover:text-primary-foreground" aria-label={key}>
-                <SocialIcon platform={key} />
-              </a>
+            {Object.entries(socialLinks).map(([key, href]) => (
+              href ? (
+                <a key={key} href={href} target={key === 'email' ? undefined : '_blank'} rel="noreferrer" className="grid size-9 place-items-center rounded-full border border-border transition-colors hover:border-primary hover:bg-primary hover:text-primary-foreground" aria-label={key}>
+                  <SocialIcon platform={key} />
+                </a>
+              ) : null
             ))}
           </div>
         </div>
@@ -947,6 +991,42 @@ export function PortfolioSite() {
       })
   }, [])
 
+  // ---- Live site settings (Part 2.5) ----
+  // Falls back to the static siteConfig values (email, availability, social
+  // links) until the client fetch resolves — same fallback pattern as the
+  // resume metadata fetch above, so there's no flash of missing/blank content.
+  const [liveSettings, setLiveSettings] = useState<{
+    maintenanceMode: boolean
+    maintenanceMessage: string
+    contactEmail: string
+    availabilityStatus: string
+    socialLinks: Record<string, string>
+  }>({
+    maintenanceMode: false,
+    maintenanceMessage: '',
+    contactEmail: contactInfo.email,
+    availabilityStatus: siteConfig.availability,
+    socialLinks: siteConfig.social,
+  })
+
+  useEffect(() => {
+    fetch('/api/settings')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!d) return
+        setLiveSettings({
+          maintenanceMode: !!d.maintenanceMode,
+          maintenanceMessage: d.maintenanceMessage || '',
+          contactEmail: d.contactEmail || contactInfo.email,
+          availabilityStatus: d.availabilityStatus || siteConfig.availability,
+          socialLinks: d.socialLinks || siteConfig.social,
+        })
+      })
+      .catch(() => {
+        // Silent fallback — static values already cover this case.
+      })
+  }, [])
+
   // ---- Contact form state ----
   // formStatus stages:
   //   idle            -> filling out the form
@@ -1011,7 +1091,7 @@ export function PortfolioSite() {
 
   const copyEmail = async () => {
     try {
-      await navigator.clipboard.writeText(contactInfo.email)
+      await navigator.clipboard.writeText(liveSettings.contactEmail)
       setCopied(true)
       window.setTimeout(() => setCopied(false), 2200)
     } catch { /* noop */ }
@@ -1143,6 +1223,12 @@ export function PortfolioSite() {
     <main className="min-h-screen overflow-hidden bg-background text-foreground">
       {!introComplete && <IntroLoader onComplete={() => setIntroComplete(true)} />}
 
+      {liveSettings.maintenanceMode && (
+        <MaintenanceBanner
+          message={liveSettings.maintenanceMessage || "We're currently making some improvements. Please check back shortly."}
+        />
+      )}
+
       <ScrollProgress />
       <SideNavDots activeSection={activeSection} />
       <ParticleField />
@@ -1214,7 +1300,11 @@ export function PortfolioSite() {
         )}
       </nav>
 
-      <Hero introComplete={introComplete} />
+      <Hero
+        introComplete={introComplete}
+        availabilityStatus={liveSettings.availabilityStatus}
+        socialLinks={liveSettings.socialLinks}
+      />
 
       <div className="overflow-hidden border-y border-border bg-secondary py-3">
         <div className="marquee flex min-w-max gap-8 font-mono text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
@@ -1507,7 +1597,7 @@ export function PortfolioSite() {
                 </p>
                 <div className="mt-8 space-y-3">
                   <button type="button" onClick={copyEmail} className="group flex items-center gap-3 border-b border-primary-foreground/40 pb-3 font-mono text-xs tracking-[0.12em] uppercase transition-colors hover:border-primary-foreground">
-                    {copied ? 'Email copied' : contactInfo.email} {copied ? <Check className="size-4" /> : <Copy className="size-4 transition-transform group-hover:rotate-12" />}
+                    {copied ? 'Email copied' : liveSettings.contactEmail} {copied ? <Check className="size-4" /> : <Copy className="size-4 transition-transform group-hover:rotate-12" />}
                   </button>
                   <div className="flex flex-col gap-2 font-mono text-[10px] tracking-[0.14em] uppercase opacity-80">
                     <span className="flex items-center gap-2"><MapPin className="size-3.5" /> {contactInfo.location}</span>
@@ -1515,10 +1605,12 @@ export function PortfolioSite() {
                   </div>
                 </div>
                 <div className="mt-8 flex flex-wrap gap-2">
-                  {Object.entries(siteConfig.social).map(([key, href]) => (
-                    <a key={key} href={href} target={key === 'email' ? undefined : '_blank'} rel="noreferrer" className="inline-flex items-center gap-2 rounded-full bg-background/10 px-4 py-2 font-mono text-[10px] tracking-[0.14em] uppercase backdrop-blur transition-colors hover:bg-background hover:text-foreground">
-                      <SocialIcon platform={key} /> {key}
-                    </a>
+                  {Object.entries(liveSettings.socialLinks).map(([key, href]) => (
+                    href ? (
+                      <a key={key} href={href} target={key === 'email' ? undefined : '_blank'} rel="noreferrer" className="inline-flex items-center gap-2 rounded-full bg-background/10 px-4 py-2 font-mono text-[10px] tracking-[0.14em] uppercase backdrop-blur transition-colors hover:bg-background hover:text-foreground">
+                        <SocialIcon platform={key} /> {key}
+                      </a>
+                    ) : null
                   ))}
                 </div>
               </div>
@@ -1543,7 +1635,7 @@ export function PortfolioSite() {
                       <X className="size-6" />
                     </span>
                     <p className="mt-5 text-xl font-medium">Something went wrong.</p>
-                    <p className="mt-2 max-w-xs text-sm opacity-80">{formError || `Please try again or email me directly at ${contactInfo.email}.`}</p>
+                    <p className="mt-2 max-w-xs text-sm opacity-80">{formError || `Please try again or email me directly at ${liveSettings.contactEmail}.`}</p>
                     <button type="button" onClick={() => setFormStatus('idle')} className="mt-6 font-mono text-[10px] tracking-[0.14em] uppercase opacity-70 hover:opacity-100">Try again →</button>
                   </div>
                 ) : formStatus === 'awaiting-otp' || formStatus === 'verifying' ? (
@@ -1665,10 +1757,12 @@ export function PortfolioSite() {
               ))}
             </div>
             <div className="flex gap-3">
-              {Object.entries(siteConfig.social).map(([key, href]) => (
-                <a key={key} href={href} target={key === 'email' ? undefined : '_blank'} rel="noreferrer" className="grid size-8 place-items-center rounded-full border border-border transition-colors hover:border-primary hover:bg-primary hover:text-primary-foreground" aria-label={key}>
-                  <SocialIcon platform={key} />
-                </a>
+              {Object.entries(liveSettings.socialLinks).map(([key, href]) => (
+                href ? (
+                  <a key={key} href={href} target={key === 'email' ? undefined : '_blank'} rel="noreferrer" className="grid size-8 place-items-center rounded-full border border-border transition-colors hover:border-primary hover:bg-primary hover:text-primary-foreground" aria-label={key}>
+                    <SocialIcon platform={key} />
+                  </a>
+                ) : null
               ))}
             </div>
           </div>
