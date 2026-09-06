@@ -5,14 +5,22 @@
  * ─────────────────────────────────────────────────────────────────────────────
  * Part 2.3 — Analytics Overview
  *
- * Shows:
- *  • Total page views + unique visitors (stat cards)
- *  • Visit trend chart — last 7 / 30 days (SVG bar chart, no external lib)
- *  • Device breakdown — mobile vs desktop vs tablet (donut ring)
- *  • Top referrers table
- *
- * All colours use CSS variables so every theme (Midnight, Cyberpunk, Glass,
- * Minimal, Neon, Ocean) works automatically.
+ * Fixes applied:
+ *  1. "Avg. Daily Views" now derives from the trend array (sum of daily
+ *     pageviews / number of days with data), not totalViews/period. The
+ *     count endpoint and the aggregate endpoint can disagree slightly or
+ *     one can legitimately return 0 while the other has data — deriving
+ *     from trend keeps the number consistent with the chart the user is
+ *     looking at right above it.
+ *  2. "Top Referrers" stat card previously showed referrers.length (i.e.
+ *     "3" sources found) mislabeled under a views-style stat card, which
+ *     read as broken/zero whenever the referrers call failed silently.
+ *     It now shows total referred page views, matching the other three
+ *     cards' units, and falls back to "—" (not "0") when the referrers
+ *     endpoint actually errored (see _errors below) vs. genuinely empty.
+ *  3. The API route now returns `_errors` per section when a Vercel call
+ *     fails. This client surfaces those inline under the relevant panel
+ *     so "no data" and "the call broke" are never visually identical.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
@@ -56,6 +64,8 @@ interface AnalyticsData {
   devices: { mobile: number; desktop: number; tablet: number }
   trend: { date: string; views: number }[]
   _placeholder?: boolean
+  _reason?: string
+  _errors?: Record<string, string>
 }
 
 interface NavItem {
@@ -115,12 +125,14 @@ function StatCard({
   value,
   sub,
   accent,
+  error,
 }: {
   icon: React.ReactNode
   label: string
   value: string | number | null
   sub?: string
   accent?: string
+  error?: string
 }) {
   const bg = accent
     ? `color-mix(in oklch, ${accent} 15%, transparent)`
@@ -129,7 +141,7 @@ function StatCard({
   return (
     <div
       className="stat-card relative overflow-hidden rounded-2xl border p-5 transition-all duration-300 hover:shadow-lg"
-      style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
+      style={{ background: 'var(--card)', borderColor: error ? 'color-mix(in oklch, oklch(0.7 0.2 25) 40%, transparent)' : 'var(--border)' }}
     >
       <div className="stat-card-shine" />
       <div className="relative z-10">
@@ -138,13 +150,22 @@ function StatCard({
         </div>
         <p className="text-2xl font-bold tabular-nums">
           {value === null ? (
-            <span style={{ color: 'var(--muted-foreground)', fontSize: '0.9rem' }}>Not configured</span>
+            <span style={{ color: 'var(--muted-foreground)', fontSize: '0.9rem' }}>
+              {error ? '—' : 'Not configured'}
+            </span>
           ) : (
             formatNumber(Number(value))
           )}
         </p>
         <p className="mt-0.5 text-sm font-medium">{label}</p>
-        {sub && <p className="mt-1 text-xs" style={{ color: 'var(--muted-foreground)' }}>{sub}</p>}
+        {error ? (
+          <p className="mt-1 flex items-center gap-1 text-xs" style={{ color: 'oklch(0.7 0.2 25)' }}>
+            <AlertCircle className="h-3 w-3 shrink-0" />
+            <span className="truncate" title={error}>Failed to load</span>
+          </p>
+        ) : sub ? (
+          <p className="mt-1 text-xs" style={{ color: 'var(--muted-foreground)' }}>{sub}</p>
+        ) : null}
       </div>
     </div>
   )
@@ -173,7 +194,6 @@ function TrendChart({ data }: { data: { date: string; views: number }[] }) {
   const barW = Math.max(4, (chartW / data.length) * 0.6)
   const gap = chartW / data.length
 
-  // Y-axis ticks
   const ticks = [0, Math.round(max / 2), max]
 
   return (
@@ -184,67 +204,34 @@ function TrendChart({ data }: { data: { date: string; views: number }[] }) {
       role="img"
       aria-label="Visit trend chart"
     >
-      {/* Grid lines */}
       {ticks.map((tick) => {
         const y = padT + chartH - (tick / max) * chartH
         return (
           <g key={tick}>
-            <line
-              x1={padL}
-              y1={y}
-              x2={W - padR}
-              y2={y}
-              stroke="var(--border)"
-              strokeWidth={1}
-              strokeDasharray="4 4"
-            />
-            <text
-              x={padL - 4}
-              y={y + 4}
-              textAnchor="end"
-              fontSize={10}
-              fill="var(--muted-foreground)"
-            >
+            <line x1={padL} y1={y} x2={W - padR} y2={y} stroke="var(--border)" strokeWidth={1} strokeDasharray="4 4" />
+            <text x={padL - 4} y={y + 4} textAnchor="end" fontSize={10} fill="var(--muted-foreground)">
               {tick >= 1000 ? `${(tick / 1000).toFixed(1)}k` : tick}
             </text>
           </g>
         )
       })}
 
-      {/* Bars */}
       {data.map((d, i) => {
         const x = padL + i * gap + gap / 2 - barW / 2
         const barH = Math.max(2, (d.views / max) * chartH)
         const y = padT + chartH - barH
-
-        // Show label every ~5 bars, or first/last
         const showLabel = i === 0 || i === data.length - 1 || i % Math.max(1, Math.floor(data.length / 6)) === 0
         const labelDate = new Date(d.date)
         const labelStr = labelDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })
 
         return (
           <g key={d.date}>
-            <rect
-              x={x}
-              y={y}
-              width={barW}
-              height={barH}
-              rx={3}
-              fill="var(--primary)"
-              opacity={0.85}
-            />
+            <rect x={x} y={y} width={barW} height={barH} rx={3} fill="var(--primary)" opacity={0.85} />
             {showLabel && (
-              <text
-                x={x + barW / 2}
-                y={H - 4}
-                textAnchor="middle"
-                fontSize={9}
-                fill="var(--muted-foreground)"
-              >
+              <text x={x + barW / 2} y={H - 4} textAnchor="middle" fontSize={9} fill="var(--muted-foreground)">
                 {labelStr}
               </text>
             )}
-            {/* Tooltip via title */}
             <title>{`${d.date}: ${d.views} views`}</title>
           </g>
         )
@@ -269,14 +256,13 @@ function DeviceDonut({ mobile, desktop, tablet }: { mobile: number; desktop: num
   const dPct = Math.round((desktop / total) * 100)
   const tPct = 100 - mPct - dPct
 
-  // SVG arc donut
   const R = 52
   const r = 34
   const cx = 70
   const cy = 70
 
   function slicePath(startPct: number, endPct: number) {
-    const toRad = (pct: number) => ((pct / 100) * 2 * Math.PI) - Math.PI / 2
+    const toRad = (pct: number) => (pct / 100) * 2 * Math.PI - Math.PI / 2
     const x1 = cx + R * Math.cos(toRad(startPct))
     const y1 = cy + R * Math.sin(toRad(startPct))
     const x2 = cx + R * Math.cos(toRad(endPct))
@@ -299,7 +285,6 @@ function DeviceDonut({ mobile, desktop, tablet }: { mobile: number; desktop: num
 
   return (
     <div className="flex flex-wrap items-center justify-center gap-6">
-      {/* Donut */}
       <svg viewBox="0 0 140 140" className="h-32 w-32 shrink-0">
         {slices.map((s) => {
           if (s.pct === 0) { accumulated += s.pct; return null }
@@ -321,7 +306,6 @@ function DeviceDonut({ mobile, desktop, tablet }: { mobile: number; desktop: num
         </text>
       </svg>
 
-      {/* Legend */}
       <div className="space-y-2">
         {slices.map((s) => (
           <div key={s.label} className="flex items-center gap-2 text-sm">
@@ -337,7 +321,24 @@ function DeviceDonut({ mobile, desktop, tablet }: { mobile: number; desktop: num
 
 // ─── Referrers Table ──────────────────────────────────────────────────────────
 
-function ReferrersTable({ referrers, totalViews }: { referrers: { source: string; views: number }[]; totalViews: number }) {
+function ReferrersTable({
+  referrers,
+  totalViews,
+  error,
+}: {
+  referrers: { source: string; views: number }[]
+  totalViews: number
+  error?: string
+}) {
+  if (error) {
+    return (
+      <div className="flex items-start gap-2 text-sm" style={{ color: 'oklch(0.7 0.2 25)' }}>
+        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+        <span>Couldn&apos;t load referrers ({error})</span>
+      </div>
+    )
+  }
+
   if (referrers.length === 0) {
     return (
       <p className="text-sm" style={{ color: 'var(--muted-foreground)' }}>
@@ -353,7 +354,6 @@ function ReferrersTable({ referrers, totalViews }: { referrers: { source: string
     <div className="space-y-2">
       {referrers.map((r) => (
         <div key={r.source} className="group flex items-center gap-3">
-          {/* Bar background */}
           <div className="relative flex-1 overflow-hidden rounded-lg" style={{ background: 'var(--muted)' }}>
             <div
               className="h-8 rounded-lg transition-all duration-700"
@@ -363,10 +363,7 @@ function ReferrersTable({ referrers, totalViews }: { referrers: { source: string
                 minWidth: '2rem',
               }}
             />
-            <span
-              className="absolute inset-0 flex items-center px-3 text-xs font-medium"
-              style={{ color: 'var(--foreground)' }}
-            >
+            <span className="absolute inset-0 flex items-center px-3 text-xs font-medium" style={{ color: 'var(--foreground)' }}>
               {r.source}
             </span>
           </div>
@@ -388,6 +385,22 @@ function formatNumber(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`
   return String(n)
+}
+
+/**
+ * Average daily views derived from the trend array itself, not from
+ * totalViews / period. This keeps the number consistent with what the
+ * bar chart directly above it shows, and avoids showing "0" when the
+ * count endpoint disagrees with (or lags) the aggregate endpoint.
+ */
+function computeAvgDailyViews(trend: { date: string; views: number }[]): number | null {
+  if (trend.length === 0) return null
+  const sum = trend.reduce((acc, d) => acc + d.views, 0)
+  return Math.round(sum / trend.length)
+}
+
+function computeTotalReferredViews(referrers: { source: string; views: number }[]): number {
+  return referrers.reduce((acc, r) => acc + r.views, 0)
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -412,8 +425,11 @@ export default function AnalyticsClient({ adminEmail }: { adminEmail: string }) 
     if (isRefresh) setRefreshing(true)
     else setLoading(true)
     try {
-      const res = await fetch(`/api/admin/analytics?period=${period}`)
-      if (res.ok) setData(await res.json())
+      const res = await fetch(`/api/admin/analytics?period=${period}&_t=${Date.now()}`, { cache: 'no-store' })
+      if (res.ok) {
+        const json = await res.json()
+        setData(json)
+      }
     } finally {
       setLoading(false)
       setRefreshing(false)
@@ -451,6 +467,12 @@ export default function AnalyticsClient({ adminEmail }: { adminEmail: string }) 
     { icon: <Settings className="h-4 w-4" />, label: 'Settings', href: '/admin/settings' },
   ]
 
+  // ── Derived stats ────────────────────────────────────────────────────────────
+
+  const avgDailyViews = data ? computeAvgDailyViews(data.trend) : null
+  const totalReferredViews = data ? computeTotalReferredViews(data.referrers) : null
+  const errors = data?._errors ?? {}
+
   // ─── Render ──────────────────────────────────────────────────────────────────
 
   return (
@@ -459,7 +481,6 @@ export default function AnalyticsClient({ adminEmail }: { adminEmail: string }) 
       className="flex h-screen overflow-hidden"
       style={{ background: 'var(--background)', color: 'var(--foreground)' }}
     >
-      {/* Mobile overlay */}
       {sidebarOpen && (
         <div
           className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm lg:hidden"
@@ -511,7 +532,6 @@ export default function AnalyticsClient({ adminEmail }: { adminEmail: string }) 
       {/* ── Main ── */}
       <div className="flex flex-1 flex-col overflow-hidden">
 
-        {/* Header */}
         <header
           className="flex h-16 shrink-0 items-center gap-3 border-b px-4 sm:px-6"
           style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
@@ -532,7 +552,6 @@ export default function AnalyticsClient({ adminEmail }: { adminEmail: string }) 
 
           <div className="flex-1" />
 
-          {/* Theme picker */}
           <div className="relative">
             <button
               onClick={() => setShowThemePicker(v => !v)}
@@ -540,10 +559,7 @@ export default function AnalyticsClient({ adminEmail }: { adminEmail: string }) 
               style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
             >
               <Palette className="h-3.5 w-3.5" />
-              <span
-                className="h-3 w-3 rounded-full"
-                style={{ background: themes.find(t => t.id === theme)?.swatch ?? 'var(--primary)' }}
-              />
+              <span className="h-3 w-3 rounded-full" style={{ background: themes.find(t => t.id === theme)?.swatch ?? 'var(--primary)' }} />
               <span className="hidden sm:inline capitalize">{theme}</span>
               <ChevronDown className="h-3 w-3" />
             </button>
@@ -577,7 +593,6 @@ export default function AnalyticsClient({ adminEmail }: { adminEmail: string }) 
             )}
           </div>
 
-          {/* Admin email */}
           <div
             className="hidden items-center gap-2 rounded-full border px-3 py-1.5 text-xs sm:flex"
             style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
@@ -591,7 +606,6 @@ export default function AnalyticsClient({ adminEmail }: { adminEmail: string }) 
             <span className="max-w-[140px] truncate">{adminEmail}</span>
           </div>
 
-          {/* Logout */}
           <button
             onClick={handleLogout}
             disabled={loggingOut}
@@ -603,10 +617,8 @@ export default function AnalyticsClient({ adminEmail }: { adminEmail: string }) 
           </button>
         </header>
 
-        {/* Scrollable body */}
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
 
-          {/* Title row */}
           <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
             <div>
               <h1 className="text-xl font-bold">Analytics Overview</h1>
@@ -618,11 +630,7 @@ export default function AnalyticsClient({ adminEmail }: { adminEmail: string }) 
             </div>
 
             <div className="flex items-center gap-2">
-              {/* Period toggle */}
-              <div
-                className="flex items-center rounded-xl border p-1 text-xs font-medium"
-                style={{ borderColor: 'var(--border)' }}
-              >
+              <div className="flex items-center rounded-xl border p-1 text-xs font-medium" style={{ borderColor: 'var(--border)' }}>
                 {(['7d', '30d'] as Period[]).map(p => (
                   <button
                     key={p}
@@ -638,7 +646,6 @@ export default function AnalyticsClient({ adminEmail }: { adminEmail: string }) 
                 ))}
               </div>
 
-              {/* Refresh */}
               <button
                 onClick={() => fetchData(true)}
                 disabled={refreshing}
@@ -651,30 +658,54 @@ export default function AnalyticsClient({ adminEmail }: { adminEmail: string }) 
             </div>
           </div>
 
-          {/* Not-configured banner */}
           {data?._placeholder && (
             <div
-              className="mb-6 flex items-start gap-3 rounded-2xl border p-4"
+              className="mb-4 flex items-start gap-3 rounded-2xl border p-4"
               style={{
-                background: 'color-mix(in oklch, oklch(0.75 0.18 60) 10%, transparent)',
-                borderColor: 'color-mix(in oklch, oklch(0.75 0.18 60) 30%, transparent)',
+                background: 'color-mix(in oklch, oklch(0.7 0.2 25) 10%, transparent)',
+                borderColor: 'color-mix(in oklch, oklch(0.7 0.2 25) 30%, transparent)',
               }}
             >
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" style={{ color: 'oklch(0.75 0.18 60)' }} />
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" style={{ color: 'oklch(0.7 0.2 25)' }} />
               <div>
-                <p className="text-sm font-medium" style={{ color: 'oklch(0.75 0.18 60)' }}>
-                  Vercel Analytics not configured
+                <p className="text-sm font-medium" style={{ color: 'oklch(0.7 0.2 25)' }}>
+                  Vercel Analytics credentials not configured
                 </p>
                 <p className="mt-0.5 text-xs" style={{ color: 'var(--muted-foreground)' }}>
-                  Add <code className="rounded px-1 py-0.5" style={{ background: 'var(--muted)' }}>VERCEL_API_TOKEN</code> and{' '}
-                  <code className="rounded px-1 py-0.5" style={{ background: 'var(--muted)' }}>VERCEL_PROJECT_ID</code> to your{' '}
-                  <code className="rounded px-1 py-0.5" style={{ background: 'var(--muted)' }}>.env.local</code> to see real analytics.
+                  Add{' '}
+                  <code className="rounded px-1 py-0.5" style={{ background: 'var(--muted)' }}>VERCEL_API_TOKEN</code>{' '}
+                  and{' '}
+                  <code className="rounded px-1 py-0.5" style={{ background: 'var(--muted)' }}>VERCEL_PROJECT_ID</code>{' '}
+                  to your <code className="rounded px-1 py-0.5" style={{ background: 'var(--muted)' }}>.env.local</code>.
+                  {data._reason && <span className="ml-1 opacity-70">Reason: {data._reason}</span>}
                 </p>
               </div>
             </div>
           )}
 
-          {/* Loading skeleton */}
+          {/* Per-section error banner (shown when credentials ARE configured but a call still failed) */}
+          {!data?._placeholder && Object.keys(errors).length > 0 && (
+            <div
+              className="mb-4 flex items-start gap-3 rounded-2xl border p-4"
+              style={{
+                background: 'color-mix(in oklch, oklch(0.7 0.2 25) 10%, transparent)',
+                borderColor: 'color-mix(in oklch, oklch(0.7 0.2 25) 30%, transparent)',
+              }}
+            >
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" style={{ color: 'oklch(0.7 0.2 25)' }} />
+              <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                <p className="text-sm font-medium" style={{ color: 'oklch(0.7 0.2 25)' }}>
+                  Some analytics data failed to load
+                </p>
+                <ul className="mt-1 list-inside list-disc space-y-0.5">
+                  {Object.entries(errors).map(([key, msg]) => (
+                    <li key={key}><span className="font-medium capitalize">{key}</span>: {msg}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
+
           {loading ? (
             <div className="flex h-64 items-center justify-center gap-3" style={{ color: 'var(--muted-foreground)' }}>
               <Loader2 className="h-6 w-6 animate-spin" style={{ color: 'var(--primary)' }} />
@@ -682,7 +713,6 @@ export default function AnalyticsClient({ adminEmail }: { adminEmail: string }) 
             </div>
           ) : (
             <>
-              {/* ── Stat Cards ── */}
               <section className="mb-6">
                 <h2 className="eyebrow mb-4">Key Metrics</h2>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -691,6 +721,7 @@ export default function AnalyticsClient({ adminEmail }: { adminEmail: string }) 
                     label="Total Page Views"
                     value={data?.totalViews ?? null}
                     sub={`Last ${period === '7d' ? '7' : '30'} days`}
+                    error={errors.count}
                   />
                   <StatCard
                     icon={<Users className="h-5 w-5" style={{ color: 'oklch(0.75 0.18 220)' }} />}
@@ -698,68 +729,67 @@ export default function AnalyticsClient({ adminEmail }: { adminEmail: string }) 
                     value={data?.uniqueVisitors ?? null}
                     sub={`Last ${period === '7d' ? '7' : '30'} days`}
                     accent="oklch(0.75 0.18 220)"
+                    error={errors.count}
                   />
                   <StatCard
                     icon={<TrendingUp className="h-5 w-5" style={{ color: 'oklch(0.75 0.18 150)' }} />}
                     label="Avg. Daily Views"
-                    value={
-                      data?.totalViews != null
-                        ? Math.round(data.totalViews / (period === '7d' ? 7 : 30))
-                        : null
-                    }
-                    sub="Views per day"
+                    value={avgDailyViews}
+                    sub="Views per day, from trend"
                     accent="oklch(0.75 0.18 150)"
+                    error={errors.trend}
                   />
                   <StatCard
                     icon={<Globe className="h-5 w-5" style={{ color: 'oklch(0.75 0.18 30)' }} />}
                     label="Top Referrers"
-                    value={data?.referrers?.length ?? 0}
-                    sub="Unique traffic sources"
+                    value={totalReferredViews}
+                    sub={`${data?.referrers?.length ?? 0} sources`}
                     accent="oklch(0.75 0.18 30)"
+                    error={errors.referrers}
                   />
                 </div>
               </section>
 
-              {/* ── Trend Chart ── */}
               <section className="mb-6">
-                <div
-                  className="rounded-2xl border p-5"
-                  style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
-                >
+                <div className="rounded-2xl border p-5" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
                   <div className="mb-4 flex items-center justify-between">
                     <h2 className="text-sm font-semibold">Visit Trend</h2>
                     <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
                       {period === '7d' ? 'Last 7 days' : 'Last 30 days'} · page views / day
                     </span>
                   </div>
-                  <TrendChart data={data?.trend ?? []} />
+                  {errors.trend ? (
+                    <div className="flex h-40 items-center justify-center gap-2 text-sm" style={{ color: 'oklch(0.7 0.2 25)' }}>
+                      <AlertCircle className="h-4 w-4 shrink-0" />
+                      Couldn&apos;t load trend data ({errors.trend})
+                    </div>
+                  ) : (
+                    <TrendChart data={data?.trend ?? []} />
+                  )}
                 </div>
               </section>
 
-              {/* ── Device + Referrers ── */}
               <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-
-                {/* Device Breakdown */}
-                <div
-                  className="rounded-2xl border p-5"
-                  style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
-                >
+                <div className="rounded-2xl border p-5" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
                   <div className="mb-4 flex items-center gap-2">
                     <Monitor className="h-4 w-4" style={{ color: 'var(--primary)' }} />
                     <h2 className="text-sm font-semibold">Device Breakdown</h2>
                   </div>
-                  <DeviceDonut
-                    mobile={data?.devices?.mobile ?? 0}
-                    desktop={data?.devices?.desktop ?? 0}
-                    tablet={data?.devices?.tablet ?? 0}
-                  />
+                  {errors.devices ? (
+                    <div className="flex h-32 items-center justify-center gap-2 text-sm" style={{ color: 'oklch(0.7 0.2 25)' }}>
+                      <AlertCircle className="h-4 w-4 shrink-0" />
+                      Couldn&apos;t load device data ({errors.devices})
+                    </div>
+                  ) : (
+                    <DeviceDonut
+                      mobile={data?.devices?.mobile ?? 0}
+                      desktop={data?.devices?.desktop ?? 0}
+                      tablet={data?.devices?.tablet ?? 0}
+                    />
+                  )}
                 </div>
 
-                {/* Top Referrers */}
-                <div
-                  className="rounded-2xl border p-5"
-                  style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
-                >
+                <div className="rounded-2xl border p-5" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
                   <div className="mb-4 flex items-center gap-2">
                     <Globe className="h-4 w-4" style={{ color: 'var(--primary)' }} />
                     <h2 className="text-sm font-semibold">Top Referrers</h2>
@@ -767,6 +797,7 @@ export default function AnalyticsClient({ adminEmail }: { adminEmail: string }) 
                   <ReferrersTable
                     referrers={data?.referrers ?? []}
                     totalViews={data?.totalViews ?? 0}
+                    error={errors.referrers}
                   />
                 </div>
               </div>

@@ -3,13 +3,21 @@
 /**
  * app/admin/dashboard/dashboard-client.tsx
  *
- * Fixes in this version:
+ * Part 2.3 update:
+ *  - "Page Views" stat card now fetches real data from /api/admin/analytics
+ *    (last 7 days) instead of showing a hardcoded "—". Falls back to "—"
+ *    only if analytics genuinely isn't configured or the call fails.
+ *
+ * Earlier fixes retained:
  *  1. Sidebar height — uses `h-screen` + `overflow-hidden` on the root so
  *     the sidebar never exceeds viewport height and its nav scrolls internally.
  *  2. Logo — replaced <Shield> icon in sidebar header with /icon.ico favicon.
  *  3. Theme system — theme switcher in the top-right of the header, persisted
  *     in localStorage under "admin-theme". data-theme applied to root wrapper.
  *  4. All colors use CSS vars so every theme applies correctly.
+ *
+ * GitHub Stars and OTP Requests remain static placeholders — out of scope
+ * for Part 2.3 (Analytics only).
  */
 
 import { useState, useCallback, useEffect } from 'react'
@@ -42,6 +50,7 @@ interface StatCardProps {
   value: string | number
   sub?: string
   color?: string
+  loading?: boolean
 }
 
 interface NavItem {
@@ -50,6 +59,12 @@ interface NavItem {
   href: string
   active?: boolean
   badge?: number
+}
+
+interface AnalyticsSummary {
+  totalViews: number | null
+  uniqueVisitors: number | null
+  _placeholder?: boolean
 }
 
 // ─── Theme hook ───────────────────────────────────────────────────────────────
@@ -72,7 +87,7 @@ function useAdminTheme() {
 
 // ─── Stat Card ────────────────────────────────────────────────────────────────
 
-function StatCard({ icon, label, value, sub, color }: StatCardProps) {
+function StatCard({ icon, label, value, sub, color, loading }: StatCardProps) {
   return (
     <div
       className="stat-card relative overflow-hidden rounded-2xl border p-5 transition-all duration-300 hover:shadow-lg"
@@ -91,7 +106,13 @@ function StatCard({ icon, label, value, sub, color }: StatCardProps) {
             {icon}
           </div>
         </div>
-        <p className="text-2xl font-bold tabular-nums">{value}</p>
+        <p className="text-2xl font-bold tabular-nums">
+          {loading ? (
+            <Loader2 className="h-5 w-5 animate-spin" style={{ color: 'var(--muted-foreground)' }} />
+          ) : (
+            value
+          )}
+        </p>
         <p className="mt-0.5 text-sm font-medium">{label}</p>
         {sub && (
           <p className="mt-1 text-xs" style={{ color: 'var(--muted-foreground)' }}>
@@ -130,6 +151,14 @@ function SideNavItem({ icon, label, href, active, badge }: NavItem) {
   )
 }
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function formatNumber(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`
+  return String(n)
+}
+
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
 
 export default function AdminDashboardClient({ adminEmail }: { adminEmail: string }) {
@@ -139,6 +168,8 @@ export default function AdminDashboardClient({ adminEmail }: { adminEmail: strin
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [showThemePicker, setShowThemePicker] = useState(false)
   const [msgStats, setMsgStats] = useState<{ total: number; unread: number } | null>(null)
+  const [analytics, setAnalytics] = useState<AnalyticsSummary | null>(null)
+  const [analyticsLoading, setAnalyticsLoading] = useState(true)
 
   // Fetch message stats for the dashboard overview card + sidebar badge
   useEffect(() => {
@@ -146,6 +177,26 @@ export default function AdminDashboardClient({ adminEmail }: { adminEmail: strin
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d?.stats) setMsgStats(d.stats) })
       .catch(() => {})
+  }, [])
+
+  // Fetch analytics summary (last 7 days) for the Page Views card
+  useEffect(() => {
+    let cancelled = false
+    setAnalyticsLoading(true)
+    fetch('/api/admin/analytics?period=7d', { cache: 'no-store' })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (!cancelled && d) {
+          setAnalytics({
+            totalViews: d.totalViews ?? null,
+            uniqueVisitors: d.uniqueVisitors ?? null,
+            _placeholder: d._placeholder,
+          })
+        }
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setAnalyticsLoading(false) })
+    return () => { cancelled = true }
   }, [])
 
   const handleLogout = useCallback(async () => {
@@ -166,11 +217,24 @@ export default function AdminDashboardClient({ adminEmail }: { adminEmail: strin
     { icon: <Settings className="h-4 w-4" />, label: 'Settings', href: '/admin/settings' },
   ]
 
+  // Page Views value: real data when available, "—" only if analytics isn't
+  // configured or genuinely returned nothing.
+  const pageViewsValue: string | number =
+    analytics?.totalViews != null ? formatNumber(analytics.totalViews) : '—'
+  const pageViewsSub = analytics?._placeholder
+    ? 'Analytics not configured'
+    : analytics?.uniqueVisitors != null
+      ? `${formatNumber(analytics.uniqueVisitors)} visitors · last 7 days`
+      : 'See Analytics tab for details'
+
   const stats: StatCardProps[] = [
     {
       icon: <Eye className="h-5 w-5" style={{ color: 'var(--primary)' }} />,
-      label: 'Page Views', value: '—', sub: 'See Analytics tab for details',
+      label: 'Page Views',
+      value: pageViewsValue,
+      sub: pageViewsSub,
       color: 'color-mix(in oklch, var(--primary) 15%, transparent)',
+      loading: analyticsLoading,
     },
     {
       icon: <MessageSquare className="h-5 w-5" style={{ color: 'oklch(0.75 0.18 220)' }} />,

@@ -5,6 +5,22 @@ Part 1 covers the initial build of the portfolio site: project scaffolding, the 
 
 ---
 
+## Features Added
+
+- **Single-page portfolio layout** (`portfolio-site.tsx`) — hero, about, skills, projects, timeline, contact, all sections assembled with scroll-based reveal animations.
+- **6 swappable color themes** (Midnight, Cyberpunk, Glass, Minimal, Neon, Ocean) via `oklch()` CSS variables and a `data-theme` attribute.
+- **3D interactive tech sphere** — rotating tag cloud that follows mouse/touch input.
+- **Scroll-triggered reveal animations** using `IntersectionObserver`.
+- **Animated count-up stats** cards.
+- **Live GitHub integration** (`github-section.tsx`, `lib/github.ts`, `hooks/use-github-profile.ts`, `hooks/use-day-commits.ts`) — stat cards, contribution heatmap with day-click modal, language breakdown, pinned repos, activity feed, manual refresh.
+- **Custom in-browser PDF viewer** (`pdf-viewer.tsx`) — built on `pdfjs-dist`; thumbnail card, full-screen modal, zoom/pan, pinch-to-zoom, keyboard shortcuts, jump-to-page, download/print/rotate.
+- **Custom image lightbox** (`image-viewer.tsx`) — swipe navigation, pinch-to-zoom, double-tap zoom, keyboard/desktop controls, smart thumbnail strip.
+- **OTP-verified, rate-limited contact form** (`app/api/contact/send-otp`, `app/api/contact/verify-otp`, `lib/rate-limit.ts`) — two-step email verification, per-IP daily send cap, OTP expiry/attempt limits, resend cooldown.
+- **Project gallery component** for browsing per-project screenshots.
+- **Vercel Analytics** integration in `layout.tsx`.
+
+---
+
 ## Files Created
 
 ```
@@ -55,22 +71,6 @@ public/teamscript/  (3 images)
 
 ---
 
-## Features Added
-
-- **Single-page portfolio layout** (`portfolio-site.tsx`) — hero, about, skills, projects, timeline, contact, all sections assembled with scroll-based reveal animations.
-- **6 swappable color themes** (Midnight, Cyberpunk, Glass, Minimal, Neon, Ocean) via `oklch()` CSS variables and a `data-theme` attribute.
-- **3D interactive tech sphere** — rotating tag cloud that follows mouse/touch input.
-- **Scroll-triggered reveal animations** using `IntersectionObserver`.
-- **Animated count-up stats** cards.
-- **Live GitHub integration** (`github-section.tsx`, `lib/github.ts`, `hooks/use-github-profile.ts`, `hooks/use-day-commits.ts`) — stat cards, contribution heatmap with day-click modal, language breakdown, pinned repos, activity feed, manual refresh.
-- **Custom in-browser PDF viewer** (`pdf-viewer.tsx`) — built on `pdfjs-dist`; thumbnail card, full-screen modal, zoom/pan, pinch-to-zoom, keyboard shortcuts, jump-to-page, download/print/rotate.
-- **Custom image lightbox** (`image-viewer.tsx`) — swipe navigation, pinch-to-zoom, double-tap zoom, keyboard/desktop controls, smart thumbnail strip.
-- **OTP-verified, rate-limited contact form** (`app/api/contact/send-otp`, `app/api/contact/verify-otp`, `lib/rate-limit.ts`) — two-step email verification, per-IP daily send cap, OTP expiry/attempt limits, resend cooldown.
-- **Project gallery component** for browsing per-project screenshots.
-- **Vercel Analytics** integration in `layout.tsx`.
-
----
-
 ## Commands Run
 
 ```bash
@@ -95,11 +95,6 @@ npm run build
 # Lint
 npm run lint
 ```
-
----
-
-## Summary
-Part 1 established the full working foundation of the portfolio: a themeable, animated single-page site with a real backend layer (GitHub API proxy + OTP contact form), and two hand-built media viewers (PDF and image) engineered specifically to work reliably on mobile. By the end of Part 1, the site was live and functional at mohitbansal.online with all core sections in place.
 
 
 
@@ -155,17 +150,7 @@ app/admin/dashboard/dashboard-client.tsx  (sidebar fix, icon.ico, theme switcher
 lib/admin-auth.ts          (re-exports ADMIN_COOKIE_NAME from edge file, removed duplicate)
 ```
 
-## Bugs Fixed
 
-| # | Bug | Fix |
-|---|---|---|
-| 1 | `middleware.ts` deprecated in Next.js 16 | Renamed to `proxy.ts`, function renamed from `middleware` to `proxy` |
-| 2 | Node `crypto` imported in Edge Runtime | Split into `lib/admin-auth-edge.ts` (Web Crypto only) for proxy, `lib/admin-auth.ts` (Node crypto) for server routes |
-| 3 | `proxy.ts` exported `middleware` not `proxy` | Renamed exported function to `proxy` |
-| 4 | Input text invisible on dark themes | Replaced `var(--primary-foreground)` with `var(--foreground)` in input styles |
-| 5 | Sidebar overflowing viewport height | Root wrapper set to `h-screen overflow-hidden`; nav and main body scroll independently |
-| 6 | `Shield` placeholder icon in header | Replaced with `<img src="/icon.ico">` (actual site favicon) |
-| 7 | Hardcoded `data-theme="midnight"` in layout | Removed; theme now applied per-page via localStorage hook |
 
 # Part 2.2 — Development Process & Change Log
 
@@ -211,4 +196,58 @@ app/admin/dashboard/dashboard-client.tsx  (Added live stats fetch and UI wiring)
 
 ```bash
 npm install @upstash/redis
+```
+
+
+
+# Part 2.3 — Development Process & Change Log
+
+## Features Added
+
+### Analytics Overview Dashboard
+- **Analytics page** at `/admin/analytics` — Full analytics dashboard showing real-time data from the Vercel Web Analytics REST API.
+- **4 Key Metric Stat Cards** — Total Page Views, Unique Visitors, Average Daily Views, and Top Referrers — displayed as themed cards with icons.
+- **Visit Trend Bar Chart** — Pure SVG bar chart (zero external libs) showing daily page views for the last 7 or 30 days. Y-axis ticks, x-axis date labels, hover tooltips.
+- **Device Breakdown Donut Chart** — Pure SVG donut ring visualising Desktop / Mobile / Tablet split with a percentage legend and a total-visits counter in the center.
+- **Top Referrers Table** — Horizontal bar table showing traffic sources with absolute counts and percentage breakdown.
+- **Period Toggle** — Switch between "7d" and "30d" views; all data (stats, trend, devices, referrers) re-fetches instantly on toggle.
+- **Refresh Button** — Manual data refresh with cache-busting (`_t` timestamp param + `cache: 'no-store'`) to bypass both Next.js server-side cache and browser cache.
+- **Credentials-not-configured Banner** — Amber warning banner shown when `VERCEL_API_TOKEN` or `VERCEL_PROJECT_ID` is missing, with an inline display of the API reason string for debugging.
+- **Per-section error banner** — Distinct from the credentials banner; shown when credentials ARE configured but one or more of the four Vercel calls (count / trend / referrers / devices) still failed, listing which section failed and why.
+- **Dashboard "Page Views" stat card wired to live data** — the Admin Dashboard overview card now fetches the same `/api/admin/analytics?period=7d` data used by the Analytics page and displays real total page views plus a unique-visitors subtext, instead of a static placeholder.
+
+### Vercel Web Analytics REST API Integration
+- **Backend proxy route** at `/api/admin/analytics` — Auth-guarded server route that proxies 4 Vercel API calls in parallel:
+  - `GET /v1/query/web-analytics/visits/count` → total pageviews + visitors
+  - `GET /v1/query/web-analytics/visits/aggregate?by=day` → daily trend
+  - `GET /v1/query/web-analytics/visits/aggregate?by=referrerHostname` → top referrers
+  - `GET /v1/query/web-analytics/visits/aggregate?by=deviceType` → device breakdown
+- **All responses parsed with verified field names** — field mapping confirmed against the Vercel REST API reference: `data.pageviews`, `data.visitors`, `row.timestamp`, `row.referrerHostname`, `row.deviceType`.
+- **Automatic `by` param retry** — sends the simple `by=<dimension>` form first; if that specific call 400s, retries once with the array form (`by[]=<dimension>`) before giving up.
+- **Per-section error propagation** — the route returns an `_errors` object (keyed `count` / `trend` / `referrers` / `devices`) alongside the data whenever a specific call fails, instead of silently returning a zero/empty result for that section.
+- **Avg. Daily Views recalculated from trend data** — derived directly from the same `trend` array the chart renders (sum of daily views ÷ number of days in range) rather than `totalViews / period`, keeping it visually consistent with the chart above it.
+- **Top Referrers stat card corrected** — now shows total referred page views (matching the units of the other three stat cards) instead of a raw source count; source count moved to the card's subtext.
+
+### Dashboard Integration
+- **Analytics nav item** added to the admin sidebar in `dashboard-client.tsx` (between Messages and Content).
+- **Page Views stat card** now shows real data (see above) instead of a static sub-text placeholder.
+
+---
+
+## Files Created
+
+```
+app/api/admin/analytics/route.ts
+app/admin/analytics/page.tsx
+app/admin/analytics/analytics-client.tsx
+```
+
+## Files Updated
+
+```
+app/admin/dashboard/dashboard-client.tsx  (Added BarChart2 import, Analytics sidebar nav item, wired Page Views stat card to live analytics data)
+app/layout.tsx                            (Removed NODE_ENV === 'production' guard from <Analytics /> — must always render for Vercel to detect it)
+.env.example                              (Added VERCEL_API_TOKEN, VERCEL_PROJECT_ID, VERCEL_TEAM_ID section)
+app/api/admin/analytics/route.ts          (Per-section error handling, `by`/`by[]` retry logic)
+app/admin/analytics/analytics-client.tsx  (Avg. Daily Views and Top Referrers stat card fixes, inline error states)
 ```
