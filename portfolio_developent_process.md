@@ -82,10 +82,10 @@ app/api/admin/logout/route.ts
 ## Files Updated
 ```
 .env.example
-app/admin/layout.tsx       (removed hardcoded theme)
-app/admin/page.tsx         (input fix, icon.ico logo, theme switcher)
-app/admin/dashboard/dashboard-client.tsx  (sidebar fix, icon.ico, theme switcher)
-lib/admin-auth.ts          (re-exports ADMIN_COOKIE_NAME from edge file, removed duplicate)
+app/admin/layout.tsx
+app/admin/page.tsx
+app/admin/dashboard/dashboard-client.tsx
+lib/admin-auth.ts
 ```
 
 ---
@@ -116,10 +116,10 @@ app/admin/messages/messages-client.tsx
 
 ## Files Updated
 ```
-app/api/contact/verify-otp/route.ts       (Added saveMessage call on success)
-app/admin/dashboard/dashboard-client.tsx  (Added live stats fetch and UI wiring)
-.env.example                              (Added Upstash Redis / Vercel KV variables)
-.gitignore                                (Added *.tsbuildinfo rule)
+app/api/contact/verify-otp/route.ts
+app/admin/dashboard/dashboard-client.tsx
+.env.example
+.gitignore
 ```
 
 ## Commands Run
@@ -153,11 +153,11 @@ app/admin/analytics/analytics-client.tsx
 
 ## Files Updated
 ```
-app/admin/dashboard/dashboard-client.tsx  (Added BarChart2 import, Analytics sidebar nav item, wired Page Views stat card to live analytics data)
-app/layout.tsx                            (Removed NODE_ENV === 'production' guard from <Analytics /> — must always render for Vercel to detect it)
-.env.example                              (Added VERCEL_API_TOKEN, VERCEL_PROJECT_ID, VERCEL_TEAM_ID section)
-app/api/admin/analytics/route.ts          (Per-section error handling, `by`/`by[]` retry logic)
-app/admin/analytics/analytics-client.tsx  (Avg. Daily Views and Top Referrers stat card fixes, inline error states)
+app/admin/dashboard/dashboard-client.tsx
+app/layout.tsx
+.env.example
+app/api/admin/analytics/route.ts
+app/admin/analytics/analytics-client.tsx
 ```
 
 ---
@@ -190,9 +190,9 @@ app/admin/resume/resume-client.tsx
 
 ## Files Updated
 ```
-app/admin/dashboard/dashboard-client.tsx  (Added Resume sidebar nav item, between Analytics and Content)
-components/portfolio-site.tsx             (Download buttons routed through /api/resume/download; inline PdfViewer and "View in browser" link now use live resumeUrl/resumeFileName fetched from /api/resume)
-.env.example                              (Added BLOB_READ_WRITE_TOKEN and NEXT_PUBLIC_SITE_URL under a new "Resume Management (Part 2.4)" section)
+app/admin/dashboard/dashboard-client.tsx
+components/portfolio-site.tsx
+.env.example
 ```
 
 ## Commands Run
@@ -227,7 +227,7 @@ app/admin/settings/settings-client.tsx
 
 ## Files Updated
 ```
-components/portfolio-site.tsx  (Live settings fetched from /api/settings on mount; maintenance banner added; hero availability line, all social icon links, and contact email copy button now read from live settings with static fallback)
+components/portfolio-site.tsx
 ```
 
 ## Commands Run
@@ -266,16 +266,16 @@ app/admin/security/security-client.tsx
 
 ## Files Updated
 ```
-lib/admin-auth.ts                          (verifyAdminCredentials is now async and checks the runtime password override before falling back to .env; createSessionToken embeds a sid + iat; added verifySessionTokenWithRevocation, verifyCurrentPassword, isKnownAdminEmail)
-lib/admin-auth-edge.ts                     (verifySessionTokenEdge now also checks the revocation cutoff via a direct Upstash REST fetch, Edge-safe, fails open when Redis isn't configured)
-app/api/admin/login/route.ts               (logs every login attempt success/failure with IP + user agent, registers a tracked session on success)
-app/api/admin/logout/route.ts              (looks up and removes the session's tracked row, not just clearing the cookie)
-app/admin/dashboard/dashboard-client.tsx   (added Security nav item + Security & Session quick action)
-app/admin/messages/messages-client.tsx     (added Security nav item)
-app/admin/analytics/analytics-client.tsx   (added Security nav item)
-app/admin/resume/resume-client.tsx         (added Security nav item)
-app/admin/settings/settings-client.tsx     (added Security nav item)
-.env.example                               (added Part 2.6 note — no new variables, reuses KV_REST_API_URL/KV_REST_API_TOKEN, documents optional SECURITY_FILE override)
+lib/admin-auth.ts
+lib/admin-auth-edge.ts
+app/api/admin/login/route.ts
+app/api/admin/logout/route.ts
+app/admin/dashboard/dashboard-client.tsx
+app/admin/messages/messages-client.tsx
+app/admin/analytics/analytics-client.tsx
+app/admin/resume/resume-client.tsx
+app/admin/settings/settings-client.tsx
+.env.example
 ```
 
 ## Commands Run
@@ -317,13 +317,13 @@ app/admin/content/content-client.tsx
 
 ## Files Updated
 ```
-app/admin/dashboard/dashboard-client.tsx   (Redesigned dashboard with 6 integrated stat cards, live activity feed, updated quick actions, removed Visitors nav item, added Content with FolderKanban icon)
-app/admin/messages/messages-client.tsx     (Removed Visitors nav item, added Content with FolderKanban icon)
-app/admin/analytics/analytics-client.tsx   (Removed Visitors nav item, added Content with FolderKanban icon, removed Users import)
-app/admin/resume/resume-client.tsx         (Removed Visitors nav item, added Content with FolderKanban icon, removed Users import)
-app/admin/settings/settings-client.tsx     (Removed Visitors nav item, added Content with FolderKanban icon, removed Users import)
-app/admin/security/security-client.tsx     (Removed Visitors nav item, added Content with FolderKanban icon, removed Users import)
-components/portfolio-site.tsx              (Fetches live content from /api/content on mount; projects, about, skills, and timeline sections now read from liveContent state with static fallback)
+app/admin/dashboard/dashboard-client.tsx
+app/admin/messages/messages-client.tsx
+app/admin/analytics/analytics-client.tsx
+app/admin/resume/resume-client.tsx
+app/admin/settings/settings-client.tsx
+app/admin/security/security-client.tsx
+components/portfolio-site.tsx
 ```
 
 ## Commands Run
@@ -332,4 +332,49 @@ components/portfolio-site.tsx              (Fetches live content from /api/conte
 npm run dev
 npm run build
 npm run lint
+```
+
+---
+
+# Part 2.8 — Two-Factor Authentication (TOTP)
+
+## Overview
+Adds Two-Factor Authentication (2FA) to the admin login using TOTP (Time-based One-Time Password) compatible with Google Authenticator, Authy, Microsoft Authenticator, and other authenticator apps. Includes QR code setup, manual secret entry, replay protection, and full theme integration.
+
+## Features Added
+- TOTP implementation (RFC 6238) — HMAC-SHA1, 160-bit Base32 secrets, 30-second windows, ±1 window clock drift tolerance
+- Two-step login flow — email+password verified first, then 6-digit code prompt if 2FA enabled
+- QR code display via `qrcode.react` (SVG rendering) + manual setup key with copy-to-clipboard
+- Replay protection — each TOTP code can only be used once (tracked via `lastUsedCode`)
+- Enable flow — generate secret → scan QR → verify code → 2FA active
+- Disable flow — requires current valid 6-digit code (prevents session hijackers from disabling 2FA)
+- Regenerate option for new secret before activation
+- Login attempt logging for 2FA events (`invalid_2fa_code`, `2fa_enabled`, `2fa_disabled`)
+- Dual-backend storage: Upstash Redis in prod (reuses existing KV), local `.data/portfolio-2fa.json` fallback in dev
+- Separate API route files for proper Next.js nested route handling (`/api/admin/2fa`, `/api/admin/2fa/setup`, `/api/admin/2fa/verify`)
+- Full theme integration matching other admin pages
+- No new env vars required
+
+## Files Created
+```
+lib/admin-2fa.ts
+app/api/admin/2fa/route.ts
+app/api/admin/2fa/setup/route.ts
+app/api/admin/2fa/verify/route.ts
+```
+
+## Files Updated
+```
+lib/admin-auth.ts
+app/api/admin/login/route.ts
+app/admin/page.tsx
+app/admin/security/security-client.tsx
+package.json
+.env.example
+```
+
+## Commands Run
+```bash
+npm install qrcode.react
+npm run dev
 ```

@@ -7,6 +7,9 @@
  * Part 2.7 update: removed "Visitors" nav item, added "Content" with
  * FolderKanban icon. Canonical nav list now spans Dashboard, Messages,
  * Analytics, Resume, Content, Settings, Security.
+ * Part 2.8 update: added Two-Factor Authentication section with QR code
+ * setup, code verification, and disable functionality.
+ * Part 2.8 fix: corrected API endpoint paths for 2FA setup/verify.
  * ---------------------------------------------------------------------------
  */
 
@@ -17,8 +20,10 @@ import {
   ExternalLink, TrendingUp, MessageSquare, Loader2, Menu, X, Palette,
   BarChart2, AlertTriangle, Check, ShieldCheck, KeyRound, Monitor,
   Smartphone, LogOutIcon, Clock, Globe2, ChevronDown, Eye, EyeOff,
-  CheckCircle2, XCircle, ListChecks, FolderKanban,
+  CheckCircle2, XCircle, ListChecks, FolderKanban, Smartphone as SmartphoneIcon,
+  Copy, RefreshCw, Trash2, Shield, ShieldOff,
 } from 'lucide-react'
+import { QRCodeSVG } from 'qrcode.react'
 import { themes } from '@/lib/content'
 import type { ActiveSession, LoginAttempt } from '@/lib/admin-security'
 
@@ -185,6 +190,20 @@ export default function SecurityClient({ adminEmail }: { adminEmail: string }) {
   const [passwordError, setPasswordError] = useState<string | null>(null)
   const [passwordSuccess, setPasswordSuccess] = useState(false)
 
+  // Part 2.8 — Two-Factor Authentication state
+  const [twoFactorEnabled, setTwoFactorEnabled] = useState(false)
+  const [twoFactorLoading, setTwoFactorLoading] = useState(true)
+  const [twoFactorSecret, setTwoFactorSecret] = useState<string | null>(null)
+  const [twoFactorURI, setTwoFactorURI] = useState<string | null>(null)
+  const [twoFactorCode, setTwoFactorCode] = useState('')
+  const [twoFactorError, setTwoFactorError] = useState<string | null>(null)
+  const [twoFactorSuccess, setTwoFactorSuccess] = useState(false)
+  const [settingUp2FA, setSettingUp2FA] = useState(false)
+  const [verifying2FA, setVerifying2FA] = useState(false)
+  const [disabling2FA, setDisabling2FA] = useState(false)
+  const [showDisableConfirm, setShowDisableConfirm] = useState(false)
+  const [copiedSecret, setCopiedSecret] = useState(false)
+
   useEffect(() => {
     fetch('/api/admin/messages?filter=all')
       .then(r => r.ok ? r.json() : null)
@@ -210,7 +229,29 @@ export default function SecurityClient({ adminEmail }: { adminEmail: string }) {
     }
   }, [])
 
+  const loadTwoFactor = useCallback(async () => {
+    setTwoFactorLoading(true)
+    try {
+      const res = await fetch('/api/admin/2fa', { cache: 'no-store' })
+      if (!res.ok) throw new Error('Failed to load 2FA status')
+      const data = await res.json()
+      setTwoFactorEnabled(data.enabled ?? false)
+      if (data.pendingSetup) {
+        setTwoFactorSecret(data.secret ?? null)
+        setTwoFactorURI(data.otpauthURI ?? null)
+      } else {
+        setTwoFactorSecret(null)
+        setTwoFactorURI(null)
+      }
+    } catch {
+      // 2FA section will show unavailable state
+    } finally {
+      setTwoFactorLoading(false)
+    }
+  }, [])
+
   useEffect(() => { loadSecurity() }, [loadSecurity])
+  useEffect(() => { loadTwoFactor() }, [loadTwoFactor])
 
   const handleLogout = useCallback(async () => {
     setLoggingOut(true)
@@ -281,6 +322,99 @@ export default function SecurityClient({ adminEmail }: { adminEmail: string }) {
       setPasswordError('Network error — please try again.')
     } finally {
       setChangingPassword(false)
+    }
+  }
+
+  // Part 2.8 — 2FA handlers
+  const handleSetup2FA = async () => {
+    setTwoFactorError(null)
+    setTwoFactorSuccess(false)
+    setSettingUp2FA(true)
+    try {
+      const res = await fetch('/api/admin/2fa/setup', { method: 'POST' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setTwoFactorError(data.error || 'Failed to generate 2FA setup.')
+        return
+      }
+      setTwoFactorSecret(data.secret ?? null)
+      setTwoFactorURI(data.otpauthURI ?? null)
+      setTwoFactorCode('')
+    } catch {
+      setTwoFactorError('Network error — please try again.')
+    } finally {
+      setSettingUp2FA(false)
+    }
+  }
+
+  const handleVerify2FA = async () => {
+    setTwoFactorError(null)
+    setTwoFactorSuccess(false)
+
+    if (!twoFactorCode || !/^\d{6}$/.test(twoFactorCode)) {
+      setTwoFactorError('Enter the 6-digit code from your authenticator app.')
+      return
+    }
+
+    setVerifying2FA(true)
+    try {
+      const res = await fetch('/api/admin/2fa/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: twoFactorCode }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setTwoFactorError(data.error || 'Invalid code. Please try again.')
+        return
+      }
+      setTwoFactorEnabled(true)
+      setTwoFactorSecret(null)
+      setTwoFactorURI(null)
+      setTwoFactorCode('')
+      setTwoFactorSuccess(true)
+      setTimeout(() => setTwoFactorSuccess(false), 4000)
+    } catch {
+      setTwoFactorError('Network error — please try again.')
+    } finally {
+      setVerifying2FA(false)
+    }
+  }
+
+  const handleDisable2FA = async () => {
+    setTwoFactorError(null)
+    setDisabling2FA(true)
+    try {
+      const res = await fetch('/api/admin/2fa', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: twoFactorCode }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setTwoFactorError(data.error || 'Invalid code. 2FA was not disabled.')
+        return
+      }
+      setTwoFactorEnabled(false)
+      setTwoFactorCode('')
+      setShowDisableConfirm(false)
+      setTwoFactorSuccess(true)
+      setTimeout(() => setTwoFactorSuccess(false), 4000)
+    } catch {
+      setTwoFactorError('Network error — please try again.')
+    } finally {
+      setDisabling2FA(false)
+    }
+  }
+
+  const handleCopySecret = async () => {
+    if (!twoFactorSecret) return
+    try {
+      await navigator.clipboard.writeText(twoFactorSecret)
+      setCopiedSecret(true)
+      setTimeout(() => setCopiedSecret(false), 2000)
+    } catch {
+      // Clipboard API may not be available — user can copy manually
     }
   }
 
@@ -464,7 +598,7 @@ export default function SecurityClient({ adminEmail }: { adminEmail: string }) {
             <p className="eyebrow mb-2">Account Protection</p>
             <h1 className="text-2xl font-bold sm:text-3xl">Security &amp; Session</h1>
             <p className="mt-1 text-sm" style={{ color: 'var(--muted-foreground)' }}>
-              Review active sessions, sign out of other devices, change your password, and check recent login attempts.
+              Review active sessions, sign out of other devices, change your password, enable two-factor authentication, and check recent login attempts.
             </p>
           </div>
 
@@ -477,7 +611,7 @@ export default function SecurityClient({ adminEmail }: { adminEmail: string }) {
               <div className="text-sm">
                 <p className="font-medium">Security data isn&apos;t persistent</p>
                 <p className="mt-0.5 text-xs" style={{ color: 'var(--muted-foreground)' }}>
-                  No Upstash Redis (Vercel KV) connection was detected, so sessions, login attempts, and password changes are only saved to a local file and won&apos;t survive a redeploy. Connect a KV store to persist this in production.
+                  No Upstash Redis (Vercel KV) connection was detected, so sessions, login attempts, password changes, and 2FA settings are only saved to a local file and won&apos;t survive a redeploy. Connect a KV store to persist this in production.
                 </p>
               </div>
             </div>
@@ -496,6 +630,198 @@ export default function SecurityClient({ adminEmail }: { adminEmail: string }) {
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+
+              {/* ── Two-Factor Authentication ── */}
+              <SecuritySection
+                title="Two-Factor Authentication"
+                description="Add an extra layer of security to your admin account using an authenticator app."
+                icon={<SmartphoneIcon className="h-5 w-5" />}
+              >
+                {twoFactorLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-5 w-5 animate-spin" style={{ color: 'var(--muted-foreground)' }} />
+                  </div>
+                ) : twoFactorEnabled ? (
+                  <div>
+                    <div
+                      className="mb-4 flex items-center gap-3 rounded-xl border p-3"
+                      style={{
+                        borderColor: 'color-mix(in oklch, oklch(0.75 0.18 150) 35%, transparent)',
+                        background: 'color-mix(in oklch, oklch(0.75 0.18 150) 8%, transparent)',
+                      }}
+                    >
+                      <ShieldCheck className="h-5 w-5 shrink-0" style={{ color: 'oklch(0.75 0.18 150)' }} />
+                      <div>
+                        <p className="text-sm font-medium">2FA is enabled</p>
+                        <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                          Your account is protected with two-factor authentication.
+                        </p>
+                      </div>
+                    </div>
+
+                    {!showDisableConfirm ? (
+                      <button
+                        onClick={() => { setShowDisableConfirm(true); setTwoFactorCode(''); setTwoFactorError(null) }}
+                        className="flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition-all duration-200 hover:border-[var(--destructive)] hover:text-[var(--destructive)]"
+                        style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
+                      >
+                        <ShieldOff className="h-4 w-4" />
+                        Disable 2FA
+                      </button>
+                    ) : (
+                      <div
+                        className="rounded-xl border p-4"
+                        style={{
+                          borderColor: 'color-mix(in oklch, var(--destructive) 35%, transparent)',
+                          background: 'color-mix(in oklch, var(--destructive) 6%, transparent)',
+                        }}
+                      >
+                        <p className="text-sm font-medium mb-3">Enter your current 6-digit code to disable 2FA</p>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          maxLength={6}
+                          value={twoFactorCode}
+                          onChange={e => { setTwoFactorCode(e.target.value.replace(/\D/g, '')); setTwoFactorError(null) }}
+                          placeholder="000000"
+                          className="w-full rounded-xl border px-4 py-2.5 text-center text-lg font-mono tracking-widest outline-none focus:border-[var(--primary)]"
+                          style={inputStyle}
+                        />
+                        {twoFactorError && (
+                          <p className="mt-2 text-xs" style={{ color: 'var(--destructive)' }}>{twoFactorError}</p>
+                        )}
+                        <div className="mt-3 flex gap-2">
+                          <button
+                            onClick={handleDisable2FA}
+                            disabled={disabling2FA || twoFactorCode.length !== 6}
+                            className="flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-semibold transition-all disabled:opacity-50"
+                            style={{ background: 'var(--destructive)', color: 'white' }}
+                          >
+                            {disabling2FA ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                            Confirm Disable
+                          </button>
+                          <button
+                            onClick={() => { setShowDisableConfirm(false); setTwoFactorCode(''); setTwoFactorError(null) }}
+                            disabled={disabling2FA}
+                            className="rounded-lg border px-4 py-2 text-xs font-medium transition-all"
+                            style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : twoFactorSecret && twoFactorURI ? (
+                  <div>
+                    <p className="text-sm mb-4" style={{ color: 'var(--muted-foreground)' }}>
+                      Scan the QR code with your authenticator app (Google Authenticator, Authy, etc.), then enter the 6-digit code to enable 2FA.
+                    </p>
+
+                    <div className="flex flex-col sm:flex-row gap-4 mb-4">
+                      {/* QR Code */}
+                      <div
+                        className="flex h-48 w-48 shrink-0 items-center justify-center rounded-xl border p-2"
+                        style={{ borderColor: 'var(--border)', background: 'white' }}
+                      >
+                        <QRCodeSVG
+                          value={twoFactorURI}
+                          size={160}
+                          level="M"
+                          includeMargin={false}
+                        />
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium mb-2">Manual setup key:</p>
+                        <div
+                          className="flex items-center gap-2 rounded-lg border px-3 py-2"
+                          style={{ borderColor: 'var(--border)', background: 'var(--background)' }}
+                        >
+                          <code className="flex-1 text-xs font-mono break-all" style={{ color: 'var(--foreground)' }}>
+                            {twoFactorSecret}
+                          </code>
+                          <button
+                            onClick={handleCopySecret}
+                            className="shrink-0 rounded p-1.5 transition-colors hover:bg-[var(--muted)]"
+                            style={{ color: 'var(--muted-foreground)' }}
+                            aria-label="Copy secret"
+                          >
+                            {copiedSecret ? <Check className="h-3.5 w-3.5" style={{ color: 'oklch(0.75 0.18 150)' }} /> : <Copy className="h-3.5 w-3.5" />}
+                          </button>
+                        </div>
+                        <p className="mt-2 text-[11px]" style={{ color: 'var(--muted-foreground)' }}>
+                          Can&apos;t scan? Enter this key manually in your authenticator app.
+                        </p>
+                      </div>
+                    </div>
+
+                    <label className="block">
+                      <span className="text-xs font-medium">Enter 6-digit code</span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={6}
+                        value={twoFactorCode}
+                        onChange={e => { setTwoFactorCode(e.target.value.replace(/\D/g, '')); setTwoFactorError(null) }}
+                        placeholder="000000"
+                        className="mt-1.5 w-full rounded-xl border px-4 py-2.5 text-center text-lg font-mono tracking-widest outline-none focus:border-[var(--primary)]"
+                        style={inputStyle}
+                      />
+                    </label>
+
+                    {twoFactorError && (
+                      <p className="mt-2 text-xs" style={{ color: 'var(--destructive)' }}>{twoFactorError}</p>
+                    )}
+
+                    <div className="mt-4 flex gap-2">
+                      <button
+                        onClick={handleVerify2FA}
+                        disabled={verifying2FA || twoFactorCode.length !== 6}
+                        className="flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-all duration-200 disabled:opacity-60"
+                        style={{ background: 'var(--primary)', color: 'var(--primary-foreground)' }}
+                      >
+                        {verifying2FA ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                        {verifying2FA ? 'Verifying…' : 'Enable 2FA'}
+                      </button>
+                      <button
+                        onClick={handleSetup2FA}
+                        disabled={settingUp2FA}
+                        className="flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition-all"
+                        style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
+                      >
+                        <RefreshCw className={`h-4 w-4 ${settingUp2FA ? 'animate-spin' : ''}`} />
+                        Regenerate
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <p className="text-sm mb-4" style={{ color: 'var(--muted-foreground)' }}>
+                      Two-factor authentication adds an extra layer of security. After enabling, you&apos;ll need to enter a 6-digit code from your authenticator app each time you log in.
+                    </p>
+                    <button
+                      onClick={handleSetup2FA}
+                      disabled={settingUp2FA}
+                      className="flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-all duration-200 disabled:opacity-60"
+                      style={{ background: 'var(--primary)', color: 'var(--primary-foreground)' }}
+                    >
+                      {settingUp2FA ? <Loader2 className="h-4 w-4 animate-spin" /> : <Shield className="h-4 w-4" />}
+                      {settingUp2FA ? 'Generating…' : 'Set up 2FA'}
+                    </button>
+                  </div>
+                )}
+
+                {twoFactorSuccess && (
+                  <div
+                    className="mt-4 flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium"
+                    style={{ background: 'color-mix(in oklch, oklch(0.75 0.18 150) 12%, transparent)', color: 'oklch(0.75 0.18 150)' }}
+                  >
+                    <Check className="h-3.5 w-3.5" />
+                    2FA status updated successfully
+                  </div>
+                )}
+              </SecuritySection>
 
               {/* ── Active Sessions ── */}
               <SecuritySection
@@ -766,6 +1092,9 @@ export default function SecurityClient({ adminEmail }: { adminEmail: string }) {
                           <p className="truncate font-medium" style={{ color: 'var(--foreground)' }}>{a.email}</p>
                           <p style={{ color: 'var(--muted-foreground)' }}>
                             {a.ip} · {formatDateTime(a.timestamp)}
+                            {a.reason === 'invalid_2fa_code' && ' · Failed 2FA'}
+                            {a.reason === '2fa_enabled' && ' · 2FA enabled'}
+                            {a.reason === '2fa_disabled' && ' · 2FA disabled'}
                           </p>
                         </div>
                         <span

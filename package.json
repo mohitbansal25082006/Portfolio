@@ -19,6 +19,7 @@
     "next": "16.3.0",
     "nodemailer": "^9.0.5",
     "pdfjs-dist": "^4.10.38",
+    "qrcode.react": "^4.2.0",
     "react": "^19",
     "react-dom": "^19",
     "shadcn": "^4.8.0",

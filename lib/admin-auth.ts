@@ -14,6 +14,10 @@
  * password without touching .env" works identically on serverless and
  * local dev, and survives redeploys.
  *
+ * Part 2.8 adds two-factor authentication (2FA):
+ * After successful password verification, if 2FA is enabled for the admin,
+ * a TOTP code must be provided before a session is created.
+ *
  * Sessions are HMAC-SHA256 signed tokens stored in an httpOnly cookie.
  * No external JWT library is required — we use Node's built-in `crypto`.
  * Part 2.6 also embeds a unique `sid` (session id) and `iat` (issued-at) in
@@ -25,13 +29,13 @@
 
 import { createHmac, timingSafeEqual, randomUUID } from 'crypto'
 import { getPasswordOverride, verifyPasswordOverride, isRevoked } from '@/lib/admin-security'
+import { isTwoFactorEnabled, verifyTwoFactorCode } from '@/lib/admin-2fa'
 // Re-export so server-side code can import ADMIN_COOKIE_NAME from here
 export { ADMIN_COOKIE_NAME } from '@/lib/admin-auth-edge'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 export const SESSION_DURATION_MS = 8 * 60 * 60 * 1000 // 8 hours
-
 
 // ─── Credential helpers ───────────────────────────────────────────────────────
 
@@ -96,6 +100,23 @@ export function isKnownAdminEmail(email: string): boolean {
   return getAdminCredentials().some(c => c.email === normalized)
 }
 
+/**
+ * Part 2.8 — Checks if 2FA is required for this admin.
+ * Returns true if 2FA is enabled, signaling the login route to prompt
+ * for a TOTP code before creating a session.
+ */
+export async function requiresTwoFactor(email: string): Promise<boolean> {
+  return isTwoFactorEnabled(email)
+}
+
+/**
+ * Part 2.8 — Verifies a TOTP code for an admin.
+ * Returns true if the code is valid and not replayed.
+ */
+export async function verifyTwoFactor(email: string, code: string): Promise<boolean> {
+  return verifyTwoFactorCode(email, code)
+}
+
 // ─── Session token helpers ────────────────────────────────────────────────────
 
 function getSecret(): string {
@@ -112,6 +133,7 @@ interface TokenPayload {
   exp: number // Unix timestamp (ms)
   sid: string // unique per-login session id, for tracking/revocation
   iat: number // Unix timestamp (ms) — issued-at, for the revoke-all cutoff check
+  twoFactorVerified?: boolean // Part 2.8 — marks sessions created after 2FA verification
 }
 
 /** Creates a signed session token string: base64Payload.signature */
@@ -122,6 +144,7 @@ export function createSessionToken(email: string, sessionId?: string): { token: 
     exp: Date.now() + SESSION_DURATION_MS,
     sid,
     iat: Date.now(),
+    twoFactorVerified: true, // Part 2.8 — all new sessions are 2FA-verified if required
   }
   const payloadB64 = Buffer.from(JSON.stringify(payload)).toString('base64url')
   const sig = createHmac('sha256', getSecret()).update(payloadB64).digest('base64url')

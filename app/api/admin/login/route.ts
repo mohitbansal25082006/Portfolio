@@ -2,7 +2,14 @@
  * app/api/admin/login/route.ts
  * ─────────────────────────────────────────────────────────────────────────────
  * POST  /api/admin/login
- * Body: { email: string, password: string }
+ * Body: { email: string, password: string, twoFactorCode?: string }
+ *
+ * Part 2.8 — Two-Factor Authentication flow:
+ *   1. Verify email + password
+ *   2. If 2FA is enabled for this admin, check for twoFactorCode
+ *      - If no code provided: return { twoFactorRequired: true }
+ *      - If code provided: verify TOTP
+ *   3. If all checks pass, create session
  *
  * On success → sets an httpOnly session cookie, registers the session in the
  * active-sessions store (lib/admin-security.ts), logs the successful attempt,
@@ -18,6 +25,8 @@ import {
   createSessionToken,
   ADMIN_COOKIE_NAME,
   SESSION_DURATION_MS,
+  requiresTwoFactor,
+  verifyTwoFactor,
 } from '@/lib/admin-auth'
 import { logLoginAttempt, registerSession } from '@/lib/admin-security'
 
@@ -35,6 +44,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const email: string = (body?.email ?? '').trim()
     const password: string = (body?.password ?? '').trim()
+    const twoFactorCode: string = (body?.twoFactorCode ?? '').trim()
 
     if (!email || !password) {
       return NextResponse.json(
@@ -51,6 +61,27 @@ export async function POST(req: NextRequest) {
         { error: 'Invalid credentials.' },
         { status: 401 },
       )
+    }
+
+    // Part 2.8 — Check if 2FA is required
+    const twoFactorRequired = await requiresTwoFactor(email)
+    if (twoFactorRequired) {
+      if (!twoFactorCode) {
+        // Password is correct, but 2FA code is needed
+        return NextResponse.json(
+          { twoFactorRequired: true },
+          { status: 200 },
+        )
+      }
+
+      const twoFactorValid = await verifyTwoFactor(email, twoFactorCode)
+      if (!twoFactorValid) {
+        await logLoginAttempt({ email, ip, userAgent, success: false, reason: 'invalid_2fa_code' })
+        return NextResponse.json(
+          { error: 'Invalid two-factor authentication code.' },
+          { status: 401 },
+        )
+      }
     }
 
     const sid = await registerSession({ email, ip, userAgent })
