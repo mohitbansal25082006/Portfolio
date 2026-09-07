@@ -1,123 +1,72 @@
-# Portfolio Website — Development Process (Part 1)
+# Portfolio Website — Development Process & Change Log
+
+# Part 1 — Initial Build
 
 ## Overview
-Part 1 covers the initial build of the portfolio site: project scaffolding, the main single-page layout, the live GitHub integration, the custom PDF and image viewers, and the OTP-verified contact form.
+Initial project scaffold: single-page portfolio layout, live GitHub integration, custom PDF/image viewers, and an OTP-verified contact form.
 
 ## Features Added
-
-- **Single-page portfolio layout** (`portfolio-site.tsx`) — hero, about, skills, projects, timeline, contact, all sections assembled with scroll-based reveal animations.
-- **6 swappable color themes** (Midnight, Cyberpunk, Glass, Minimal, Neon, Ocean) via `oklch()` CSS variables and a `data-theme` attribute.
-- **3D interactive tech sphere** — rotating tag cloud that follows mouse/touch input.
-- **Scroll-triggered reveal animations** using `IntersectionObserver`.
-- **Animated count-up stats** cards.
-- **Live GitHub integration** (`github-section.tsx`, `lib/github.ts`, `hooks/use-github-profile.ts`, `hooks/use-day-commits.ts`) — stat cards, contribution heatmap with day-click modal, language breakdown, pinned repos, activity feed, manual refresh.
-- **Custom in-browser PDF viewer** (`pdf-viewer.tsx`) — built on `pdfjs-dist`; thumbnail card, full-screen modal, zoom/pan, pinch-to-zoom, keyboard shortcuts, jump-to-page, download/print/rotate.
-- **Custom image lightbox** (`image-viewer.tsx`) — swipe navigation, pinch-to-zoom, double-tap zoom, keyboard/desktop controls, smart thumbnail strip.
-- **OTP-verified, rate-limited contact form** (`app/api/contact/send-otp`, `app/api/contact/verify-otp`, `lib/rate-limit.ts`) — two-step email verification, per-IP daily send cap, OTP expiry/attempt limits, resend cooldown.
-- **Project gallery component** for browsing per-project screenshots.
-- **Vercel Analytics** integration in `layout.tsx`.
+- Single-page layout (hero, about, skills, projects, timeline, contact) with scroll-reveal animations
+- 6 swappable color themes (Midnight, Cyberpunk, Glass, Minimal, Neon, Ocean) via `oklch()` + `data-theme`
+- 3D interactive tech sphere (mouse/touch-reactive tag cloud)
+- Animated count-up stat cards
+- Live GitHub integration — stats, contribution heatmap w/ day modal, language breakdown, pinned repos, activity feed
+- Custom in-browser PDF viewer (`pdf.js`) — zoom/pan, pinch-to-zoom, keyboard shortcuts, jump-to-page, download/print/rotate
+- Custom image lightbox — swipe nav, pinch/double-tap zoom, thumbnail strip
+- OTP-verified, rate-limited contact form (per-IP daily cap, OTP expiry/attempts, resend cooldown)
+- Project gallery component; Vercel Analytics integration
 
 ## Files Created
-
 ```
-.env.example
-.gitignore
-README.md
-components.json
-next-env.d.ts
-next.config.mjs
-package.json
-package-lock.json
-pnpm-lock.yaml
-postcss.config.mjs
-tsconfig.json
+.env.example, .gitignore, README.md, components.json, next-env.d.ts, next.config.mjs,
+package.json, package-lock.json, pnpm-lock.yaml, postcss.config.mjs, tsconfig.json
 
-app/layout.tsx
-app/page.tsx
-app/globals.css
-app/icon.ico
+app/layout.tsx, app/page.tsx, app/globals.css, app/icon.ico
+app/api/github/route.ts, app/api/github/day/route.ts
+app/api/contact/send-otp/route.ts, app/api/contact/verify-otp/route.ts
 
-app/api/github/route.ts
-app/api/github/day/route.ts
-app/api/contact/send-otp/route.ts
-app/api/contact/verify-otp/route.ts
+components/portfolio-site.tsx, components/github-section.tsx,
+components/pdf-viewer.tsx, components/image-viewer.tsx, components/ui/button.tsx
 
-components/portfolio-site.tsx
-components/github-section.tsx
-components/pdf-viewer.tsx
-components/image-viewer.tsx
-components/ui/button.tsx
+hooks/use-github-profile.ts, hooks/use-day-commits.ts
+lib/content.ts, lib/github.ts, lib/rate-limit.ts, lib/utils.ts
 
-hooks/use-github-profile.ts
-hooks/use-day-commits.ts
-
-lib/content.ts
-lib/github.ts
-lib/rate-limit.ts
-lib/utils.ts
-
-public/banner.png
-public/resume.pdf
-public/deepdive/  (21 images)
-public/finsight-ai/  (8 images)
-public/mannsahay/  (11 images)
-public/neurafusion/  (6 images)
-public/teamscript/  (3 images)
+public/banner.png, public/resume.pdf
+public/deepdive/ (21 images), public/finsight-ai/ (8 images),
+public/mannsahay/ (11 images), public/neurafusion/ (6 images), public/teamscript/ (3 images)
 ```
 
 ## Commands Run
-
 ```bash
-# Clone repo
 git clone https://github.com/mohitbansal25082006/Portfolio.git
 cd portfolio-website
-
-# Install dependencies
-npm install
-# or
-pnpm install
-
-# Set up environment variables
+npm install   # or pnpm install
 cp .env.example .env.local
-
-# Run dev server
 npm run dev
-
-# Build check
 npm run build
-
-# Lint
 npm run lint
 ```
 
+---
 
-
-# Part 2.1 — Development Process & Change Log
+# Part 2.1 — Admin Authentication
 
 ## Overview
-Part 2.1 introduces the admin dashboard: an authentication system for the site owner, protected `/admin/*` routes, and full integration of the existing 6-theme system into the admin UI.
+Introduces the admin dashboard: site-owner auth system, protected `/admin/*` routes, and the 6-theme system integrated into the admin UI.
 
 ## Features Added
-
-- **Admin login page** at `/admin` — email + password form with field validation, show/hide password toggle, generic error banner, aurora + grid background, styled with existing design tokens.
-- **Admin dashboard shell** at `/admin/dashboard` — responsive sidebar, top nav bar, welcome banner, 4 stat card slots, activity feed placeholder, quick actions panel.
-- **Multi-admin credential support** — reads `ADMIN_MAIL1/ADMIN_PASSWORD1`, `ADMIN_MAIL2/ADMIN_PASSWORD2`, … (unlimited) from `.env.local` at runtime.
-- **HMAC-SHA256 session tokens** — signed with `ADMIN_SESSION_SECRET`, no external JWT library required, stored in `httpOnly` / `secure` / `sameSite=strict` cookie.
-- **Automatic redirects** — already-logged-in users visiting `/admin` → `/admin/dashboard`; unauthenticated users hitting protected routes → `/admin?redirect=<path>`.
-- **Logout** — `POST /api/admin/logout` immediately expires the cookie; client redirects to `/admin`.
-- **Timing-safe credential comparison** — uses `crypto.timingSafeEqual` to prevent timing attacks.
-- **Admin pages excluded from search indexing** — `robots: { index: false }` in admin layout metadata.
-- **Next.js 16 `proxy.ts`** — edge proxy guards all `/admin/*` routes using the Web Crypto API (no Node.js modules), double-layer auth (proxy + server component DAL).
-- **Edge-safe auth split** — `lib/admin-auth-edge.ts` (Web Crypto, edge-compatible) vs `lib/admin-auth.ts` (Node crypto, server-only) to avoid runtime conflicts.
-- **Full theme integration** — all 6 portfolio themes (Midnight, Cyberpunk, Glass, Minimal, Neon, Ocean) work in the admin section.
-- **Theme switcher** — Palette button on both login page and dashboard header; theme persisted in `localStorage('admin-theme')`; defaults to Midnight.
-- **Input text visibility** — inputs use `var(--foreground)` for text (readable on all themes); removed `.contact-input` class which used near-black `var(--primary-foreground)` on dark backgrounds.
-- **Sidebar viewport fix** — root wrapper is `h-screen overflow-hidden`; sidebar nav scrolls internally; page body scrolls independently — sidebar never overflows viewport.
-- **Logo** — replaced placeholder `<Shield>` icon with actual site favicon (`/icon.ico`) in sidebar header and welcome banner.
-- **Admin layout decoupled** — removed hardcoded `data-theme="midnight"` from layout; each page applies its own theme via client-side hook.
+- Admin login page (`/admin`) with validation, show/hide password, aurora+grid background
+- Dashboard shell (`/admin/dashboard`) — sidebar, top nav, stat card slots, activity feed placeholder, quick actions
+- Multi-admin credentials via unlimited `ADMIN_MAILn/ADMIN_PASSWORDn` env vars
+- HMAC-SHA256 signed session tokens in `httpOnly`/`secure`/`sameSite=strict` cookie
+- Auto-redirects (logged-in → dashboard; unauthenticated → login) and logout endpoint
+- Timing-safe credential comparison; admin pages excluded from search indexing
+- Edge `proxy.ts` guarding all `/admin/*` routes (Web Crypto, double-layer auth w/ server DAL)
+- Edge-safe vs Node-only auth split (`admin-auth-edge.ts` vs `admin-auth.ts`)
+- Full theme integration + persisted theme switcher (`localStorage('admin-theme')`)
+- Input text visibility fix; sidebar viewport fix (independent scroll regions); real favicon logo
 
 ## Files Created
-
 ```
 lib/admin-auth.ts
 lib/admin-auth-edge.ts
@@ -131,7 +80,6 @@ app/api/admin/logout/route.ts
 ```
 
 ## Files Updated
-
 ```
 .env.example
 app/admin/layout.tsx       (removed hardcoded theme)
@@ -140,26 +88,23 @@ app/admin/dashboard/dashboard-client.tsx  (sidebar fix, icon.ico, theme switcher
 lib/admin-auth.ts          (re-exports ADMIN_COOKIE_NAME from edge file, removed duplicate)
 ```
 
+---
 
-
-# Part 2.2 — Development Process & Change Log
+# Part 2.2 — Messages Inbox
 
 ## Overview
-Part 2.2 builds the Messages inbox inside the admin dashboard, backed by a dual-storage system (Upstash Redis in production, a local JSON file in development) so contact form submissions persist reliably across serverless deployments.
+Builds the Messages inbox in the admin dashboard, backed by dual storage (Upstash Redis in prod, local JSON in dev) so contact submissions persist across serverless deploys.
 
 ## Features Added
-
-- **Messages Dashboard** at `/admin/messages` — full-featured inbox to view all contact form submissions.
-- **Live Search & Filters** — filter by All, Unread, Read, Replied, and search across name, email, subject, and message content.
-- **Bulk Actions** — select multiple messages to mark as read/unread or delete them in bulk.
-- **Detail Modal & Inline Reply** — click a message to read the full text and reply directly from the dashboard. Replies are sent via `nodemailer` using the portfolio's connected Gmail account.
-- **Live Stats Integration** — dashboard overview cards and the sidebar navigation badge now fetch and display the real-time unread messages count.
-- **Upstash Redis (Production)** — automatically used when `KV_REST_API_URL` and `KV_REST_API_TOKEN` are present (injected by Vercel KV). Ensures messages persist across serverless deployments.
-- **Local JSON Fallback (Development)** — automatically falls back to saving a `.data/portfolio-messages.json` file in local dev environments without requiring any external database setup.
-- **Message Persistence** — updated the public contact form's `verify-otp` route to save messages into the dual-backend store immediately upon successful verification and email delivery.
+- Messages dashboard (`/admin/messages`) — full inbox for contact submissions
+- Live search/filters (All, Unread, Read, Replied) across name/email/subject/body
+- Bulk mark read/unread/delete
+- Detail modal with inline reply via `nodemailer` (Gmail)
+- Live unread-count stats on dashboard cards and sidebar badge
+- Upstash Redis in production; local `.data/portfolio-messages.json` fallback in dev
+- `verify-otp` route now saves messages to the store on successful verification
 
 ## Files Created
-
 ```
 lib/messages.ts
 app/api/admin/messages/route.ts
@@ -170,7 +115,6 @@ app/admin/messages/messages-client.tsx
 ```
 
 ## Files Updated
-
 ```
 app/api/contact/verify-otp/route.ts       (Added saveMessage call on success)
 app/admin/dashboard/dashboard-client.tsx  (Added live stats fetch and UI wiring)
@@ -179,39 +123,28 @@ app/admin/dashboard/dashboard-client.tsx  (Added live stats fetch and UI wiring)
 ```
 
 ## Commands Run
-
 ```bash
 npm install @upstash/redis
 ```
 
+---
 
-
-# Part 2.3 — Development Process & Change Log
+# Part 2.3 — Analytics Dashboard
 
 ## Overview
-Part 2.3 adds a full Analytics dashboard to the admin panel, sourced live from the Vercel Web Analytics REST API, including a visit trend chart, device breakdown, referrer table, and a live-wired stat card on the main dashboard overview.
+Adds a full Analytics dashboard sourced live from the Vercel Web Analytics REST API, plus a live-wired stat card on the main dashboard.
 
 ## Features Added
-
-- **Analytics page** at `/admin/analytics` — full analytics dashboard showing real-time data from the Vercel Web Analytics REST API.
-- **4 Key Metric Stat Cards** — Total Page Views, Unique Visitors, Average Daily Views, and Top Referrers — displayed as themed cards with icons.
-- **Visit Trend Bar Chart** — pure SVG bar chart (zero external libs) showing daily page views for the last 7 or 30 days. Y-axis ticks, x-axis date labels, hover tooltips.
-- **Device Breakdown Donut Chart** — pure SVG donut ring visualising Desktop / Mobile / Tablet split with a percentage legend and a total-visits counter in the center.
-- **Top Referrers Table** — horizontal bar table showing traffic sources with absolute counts and percentage breakdown.
-- **Period Toggle** — switch between "7d" and "30d" views; all data (stats, trend, devices, referrers) re-fetches instantly on toggle.
-- **Refresh Button** — manual data refresh with cache-busting (`_t` timestamp param + `cache: 'no-store'`) to bypass both Next.js server-side cache and browser cache.
-- **Credentials-not-configured Banner** — amber warning banner shown when `VERCEL_API_TOKEN` or `VERCEL_PROJECT_ID` is missing, with an inline display of the API reason string for debugging.
-- **Per-section error banner** — distinct from the credentials banner; shown when credentials ARE configured but one or more of the four Vercel calls (count / trend / referrers / devices) still failed, listing which section failed and why.
-- **Dashboard "Page Views" stat card wired to live data** — the Admin Dashboard overview card now fetches the same `/api/admin/analytics?period=7d` data used by the Analytics page and displays real total page views plus a unique-visitors subtext, instead of a static placeholder.
-- **Backend proxy route** at `/api/admin/analytics` — auth-guarded server route that proxies 4 Vercel API calls in parallel (visits count, daily trend, top referrers, device breakdown).
-- **Automatic `by` param retry** — sends the simple `by=<dimension>` form first; if that specific call 400s, retries once with the array form (`by[]=<dimension>`) before giving up.
-- **Per-section error propagation** — the route returns an `_errors` object (keyed `count` / `trend` / `referrers` / `devices`) alongside the data whenever a specific call fails, instead of silently returning a zero/empty result for that section.
-- **Avg. Daily Views recalculated from trend data** — derived directly from the same `trend` array the chart renders, keeping it visually consistent with the chart above it.
-- **Top Referrers stat card corrected** — now shows total referred page views (matching the units of the other three stat cards) instead of a raw source count; source count moved to the card's subtext.
-- **Analytics nav item** added to the admin sidebar in `dashboard-client.tsx` (between Messages and Content).
+- Analytics page (`/admin/analytics`) — 4 key stat cards (page views, unique visitors, avg daily views, top referrers)
+- Pure-SVG visit trend bar chart (7d/30d) and device breakdown donut chart
+- Top referrers table; period toggle; manual refresh with cache-busting
+- Credentials-missing banner + per-section error banner (distinct failure states)
+- Dashboard "Page Views" card wired to the same live data
+- Auth-guarded backend proxy (`/api/admin/analytics`) hitting 4 Vercel endpoints in parallel, with automatic `by`/`by[]` retry and per-section error propagation
+- Avg Daily Views derived from trend data; Top Referrers card corrected to page-view units
+- Analytics nav item added (between Messages and Content)
 
 ## Files Created
-
 ```
 app/api/admin/analytics/route.ts
 app/admin/analytics/page.tsx
@@ -219,7 +152,6 @@ app/admin/analytics/analytics-client.tsx
 ```
 
 ## Files Updated
-
 ```
 app/admin/dashboard/dashboard-client.tsx  (Added BarChart2 import, Analytics sidebar nav item, wired Page Views stat card to live analytics data)
 app/layout.tsx                            (Removed NODE_ENV === 'production' guard from <Analytics /> — must always render for Vercel to detect it)
@@ -228,31 +160,25 @@ app/api/admin/analytics/route.ts          (Per-section error handling, `by`/`by[
 app/admin/analytics/analytics-client.tsx  (Avg. Daily Views and Top Referrers stat card fixes, inline error states)
 ```
 
+---
 
-
-# Part 2.4 — Development Process & Change Log
+# Part 2.4 — Resume Management
 
 ## Overview
-Part 2.4 adds Resume Management to the admin dashboard: uploading a new resume PDF, viewing the current resume inline using the site's own custom PDF viewer, and tracking resume download counts — backed by Vercel Blob for file storage and the existing Upstash Redis instance for metadata.
+Adds Resume Management: upload, inline preview via the site's own PDF viewer, and download-count tracking, backed by Vercel Blob + Upstash Redis.
 
 ## Features Added
-
-- **Resume page** at `/admin/resume` — dedicated admin page for managing the single resume PDF visitors download from the live portfolio.
-- **Drag-and-drop upload** — a themed dropzone (click-to-browse or drag a file onto it) that uploads a new resume PDF via `multipart/form-data`, replacing whatever was previously live. Validates the file is actually a PDF by checking its `%PDF-` magic bytes server-side, and enforces a 15MB size ceiling.
-- **Inline resume preview using the site's own custom PDF viewer** — reuses `components/pdf-viewer.tsx` (the same `PdfViewer` from Part 1) instead of a plain `<iframe>`: an animated terminal-style trigger card that opens a full-screen, portal-rendered modal with zoom, pinch-to-zoom, pan, rotate, jump-to-page, and download/print controls. Fully re-themes with the rest of the admin UI since it's already built on the same CSS variables.
-- **Download count tracking** — every time a visitor downloads the resume from the public site, a counter increments; the admin Resume page displays this as a live stat card ("Total downloads").
-- **Additional stat cards** — Last updated (timestamp of the most recent upload) and File size, alongside the download counter.
-- **Storage-not-persistent warning banner** — if Vercel Blob isn't configured, an amber banner explains that uploads are only being saved to local disk and won't survive a redeploy.
-- **Resume nav item** added to the admin sidebar (`dashboard-client.tsx`), between Analytics and Content.
-- **Vercel Blob (Production)** — automatically used when `BLOB_READ_WRITE_TOKEN` is present. Stores the actual PDF bytes with public access and `addRandomSuffix: true` so re-uploads get a fresh URL. The previous blob is deleted (best-effort) on every successful re-upload.
-- **Local disk fallback (Development)** — without a Blob token, uploads are written straight to `public/resume.pdf` on disk, served immediately by `next dev`.
-- **Metadata (both environments)** — reuses the existing Upstash Redis instance from Part 2.2 to store `{ url, fileName, size, uploadedAt, downloadCount, blobPathname }` under the key `resume:meta`, with a `.data/resume-meta.json` local-file fallback when Redis isn't configured.
-- **Public download-tracking route** at `GET /api/resume/download` — increments the download counter (fire-and-forget) and issues a 307 redirect to the current resume's real URL, appending `?download=<filename>` for Vercel Blob URLs to force a native "Save As" dialog.
-- **Public metadata route** at `GET /api/resume` — unauthenticated, returns `{ url, fileName }` so the public portfolio's inline PdfViewer and "View in browser" links always point at the current file.
-- **`portfolio-site.tsx` updated** — both "Download Resume" buttons now point at `/api/resume/download`; the "View in browser" link and the inline PdfViewer now use a `resumeUrl` / `resumeFileName` pair fetched client-side from `/api/resume` on mount, falling back to the original static `siteConfig.resumeUrl` until that fetch resolves.
+- Resume page (`/admin/resume`) with drag-and-drop upload (magic-byte PDF validation, 15MB cap)
+- Inline preview reusing `PdfViewer` from Part 1 (zoom, pan, rotate, jump-to-page, download/print)
+- Download-count tracking + stat cards (Total downloads, Last updated, File size)
+- Storage-not-persistent warning banner when Blob isn't configured
+- Resume nav item added (between Analytics and Content)
+- Vercel Blob in production (public access, random suffix, best-effort delete of old blob); local-disk fallback (`public/resume.pdf`) in dev
+- Metadata stored in Redis (`resume:meta`) with local-file fallback
+- Public routes: `GET /api/resume/download` (tracks + 307 redirects) and `GET /api/resume` (metadata)
+- Portfolio download buttons and inline viewer now use live resume URL/filename with static fallback
 
 ## Files Created
-
 ```
 lib/resume.ts
 app/api/admin/resume/route.ts
@@ -263,7 +189,6 @@ app/admin/resume/resume-client.tsx
 ```
 
 ## Files Updated
-
 ```
 app/admin/dashboard/dashboard-client.tsx  (Added Resume sidebar nav item, between Analytics and Content)
 components/portfolio-site.tsx             (Download buttons routed through /api/resume/download; inline PdfViewer and "View in browser" link now use live resumeUrl/resumeFileName fetched from /api/resume)
@@ -271,37 +196,27 @@ components/portfolio-site.tsx             (Download buttons routed through /api/
 ```
 
 ## Commands Run
-
 ```bash
 npm install @vercel/blob
 ```
 
+---
 
-
-# Part 2.5 — Development Process & Change Log
+# Part 2.5 — Site Settings
 
 ## Overview
-Part 2.5 adds Site Settings to the admin dashboard: toggling site-wide maintenance mode with a custom banner message, updating the contact email shown on the public site, updating the "Open to Internships" availability status line, and updating social links — all editable live from the admin panel without a redeploy, backed by the same dual-storage pattern (Upstash Redis in production, a local JSON file in development) introduced in Part 2.2.
+Adds Site Settings for maintenance mode, contact email, availability status, and social links — editable live without a redeploy, using the same dual-storage pattern as Part 2.2.
 
 ## Features Added
-
-- **Settings page** at `/admin/settings` — dedicated admin page for controlling site-wide configuration, split into four independently saveable sections.
-- **Maintenance Mode toggle** — a themed switch to turn maintenance mode on/off, paired with a custom, editable banner message (up to 300 characters) shown to visitors on the live site while enabled.
-- **Contact Email management** — update the email address shown in the hero, contact section, and footer copy-to-clipboard button, without touching source code.
-- **Availability Status editor** — update the short "Open to Internships & Collaborations" status line shown in the hero, with an 80-character limit and live counter.
-- **Social Links management** — update GitHub, LinkedIn, contact email, Twitter/X, and LeetCode links shown across the hero, contact section, and footer; optional links (e.g. Twitter) can be left blank to hide that icon entirely.
-- **Per-section independent saving** — each of the four settings sections (Maintenance, Contact, Availability, Social) saves and reports success/failure independently, so editing one doesn't require resubmitting the others.
-- **Live maintenance banner** — the public portfolio (`portfolio-site.tsx`) fetches current settings on load and renders a sticky, dismiss-free banner at the top of the page whenever maintenance mode is active, using the admin-configured message.
-- **Public settings sync** — the hero availability line, all social icon links (hero, contact, footer), and the contact email copy button on the public site now read live from the settings store instead of static values in `lib/content.ts`, falling back to those static values until the client fetch resolves.
-- **Storage-not-persistent warning banner** — if Upstash Redis isn't configured, an amber banner explains that settings changes are only being saved to a local file and won't survive a redeploy, matching the same warning pattern from the Resume page in Part 2.4.
-- **Settings nav item** added to the admin sidebar (`dashboard-client.tsx`), after Visitors.
-- **Upstash Redis (Production)** — automatically used when `KV_REST_API_URL` and `KV_REST_API_TOKEN` are present, reusing the same KV store already configured for messages and resume metadata. No new environment variables required.
-- **Local JSON fallback (Development)** — automatically falls back to saving a `.data/portfolio-settings.json` file in local dev environments, matching the pattern from Parts 2.2 and 2.4.
-- **Server-side validation** — the settings API validates email format, availability status length, maintenance message length, and that social URLs are well-formed before saving; the email social link is normalized to a `mailto:` prefix automatically.
-- **Full theme integration** — the Settings page uses the same `useAdminTheme` hook, `data-theme` attribute, and CSS-variable styling as the Dashboard, Analytics, and Resume admin pages, so all 6 portfolio themes (Midnight, Cyberpunk, Glass, Minimal, Neon, Ocean) apply consistently, synced via the same `localStorage('admin-theme')` key.
+- Settings page (`/admin/settings`) split into 4 independently-saveable sections
+- Maintenance mode toggle + editable banner message (300 char)
+- Contact email, availability status (80 char, live counter), and social links (GitHub/LinkedIn/email/Twitter/LeetCode) management
+- Live maintenance banner and public settings sync on the portfolio site (availability line, social icons, contact copy button), with static fallback
+- Storage-not-persistent warning banner; Settings nav item added after Visitors
+- Upstash Redis in prod / local JSON fallback in dev; server-side validation (email format, lengths, URL well-formedness, auto `mailto:` normalization)
+- Full theme integration matching other admin pages
 
 ## Files Created
-
 ```
 lib/settings.ts
 app/api/admin/settings/route.ts
@@ -311,46 +226,37 @@ app/admin/settings/settings-client.tsx
 ```
 
 ## Files Updated
-
 ```
 components/portfolio-site.tsx  (Live settings fetched from /api/settings on mount; maintenance banner added; hero availability line, all social icon links, and contact email copy button now read from live settings with static fallback)
 ```
 
 ## Commands Run
-
 ```bash
 # No new dependencies — reuses @upstash/redis already installed in Part 2.2
 npm run dev
-
-# Build check
 npm run build
 ```
 
+---
 
-
-# Part 2.6 — Development Process & Change Log
+# Part 2.6 — Security & Session Management
 
 ## Overview
-Part 2.6 adds Security & Session management to the admin dashboard: viewing active sessions with IP and login time, forcing logout across all sessions, changing the admin password at runtime without touching `.env`, and a login attempt log recording failed logins with IP and timestamp — all backed by the same dual-storage pattern (Upstash Redis in production, a local JSON file in development) introduced in Part 2.2, reusing the existing KV store with no new environment variables required.
+Adds Security & Session management: active session viewing, force logout, runtime password change, and a login attempt log — using the same dual-storage pattern, no new env vars.
 
 ## Features Added
-
-- **Security & Session page** at `/admin/security` — dedicated admin page split into four independently-scoped panels: Active Sessions, Force Logout, Change Password, and Login Attempts.
-- **Active Sessions list** — shows every tracked session for the signed-in admin: parsed device/browser label, IP address, login time, and a relative "last seen" timestamp, with the session making the current request flagged as "This device."
-- **Session tracking on login** — every successful login registers a session record (unique session id, email, IP, user agent, login timestamp) in the security store; the session id is embedded directly in the signed HMAC token payload alongside a new issued-at timestamp.
-- **Force Logout All Sessions** — a confirm-gated action that immediately revokes every session for the current admin, including the one making the request. Revocation is implemented as a per-email cutoff timestamp so tokens issued before the cutoff are rejected even though their HMAC signature is still valid — this covers sessions the tracking store doesn't have a live row for.
-- **Edge-safe revocation check** — the Next.js proxy (`proxy.ts`, Edge Runtime) checks the revocation cutoff via a direct `fetch` call to the Upstash REST API (no Node `crypto`/`fs`, so the existing `@upstash/redis` SDK and local JSON fallback can't be used at the edge); when Redis isn't configured the proxy fails open and the authoritative check still happens server-side on every protected route.
-- **Change Password without touching `.env`** — a runtime password-override layer: current/new/confirm fields, current password verified against the effective password (override if one exists, otherwise the `.env`-configured password), then a new salted SHA-256 hash is written to the security store. Takes effect on the next login immediately, with no `.env` edit or redeploy. The `.env` credential remains as an automatic fallback if the override is ever cleared.
-- **Password hashing** — salted SHA-256 via Node's built-in `crypto` (no new dependency); constant-time comparison on verification to avoid timing attacks, matching the existing credential-check pattern from Part 2.1.
-- **Login Attempt Log** — every login POST (success or failure) is appended to a rolling, capped log with email, IP, user agent, timestamp, and outcome; visible on the Security page with an "All" / "Failed only" filter, failed attempts visually distinguished from successes.
-- **Storage-not-persistent warning banner** — if Upstash Redis isn't configured, an amber banner explains that sessions, login attempts, and password changes are only saved to a local file and won't survive a redeploy, matching the same warning pattern from Settings and Resume in Parts 2.4/2.5.
-- **Security nav item** added to the admin sidebar as the 8th canonical item, after Settings, across every admin page's client component (Dashboard, Messages, Analytics, Resume, Settings, Security) so the sidebar is identical everywhere.
-- **Security & Session quick action** added to the Dashboard's Quick Actions panel.
-- **Logout now deregisters the tracked session** — `POST /api/admin/logout` looks up the session id from the token being cleared and removes that specific row from the active-sessions store, so a normal logout no longer leaves a stale "still active" entry on the Security page.
-- **Full theme integration** — the Security page uses the same `useAdminTheme` hook, `data-theme` attribute, and CSS-variable styling as every other admin page, so all 6 portfolio themes (Midnight, Cyberpunk, Glass, Minimal, Neon, Ocean) apply consistently, synced via the same `localStorage('admin-theme')` key.
+- Security page (`/admin/security`) — 4 panels: Active Sessions, Force Logout, Change Password, Login Attempts
+- Session tracking on login (id, email, IP, user agent, timestamp) embedded in the signed token; current session flagged "This device"
+- Force Logout All — confirm-gated, revokes via per-email cutoff timestamp (covers tokens without a live tracked row)
+- Edge-safe revocation check in `proxy.ts` via direct Upstash REST fetch (fails open if Redis unconfigured)
+- Runtime password override (no `.env` edit) — salted SHA-256 hash, constant-time verification, `.env` remains fallback
+- Rolling capped login-attempt log (email, IP, user agent, timestamp, outcome) with All/Failed-only filter
+- Storage-not-persistent warning banner; Security nav item added as 8th canonical item
+- Security & Session quick action added to Dashboard
+- Logout now deregisters the tracked session (no stale "active" rows)
+- Full theme integration matching other admin pages
 
 ## Files Created
-
 ```
 lib/admin-security.ts
 app/api/admin/security/route.ts
@@ -359,7 +265,6 @@ app/admin/security/security-client.tsx
 ```
 
 ## Files Updated
-
 ```
 lib/admin-auth.ts                          (verifyAdminCredentials is now async and checks the runtime password override before falling back to .env; createSessionToken embeds a sid + iat; added verifySessionTokenWithRevocation, verifyCurrentPassword, isKnownAdminEmail)
 lib/admin-auth-edge.ts                     (verifySessionTokenEdge now also checks the revocation cutoff via a direct Upstash REST fetch, Edge-safe, fails open when Redis isn't configured)
@@ -374,12 +279,57 @@ app/admin/settings/settings-client.tsx     (added Security nav item)
 ```
 
 ## Commands Run
-
 ```bash
 # No new dependencies — password hashing uses Node's built-in crypto,
 # session/login-log storage reuses @upstash/redis already installed in Part 2.2
 npm run dev
-
-# Build check
 npm run build
+```
+
+---
+
+# Part 2.7 — Content Management
+
+## Overview
+Adds Content Management to the admin dashboard: full CRUD over projects, timeline, about section, and skill groups, backed by the same dual-storage pattern. Also removes the redundant Visitors nav item and redesigns the dashboard with live stats across all features.
+
+## Features Added
+- Content Management page (`/admin/content`) — 4 tabs: Projects, Timeline, About, Skills
+- **Projects tab** — edit description/links/stack/features/images; add/remove/reorder projects (drag-and-drop or buttons); full editor modal with section tabs
+- **Timeline tab** — edit year/title/subtitle; add/remove/reorder entries
+- **About tab** — edit college/current year; add/remove/reorder paragraphs and interests
+- **Skills tab** — edit categories; add/remove/reorder skills and skill groups
+- Live content sync — public site fetches `/api/content` on mount, static fallback until resolved; admin edits reflect immediately, no redeploy
+- Dual-backend storage: Upstash Redis in prod (reuses existing KV, no new env vars), local `.data/portfolio-content.json` fallback in dev
+- Storage-not-persistent warning banner
+- Visitors nav item removed (8 → 7 canonical items); Content nav item now uses `FolderKanban` icon
+- Redesigned admin dashboard — 6 stat cards (Page Views, Messages, Resume Downloads, Content status, Active Sessions, Projects count), all clickable; live combined activity feed; updated Quick Actions panel
+- Full theme integration matching other admin pages
+
+## Files Created
+```
+lib/content-store.ts
+app/api/admin/content/route.ts
+app/api/content/route.ts
+app/admin/content/page.tsx
+app/admin/content/content-client.tsx
+```
+
+## Files Updated
+```
+app/admin/dashboard/dashboard-client.tsx   (Redesigned dashboard with 6 integrated stat cards, live activity feed, updated quick actions, removed Visitors nav item, added Content with FolderKanban icon)
+app/admin/messages/messages-client.tsx     (Removed Visitors nav item, added Content with FolderKanban icon)
+app/admin/analytics/analytics-client.tsx   (Removed Visitors nav item, added Content with FolderKanban icon, removed Users import)
+app/admin/resume/resume-client.tsx         (Removed Visitors nav item, added Content with FolderKanban icon, removed Users import)
+app/admin/settings/settings-client.tsx     (Removed Visitors nav item, added Content with FolderKanban icon, removed Users import)
+app/admin/security/security-client.tsx     (Removed Visitors nav item, added Content with FolderKanban icon, removed Users import)
+components/portfolio-site.tsx              (Fetches live content from /api/content on mount; projects, about, skills, and timeline sections now read from liveContent state with static fallback)
+```
+
+## Commands Run
+```bash
+# No new dependencies — reuses @upstash/redis already installed in Part 2.2
+npm run dev
+npm run build
+npm run lint
 ```

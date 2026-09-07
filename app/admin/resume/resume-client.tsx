@@ -4,43 +4,9 @@
  * app/admin/resume/resume-client.tsx
  *
  * Part 2.4 — Resume Management
- * ---------------------------------------------------------------------------
- * Full-featured admin page for managing the site's resume PDF:
- *   1. Upload a new resume PDF (drag-and-drop or click-to-browse) which
- *      replaces the live /resume.pdf (via lib/resume.ts + Vercel Blob).
- *   2. View the current resume inline via the site's own custom PdfViewer
- *      (components/pdf-viewer.tsx, same component used on the public
- *      portfolio's Resume section) — an animated terminal trigger card
- *      that opens a full-screen, portal-rendered viewer with zoom, pan,
- *      pinch-to-zoom, rotate, jump-to-page, and download/print controls.
- *      This replaces an earlier plain-<iframe> preview so the admin isn't
- *      stuck with whatever PDF plugin the browser happens to ship with.
- *   3. Track and display the resume's download count, sourced from the same
- *      metadata object the public download-tracking route increments.
- *
- * Part 2.6 update: added "Security" nav item (8th item, after Settings) —
- * canonical nav list now spans Dashboard, Messages, Analytics, Resume,
- * Content, Visitors, Settings, Security.
- *
- * THEME INTEGRATION
- * ---------------------------------------------------------------------------
- * Same pattern as every other admin page since Part 2.1: reads the
- * `admin-theme` localStorage key via the shared useAdminTheme hook logic
- * (duplicated here exactly as dashboard-client.tsx / messages-client.tsx /
- * analytics-client.tsx do — there's no shared hooks file for it yet, so each
- * client component defines its own copy, matching the existing codebase
- * convention rather than introducing a new shared module unprompted).
- * All colors are CSS vars (var(--card), var(--primary), etc.) so all 6
- * themes (Midnight, Cyberpunk, Glass, Minimal, Neon, Ocean) apply correctly
- * everywhere on this page — including inside the embedded PdfViewer itself,
- * since pdf-viewer.tsx was already built entirely on the same CSS variables
- * (var(--primary), var(--card), var(--border), etc.), so it re-themes
- * automatically alongside the rest of the admin UI with zero extra work.
- *
- * Sidebar fix: added `min-h-0` to the scrollable `<nav>` flex child (same
- * fix applied to dashboard-client.tsx / messages-client.tsx /
- * analytics-client.tsx / settings-client.tsx) so it can actually shrink
- * and scroll internally instead of clipping the bottom-most nav links.
+ * Part 2.7 update: removed "Visitors" nav item, added "Content" with
+ * FolderKanban icon. Canonical nav list now spans Dashboard, Messages,
+ * Analytics, Resume, Content, Settings, Security.
  * ---------------------------------------------------------------------------
  */
 
@@ -53,7 +19,6 @@ import {
   FileText,
   Settings,
   ExternalLink,
-  Users,
   BarChart2,
   Loader2,
   Menu,
@@ -67,6 +32,7 @@ import {
   AlertTriangle,
   RefreshCw,
   ShieldCheck,
+  FolderKanban,
 } from 'lucide-react'
 import { themes } from '@/lib/content'
 import { PdfViewer } from '@/components/pdf-viewer'
@@ -90,7 +56,7 @@ interface NavItem {
   badge?: number
 }
 
-// ─── Theme hook (mirrors dashboard-client.tsx) ────────────────────────────
+// ─── Theme hook ────────────────────────────────────────────────────────────
 
 function useAdminTheme() {
   const [theme, setThemeState] = useState<string>('midnight')
@@ -134,7 +100,7 @@ function formatNumber(n: number): string {
   return String(n)
 }
 
-// ─── Sidebar Nav Item (mirrors dashboard-client.tsx) ──────────────────────
+// ─── Sidebar Nav Item ──────────────────────────────────────────────────────
 
 function SideNavItem({ icon, label, href, active, badge }: NavItem) {
   return (
@@ -213,10 +179,10 @@ export default function ResumeClient({ adminEmail }: { adminEmail: string }) {
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [uploadSuccess, setUploadSuccess] = useState(false)
-  const [previewKey, setPreviewKey] = useState(0) // bump to remount PdfViewer after a re-upload
+  const [previewKey, setPreviewKey] = useState(0)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // ── Load message stats for sidebar badge (same as dashboard-client.tsx) ──
+  // ── Load message stats for sidebar badge ──
   useEffect(() => {
     fetch('/api/admin/messages?filter=all')
       .then((r) => (r.ok ? r.json() : null))
@@ -297,7 +263,7 @@ export default function ResumeClient({ adminEmail }: { adminEmail: string }) {
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) uploadFile(file)
-    e.target.value = '' // allow re-selecting the same file consecutively
+    e.target.value = ''
   }
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
@@ -316,15 +282,13 @@ export default function ResumeClient({ adminEmail }: { adminEmail: string }) {
     setIsDragging(false)
   }
 
-  // Canonical nav list — kept identical (order + items) across every admin
-  // page's client component. "Security" added in Part 2.6.
+  // Canonical nav list — Visitors removed in Part 2.7
   const navItems: NavItem[] = [
     { icon: <LayoutDashboard className="h-4 w-4" />, label: 'Dashboard', href: '/admin/dashboard' },
     { icon: <MessageSquare className="h-4 w-4" />, label: 'Messages', href: '/admin/messages', badge: msgStats?.unread ?? 0 },
     { icon: <BarChart2 className="h-4 w-4" />, label: 'Analytics', href: '/admin/analytics' },
     { icon: <FileText className="h-4 w-4" />, label: 'Resume', href: '/admin/resume', active: true },
-    { icon: <FileText className="h-4 w-4" />, label: 'Content', href: '/admin/content' },
-    { icon: <Users className="h-4 w-4" />, label: 'Visitors', href: '/admin/visitors' },
+    { icon: <FolderKanban className="h-4 w-4" />, label: 'Content', href: '/admin/content' },
     { icon: <Settings className="h-4 w-4" />, label: 'Settings', href: '/admin/settings' },
     { icon: <ShieldCheck className="h-4 w-4" />, label: 'Security', href: '/admin/security' },
   ]
@@ -376,10 +340,7 @@ export default function ResumeClient({ adminEmail }: { adminEmail: string }) {
           </button>
         </div>
 
-        {/* Nav items — scrollable middle zone.
-            `min-h-0` is required alongside `flex-1` so this flex child can
-            actually shrink and scroll internally instead of clipping the
-            bottom-most nav links. */}
+        {/* Nav items — scrollable middle zone */}
         <nav className="flex-1 min-h-0 overflow-y-auto p-3 space-y-1">
           {navItems.map((item) => (
             <SideNavItem key={item.href} {...item} />
@@ -653,13 +614,7 @@ export default function ResumeClient({ adminEmail }: { adminEmail: string }) {
               )}
             </div>
 
-            {/* Inline preview panel — uses the site's own custom PdfViewer
-                (components/pdf-viewer.tsx) instead of a plain <iframe>, so
-                the admin gets the exact same zoom/pan/rotate/jump-to-page
-                full-screen viewer that visitors see on the public site,
-                rather than whatever the browser's native PDF plugin looks
-                like. Clicking the animated terminal card opens PdfModal in
-                a portal-rendered full-screen overlay. */}
+            {/* Inline preview panel */}
             <div className="rounded-2xl border p-6" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
               <div className="mb-4 flex items-center justify-between">
                 <h2 className="text-sm font-semibold">Current resume preview</h2>
@@ -684,10 +639,6 @@ export default function ResumeClient({ adminEmail }: { adminEmail: string }) {
                   <Loader2 className="h-6 w-6 animate-spin" style={{ color: 'var(--muted-foreground)' }} />
                 </div>
               ) : meta ? (
-                // key=previewKey forces a fresh mount right after a new
-                // upload, so the terminal boot animation replays and the
-                // viewer picks up the new URL instead of any cached state
-                // from the previous file.
                 <PdfViewer key={previewKey} url={meta.url} fileName={meta.fileName} />
               ) : (
                 <div

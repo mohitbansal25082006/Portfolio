@@ -2,34 +2,19 @@
 
 /**
  * app/admin/dashboard/dashboard-client.tsx
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Part 2.7 update: 
+ *   - Removed "Visitors" nav item (7 items now)
+ *   - Full dashboard redesign with integrated stats from all features
+ *   - Content section preview
+ *   - Activity feed showing recent events
  *
- * Part 2.6 update: added "Security" nav item (8th item, after Settings) —
- * the canonical nav list now spans Dashboard, Messages, Analytics, Resume,
- * Content, Visitors, Settings, Security, kept identical in order across
- * every admin page's client component.
- *
- * Sidebar fix (post Part 2.5):
- *  - The sidebar `<nav>` is the scrollable middle zone of a flex column
- *    (`aside` is `flex flex-col`, header/footer are `shrink-0`, nav is
- *    `flex-1 overflow-y-auto`). Without an explicit `min-h-0` on that flex
- *    child, some browsers (notably Chrome/Edge under certain viewport /
- *    zoom combinations) size the flex item to its content's intrinsic
- *    height instead of letting it shrink to the available space — the
- *    default `min-height: auto` on flex items. That silently clips the
- *    bottom-most nav links (Settings, sometimes Visitors/Resume too)
- *    instead of scrolling to reveal them. Adding `min-h-0` forces the
- *    flex item to respect the parent's height and scroll internally as
- *    originally intended.
- *  - All admin pages now render the exact same 8-item nav list so the
- *    sidebar is identical everywhere.
- *
- * Earlier fixes retained:
- *  1. Sidebar height — uses `h-screen` + `overflow-hidden` on the root so
- *     the sidebar never exceeds viewport height and its nav scrolls internally.
- *  2. Logo — replaced <Shield> icon in sidebar header with /icon.ico favicon.
- *  3. Theme system — theme switcher in the top-right of the header, persisted
- *     in localStorage under "admin-theme". data-theme applied to root wrapper.
- *  4. All colors use CSS vars so every theme applies correctly.
+ * Earlier features retained:
+ *   - Live analytics (Page Views card)
+ *   - Message stats
+ *   - Theme system
+ *   - Sidebar with canonical nav
+ * ─────────────────────────────────────────────────────────────────────────────
  */
 
 import { useState, useCallback, useEffect } from 'react'
@@ -52,6 +37,15 @@ import {
   X,
   Palette,
   BarChart2,
+  FolderKanban,
+  Download,
+  Clock,
+  ArrowUpRight,
+  Activity,
+  CheckCircle2,
+  AlertCircle,
+  Star,
+  GitBranch,
 } from 'lucide-react'
 import { themes } from '@/lib/content'
 
@@ -64,6 +58,7 @@ interface StatCardProps {
   sub?: string
   color?: string
   loading?: boolean
+  href?: string
 }
 
 interface NavItem {
@@ -78,6 +73,20 @@ interface AnalyticsSummary {
   totalViews: number | null
   uniqueVisitors: number | null
   _placeholder?: boolean
+}
+
+interface ResumeMeta {
+  downloadCount: number
+  fileName: string
+  uploadedAt: string
+}
+
+interface ActivityItem {
+  id: string
+  type: 'message' | 'login' | 'content' | 'resume'
+  title: string
+  description: string
+  timestamp: string
 }
 
 // ─── Theme hook ───────────────────────────────────────────────────────────────
@@ -100,24 +109,31 @@ function useAdminTheme() {
 
 // ─── Stat Card ────────────────────────────────────────────────────────────────
 
-function StatCard({ icon, label, value, sub, color, loading }: StatCardProps) {
-  return (
+function StatCard({ icon, label, value, sub, color, loading, href }: StatCardProps) {
+  const content = (
     <div
-      className="stat-card relative overflow-hidden rounded-2xl border p-5 transition-all duration-300 hover:shadow-lg"
+      className="stat-card relative overflow-hidden rounded-2xl border p-5 transition-all duration-300 hover:shadow-lg hover:-translate-y-0.5"
       style={{
         background: 'var(--card)',
         borderColor: 'var(--border)',
+        cursor: href ? 'pointer' : 'default',
       }}
     >
       <div className="stat-card-shine" />
       <div className="relative z-10">
-        <div className="mb-3">
+        <div className="mb-3 flex items-center justify-between">
           <div
             className="flex h-10 w-10 items-center justify-center rounded-xl"
             style={{ background: color ?? 'color-mix(in oklch, var(--primary) 15%, transparent)' }}
           >
             {icon}
           </div>
+          {href && (
+            <ArrowUpRight
+              className="h-4 w-4 opacity-0 transition-opacity group-hover:opacity-100"
+              style={{ color: 'var(--muted-foreground)' }}
+            />
+          )}
         </div>
         <p className="text-2xl font-bold tabular-nums">
           {loading ? (
@@ -135,6 +151,8 @@ function StatCard({ icon, label, value, sub, color, loading }: StatCardProps) {
       </div>
     </div>
   )
+
+  return href ? <a href={href} className="block">{content}</a> : content
 }
 
 // ─── Sidebar Nav Item ─────────────────────────────────────────────────────────
@@ -172,6 +190,17 @@ function formatNumber(n: number): string {
   return String(n)
 }
 
+function timeAgo(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime()
+  const mins = Math.floor(diffMs / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  const days = Math.floor(hrs / 24)
+  return `${days}d ago`
+}
+
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
 
 export default function AdminDashboardClient({ adminEmail }: { adminEmail: string }) {
@@ -180,19 +209,26 @@ export default function AdminDashboardClient({ adminEmail }: { adminEmail: strin
   const [loggingOut, setLoggingOut] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [showThemePicker, setShowThemePicker] = useState(false)
-  const [msgStats, setMsgStats] = useState<{ total: number; unread: number } | null>(null)
+  const [msgStats, setMsgStats] = useState<{ total: number; unread: number; replied: number } | null>(null)
   const [analytics, setAnalytics] = useState<AnalyticsSummary | null>(null)
   const [analyticsLoading, setAnalyticsLoading] = useState(true)
+  const [resumeMeta, setResumeMeta] = useState<ResumeMeta | null>(null)
+  const [contentUpdatedAt, setContentUpdatedAt] = useState<string | null>(null)
+  const [securityStats, setSecurityStats] = useState<{ activeSessions: number; failedAttempts: number } | null>(null)
+  const [recentMessages, setRecentMessages] = useState<any[]>([])
 
-  // Fetch message stats for the dashboard overview card + sidebar badge
+  // Fetch message stats
   useEffect(() => {
     fetch('/api/admin/messages?filter=all')
       .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d?.stats) setMsgStats(d.stats) })
+      .then(d => {
+        if (d?.stats) setMsgStats(d.stats)
+        if (d?.messages) setRecentMessages(d.messages.slice(0, 5))
+      })
       .catch(() => {})
   }, [])
 
-  // Fetch analytics summary (last 7 days) for the Page Views card
+  // Fetch analytics summary
   useEffect(() => {
     let cancelled = false
     setAnalyticsLoading(true)
@@ -212,6 +248,49 @@ export default function AdminDashboardClient({ adminEmail }: { adminEmail: strin
     return () => { cancelled = true }
   }, [])
 
+  // Fetch resume metadata
+  useEffect(() => {
+    fetch('/api/admin/resume', { cache: 'no-store' })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (d) {
+          setResumeMeta({
+            downloadCount: d.downloadCount ?? 0,
+            fileName: d.fileName ?? 'resume.pdf',
+            uploadedAt: d.uploadedAt ?? new Date(0).toISOString(),
+          })
+        }
+      })
+      .catch(() => {})
+  }, [])
+
+  // Fetch content info
+  useEffect(() => {
+    fetch('/api/admin/content', { cache: 'no-store' })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (d?.content?.updatedAt) {
+          setContentUpdatedAt(d.content.updatedAt)
+        }
+      })
+      .catch(() => {})
+  }, [])
+
+  // Fetch security stats
+  useEffect(() => {
+    fetch('/api/admin/security', { cache: 'no-store' })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (d) {
+          setSecurityStats({
+            activeSessions: d.sessions?.length ?? 0,
+            failedAttempts: d.loginAttempts?.filter((a: any) => !a.success).length ?? 0,
+          })
+        }
+      })
+      .catch(() => {})
+  }, [])
+
   const handleLogout = useCallback(async () => {
     setLoggingOut(true)
     try {
@@ -221,21 +300,46 @@ export default function AdminDashboardClient({ adminEmail }: { adminEmail: strin
     }
   }, [router])
 
-  // Canonical 8-item nav list — kept identical (order + items) across every
-  // admin page's client component. "Security" added in Part 2.6.
+  // Canonical 7-item nav list (Visitors removed in Part 2.7)
   const navItems: NavItem[] = [
     { icon: <LayoutDashboard className="h-4 w-4" />, label: 'Dashboard', href: '/admin/dashboard', active: true },
     { icon: <MessageSquare className="h-4 w-4" />, label: 'Messages', href: '/admin/messages', badge: msgStats?.unread ?? 0 },
     { icon: <BarChart2 className="h-4 w-4" />, label: 'Analytics', href: '/admin/analytics' },
     { icon: <FileText className="h-4 w-4" />, label: 'Resume', href: '/admin/resume' },
-    { icon: <FileText className="h-4 w-4" />, label: 'Content', href: '/admin/content' },
-    { icon: <Users className="h-4 w-4" />, label: 'Visitors', href: '/admin/visitors' },
+    { icon: <FolderKanban className="h-4 w-4" />, label: 'Content', href: '/admin/content' },
     { icon: <Settings className="h-4 w-4" />, label: 'Settings', href: '/admin/settings' },
     { icon: <ShieldCheck className="h-4 w-4" />, label: 'Security', href: '/admin/security' },
   ]
 
-  // Page Views value: real data when available, "—" only if analytics isn't
-  // configured or genuinely returned nothing.
+  // Build activity items from fetched data
+  const activityItems: ActivityItem[] = [
+    ...recentMessages.map((msg: any) => ({
+      id: `msg-${msg.id}`,
+      type: 'message' as const,
+      title: `New message from ${msg.name}`,
+      description: msg.subject,
+      timestamp: msg.timestamp,
+    })),
+    ...(contentUpdatedAt && contentUpdatedAt !== new Date(0).toISOString()
+      ? [{
+          id: 'content-update',
+          type: 'content' as const,
+          title: 'Content updated',
+          description: 'Portfolio content was modified',
+          timestamp: contentUpdatedAt,
+        }]
+      : []),
+    ...(resumeMeta && resumeMeta.uploadedAt !== new Date(0).toISOString()
+      ? [{
+          id: 'resume-update',
+          type: 'resume' as const,
+          title: 'Resume updated',
+          description: resumeMeta.fileName,
+          timestamp: resumeMeta.uploadedAt,
+        }]
+      : []),
+  ].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).slice(0, 8)
+
   const pageViewsValue: string | number =
     analytics?.totalViews != null ? formatNumber(analytics.totalViews) : '—'
   const pageViewsSub = analytics?._placeholder
@@ -252,25 +356,60 @@ export default function AdminDashboardClient({ adminEmail }: { adminEmail: strin
       sub: pageViewsSub,
       color: 'color-mix(in oklch, var(--primary) 15%, transparent)',
       loading: analyticsLoading,
+      href: '/admin/analytics',
     },
     {
       icon: <MessageSquare className="h-5 w-5" style={{ color: 'oklch(0.75 0.18 220)' }} />,
       label: 'Messages',
       value: msgStats ? msgStats.total : '—',
-      sub: msgStats ? `${msgStats.unread} unread` : 'Total contact form submissions',
+      sub: msgStats ? `${msgStats.unread} unread · ${msgStats.replied} replied` : 'Contact form submissions',
       color: 'color-mix(in oklch, oklch(0.75 0.18 220) 15%, transparent)',
+      href: '/admin/messages',
     },
     {
-      icon: <TrendingUp className="h-5 w-5" style={{ color: 'oklch(0.75 0.18 150)' }} />,
-      label: 'GitHub Stars', value: '—', sub: 'Across all repositories',
+      icon: <Download className="h-5 w-5" style={{ color: 'oklch(0.75 0.18 150)' }} />,
+      label: 'Resume Downloads',
+      value: resumeMeta ? formatNumber(resumeMeta.downloadCount) : '—',
+      sub: resumeMeta ? resumeMeta.fileName : 'Total downloads',
       color: 'color-mix(in oklch, oklch(0.75 0.18 150) 15%, transparent)',
+      href: '/admin/resume',
     },
     {
-      icon: <Mail className="h-5 w-5" style={{ color: 'oklch(0.75 0.18 60)' }} />,
-      label: 'OTP Requests', value: '—', sub: 'In the last 24 hours',
+      icon: <FolderKanban className="h-5 w-5" style={{ color: 'oklch(0.75 0.18 60)' }} />,
+      label: 'Content',
+      value: contentUpdatedAt && contentUpdatedAt !== new Date(0).toISOString() ? 'Updated' : 'Default',
+      sub: contentUpdatedAt && contentUpdatedAt !== new Date(0).toISOString()
+        ? `Last edited ${timeAgo(contentUpdatedAt)}`
+        : 'No custom edits yet',
       color: 'color-mix(in oklch, oklch(0.75 0.18 60) 15%, transparent)',
+      href: '/admin/content',
+    },
+    {
+      icon: <ShieldCheck className="h-5 w-5" style={{ color: 'oklch(0.75 0.18 320)' }} />,
+      label: 'Active Sessions',
+      value: securityStats ? securityStats.activeSessions : '—',
+      sub: securityStats ? `${securityStats.failedAttempts} failed logins` : 'Security overview',
+      color: 'color-mix(in oklch, oklch(0.75 0.18 320) 15%, transparent)',
+      href: '/admin/security',
+    },
+    {
+      icon: <GitBranch className="h-5 w-5" style={{ color: 'oklch(0.75 0.18 30)' }} />,
+      label: 'Projects',
+      value: '5',
+      sub: 'Live on portfolio',
+      color: 'color-mix(in oklch, oklch(0.75 0.18 30) 15%, transparent)',
+      href: '/admin/content',
     },
   ]
+
+  const getActivityIcon = (type: ActivityItem['type']) => {
+    switch (type) {
+      case 'message': return <MessageSquare className="h-3.5 w-3.5" style={{ color: 'oklch(0.75 0.18 220)' }} />
+      case 'login': return <ShieldCheck className="h-3.5 w-3.5" style={{ color: 'oklch(0.75 0.18 320)' }} />
+      case 'content': return <FolderKanban className="h-3.5 w-3.5" style={{ color: 'oklch(0.75 0.18 60)' }} />
+      case 'resume': return <Download className="h-3.5 w-3.5" style={{ color: 'oklch(0.75 0.18 150)' }} />
+    }
+  }
 
   return (
     // data-theme drives all CSS vars — changing this string swaps the full theme
@@ -322,10 +461,7 @@ export default function AdminDashboardClient({ adminEmail }: { adminEmail: strin
           </button>
         </div>
 
-        {/* Nav items — scrollable middle zone.
-            `min-h-0` is required alongside `flex-1` so this flex child can
-            actually shrink below its content's intrinsic height and scroll,
-            instead of overflowing/clipping the last nav items. */}
+        {/* Nav items — scrollable middle zone */}
         <nav className="flex-1 min-h-0 overflow-y-auto p-3 space-y-1">
           {navItems.map(item => (
             <SideNavItem key={item.href} {...item} />
@@ -385,7 +521,6 @@ export default function AdminDashboardClient({ adminEmail }: { adminEmail: strin
               aria-label="Change theme"
             >
               <Palette className="h-3.5 w-3.5" />
-              {/* colour swatch of current theme */}
               <span
                 className="h-3 w-3 rounded-full"
                 style={{ background: themes.find(t => t.id === theme)?.swatch ?? 'var(--primary)' }}
@@ -395,7 +530,6 @@ export default function AdminDashboardClient({ adminEmail }: { adminEmail: strin
 
             {showThemePicker && (
               <>
-                {/* click-away backdrop */}
                 <div className="fixed inset-0 z-40" onClick={() => setShowThemePicker(false)} />
                 <div
                   className="absolute right-0 top-11 z-50 min-w-[150px] rounded-xl border p-2 shadow-2xl"
@@ -488,7 +622,7 @@ export default function AdminDashboardClient({ adminEmail }: { adminEmail: strin
           {/* Stat cards */}
           <section className="mb-8">
             <h2 className="eyebrow mb-4">Overview</h2>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {stats.map(s => (
                 <StatCard key={s.label} {...s} />
               ))}
@@ -503,15 +637,36 @@ export default function AdminDashboardClient({ adminEmail }: { adminEmail: strin
               className="rounded-2xl border p-6"
               style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
             >
-              <h2 className="mb-4 text-sm font-semibold">Recent Activity</h2>
-              <div className="space-y-3">
+              <div className="mb-4 flex items-center justify-between">
+                <h2 className="text-sm font-semibold">Recent Activity</h2>
+                <Activity className="h-4 w-4" style={{ color: 'var(--muted-foreground)' }} />
+              </div>
+              {activityItems.length === 0 ? (
                 <div
                   className="flex items-center gap-3 rounded-xl p-3 text-sm"
                   style={{ background: 'var(--muted)', color: 'var(--muted-foreground)' }}
                 >
                   No activity yet — messages and events will appear here.
                 </div>
-              </div>
+              ) : (
+                <div className="space-y-3">
+                  {activityItems.map(item => (
+                    <div
+                      key={item.id}
+                      className="flex items-start gap-3 rounded-xl p-3 text-sm transition-colors hover:bg-[var(--muted)]"
+                    >
+                      <div className="mt-0.5">{getActivityIcon(item.type)}</div>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium">{item.title}</p>
+                        <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>{item.description}</p>
+                      </div>
+                      <span className="shrink-0 text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                        {timeAgo(item.timestamp)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Quick Actions */}
@@ -524,7 +679,8 @@ export default function AdminDashboardClient({ adminEmail }: { adminEmail: strin
                 {[
                   { label: 'View Portfolio', icon: <ExternalLink className="h-4 w-4" />, href: '/', external: true },
                   { label: 'Contact Messages', icon: <MessageSquare className="h-4 w-4" />, href: '/admin/messages' },
-                  { label: 'Edit Content', icon: <FileText className="h-4 w-4" />, href: '/admin/content' },
+                  { label: 'Edit Content', icon: <FolderKanban className="h-4 w-4" />, href: '/admin/content' },
+                  { label: 'Manage Resume', icon: <Download className="h-4 w-4" />, href: '/admin/resume' },
                   { label: 'Security & Session', icon: <ShieldCheck className="h-4 w-4" />, href: '/admin/security' },
                 ].map(action => (
                   <a
@@ -547,6 +703,7 @@ export default function AdminDashboardClient({ adminEmail }: { adminEmail: strin
                   >
                     <span style={{ color: 'var(--primary)' }}>{action.icon}</span>
                     {action.label}
+                    <ArrowUpRight className="ml-auto h-3.5 w-3.5" style={{ color: 'var(--muted-foreground)' }} />
                   </a>
                 ))}
               </div>

@@ -4,58 +4,24 @@
  * app/admin/settings/settings-client.tsx
  *
  * Part 2.5 — Site Settings
- * ---------------------------------------------------------------------------
- * Four sections, each independently saveable:
- *   1. Maintenance Mode   — toggle site availability + custom banner message
- *   2. Contact Email      — the email shown across the public site
- *   3. Availability Status — the "Open to Internships..." hero line
- *   4. Social Links        — github / linkedin / email / twitter / leetcode
- *
- * Part 2.6 update: added "Security" nav item (8th item, after Settings) —
- * canonical nav list now spans Dashboard, Messages, Analytics, Resume,
- * Content, Visitors, Settings, Security.
- *
- * Follows the exact same visual language as the Resume and Analytics admin
- * pages: uses `useAdminTheme` (localStorage 'admin-theme', defaults to
- * midnight) so all 6 portfolio themes apply here too, CSS vars for every
- * color, same card/border/shadow treatment, same sidebar + header shell.
- *
- * ── Fixes in this revision ──────────────────────────────────────────────
- * 1. Sidebar: added `min-h-0` to the scrollable `<nav>` flex child (same
- *    fix as dashboard-client.tsx / messages-client.tsx) so it can actually
- *    shrink and scroll instead of clipping the last nav items.
- * 2. Maintenance Mode toggle: the switch's thumb previously had nothing
- *    clipping it to the track, so the `translateX(22px)` used to slide it
- *    to the "on" position could render the thumb spilling outside the
- *    rounded track (visually "outside the toggle button"), especially at
- *    higher zoom levels or with browser font-size overrides affecting the
- *    rem-based sizing. Fixed by:
- *      - giving the track `overflow-hidden` so the thumb is always
- *        clipped to the pill shape,
- *      - sizing the thumb slightly smaller than the track's inner height
- *        and centering it vertically with a fixed `top`/`translateY`
- *        instead of relying on default box positioning,
- *      - using an explicit inline-flex + relative box on the track so its
- *        content-box size (used to compute the thumb's travel distance)
- *        can't be altered by inherited text/line-height styles.
+ * Part 2.7 update: removed "Visitors" nav item, added "Content" with
+ * FolderKanban icon. Canonical nav list now spans Dashboard, Messages,
+ * Analytics, Resume, Content, Settings, Security.
  * ---------------------------------------------------------------------------
  */
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  LayoutDashboard, LogOut, Mail, Users, FileText, Settings as SettingsIcon,
+  LayoutDashboard, LogOut, Mail, FileText, Settings as SettingsIcon,
   ExternalLink, TrendingUp, MessageSquare, Loader2, Menu, X, Palette,
   BarChart2, AlertTriangle, Check, Power, Code2,
-  Save, RotateCcw, ShieldCheck,
+  Save, RotateCcw, ShieldCheck, FolderKanban,
 } from 'lucide-react'
 import { themes } from '@/lib/content'
 import type { SiteSettings } from '@/lib/settings'
 
-// ─── Custom brand icons (Github/LinkedIn/Twitter — hand-drawn SVGs, matching
-// the exact same icons already used in components/portfolio-site.tsx, rather
-// than relying on lucide-react's brand-icon exports which vary across
-// versions and aren't guaranteed to be present). ───────────────────────────
+// ─── Custom brand icons ───────────────────────────────────────────────────────
 const GithubIcon = (props: React.SVGProps<SVGSVGElement>) => (
   <svg viewBox="0 0 24 24" fill="currentColor" {...props}>
     <path d="M12 .5C5.73.5.5 5.73.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56v-2c-3.2.7-3.88-1.54-3.88-1.54-.53-1.34-1.3-1.7-1.3-1.7-1.06-.72.08-.71.08-.71 1.17.08 1.79 1.2 1.79 1.2 1.04 1.79 2.73 1.27 3.4.97.11-.75.41-1.27.74-1.56-2.55-.29-5.23-1.28-5.23-5.7 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11.1 11.1 0 0 1 5.8 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.43-2.69 5.41-5.25 5.69.42.36.79 1.08.79 2.18v3.23c0 .31.21.68.8.56A11.51 11.51 0 0 0 23.5 12C23.5 5.73 18.27.5 12 .5Z" />
@@ -74,7 +40,7 @@ const TwitterIcon = (props: React.SVGProps<SVGSVGElement>) => (
   </svg>
 )
 
-// ─── Theme hook (identical to dashboard-client.tsx) ──────────────────────────
+// ─── Theme hook ───────────────────────────────────────────────────────────────
 
 function useAdminTheme() {
   const [theme, setThemeState] = useState<string>('midnight')
@@ -92,7 +58,7 @@ function useAdminTheme() {
   return { theme, setTheme }
 }
 
-// ─── Sidebar nav item (identical shape to dashboard-client.tsx) ──────────────
+// ─── Sidebar nav item ─────────────────────────────────────────────────────────
 
 interface NavItem {
   icon: React.ReactNode
@@ -127,24 +93,14 @@ function SideNavItem({ icon, label, href, active, badge }: NavItem) {
   )
 }
 
-// ─── Toggle Switch (extracted, self-contained, overflow-safe) ───────────────
+// ─── Toggle Switch ────────────────────────────────────────────────────────────
 
-// Fixed pixel geometry for the switch (no Tailwind h-*/w-* + fractional
-// centering math — that combination is exactly what let the thumb clip
-// against the track edge previously). Every dimension below is explicit,
-// in px, computed once, so the thumb's vertical center always lands
-// exactly on the track's vertical center regardless of theme, browser
-// default font-size, or zoom level.
-const SWITCH_TRACK_WIDTH = 44   // px
-const SWITCH_TRACK_HEIGHT = 24  // px
-const SWITCH_THUMB_SIZE = 18    // px
-const SWITCH_THUMB_INSET = 3    // px gap between thumb and track edge, each side
-// Vertical center of the track, minus half the thumb's size, gives the
-// thumb's `top` offset that perfectly centers it — computed, not guessed.
-const SWITCH_THUMB_TOP = (SWITCH_TRACK_HEIGHT - SWITCH_THUMB_SIZE) / 2 // = 3px
-// Horizontal travel distance: track width minus thumb width minus the
-// insets on both sides.
-const SWITCH_THUMB_TRAVEL = SWITCH_TRACK_WIDTH - SWITCH_THUMB_SIZE - SWITCH_THUMB_INSET * 2 // = 20px
+const SWITCH_TRACK_WIDTH = 44
+const SWITCH_TRACK_HEIGHT = 24
+const SWITCH_THUMB_SIZE = 18
+const SWITCH_THUMB_INSET = 3
+const SWITCH_THUMB_TOP = (SWITCH_TRACK_HEIGHT - SWITCH_THUMB_SIZE) / 2
+const SWITCH_THUMB_TRAVEL = SWITCH_TRACK_WIDTH - SWITCH_THUMB_SIZE - SWITCH_THUMB_INSET * 2
 
 function ToggleSwitch({
   checked,
@@ -164,9 +120,6 @@ function ToggleSwitch({
       onClick={onChange}
       className="relative shrink-0 rounded-full transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
       style={{
-        // Explicit box model — no Tailwind h-6/w-11 utilities here, so
-        // nothing else in the stylesheet can ever change this track's
-        // box size out from under the thumb's hand-computed geometry.
         width: SWITCH_TRACK_WIDTH,
         height: SWITCH_TRACK_HEIGHT,
         padding: 0,
@@ -174,19 +127,11 @@ function ToggleSwitch({
         overflow: 'hidden',
         display: 'inline-block',
         background: checked ? 'var(--primary)' : 'var(--muted)',
-        // ring-offset-color / ring-color piggyback on CSS vars so focus
-        // rings stay on-theme across all 6 themes.
         // @ts-expect-error -- custom properties for tailwind ring utilities
         '--tw-ring-color': 'var(--primary)',
         '--tw-ring-offset-color': 'var(--card)',
       }}
     >
-      {/* Thumb — absolutely positioned with a hard-coded `top` (not
-          top-1/2 + -translate-y-1/2, whose fractional rounding under
-          overflow:hidden was what let the circle peek outside the
-          track). `left` is fixed at the inset; only `transform:
-          translateX(...)` animates, so the thumb's box never changes
-          size or vertical position — only its horizontal position. */}
       <span
         aria-hidden="true"
         className="absolute rounded-full bg-white shadow transition-transform duration-200"
@@ -203,7 +148,7 @@ function ToggleSwitch({
   )
 }
 
-// ─── Reusable section card ────────────────────────────────────────────────
+// ─── Reusable section card ────────────────────────────────────────────────────
 
 function SettingsSection({
   title,
@@ -273,7 +218,7 @@ function SettingsSection({
   )
 }
 
-// ─── Input field ──────────────────────────────────────────────────────────
+// ─── Input field ──────────────────────────────────────────────────────────────
 
 function Field({
   label,
@@ -301,7 +246,7 @@ const inputStyle: React.CSSProperties = {
   color: 'var(--foreground)',
 }
 
-// ─── Main component ─────────────────────────────────────────────────────────
+// ─── Main component ───────────────────────────────────────────────────────────
 
 export default function SettingsClient() {
   const router = useRouter()
@@ -398,15 +343,13 @@ export default function SettingsClient() {
     }
   }
 
-  // Canonical nav list — kept identical (order + items) across every admin
-  // page's client component. "Security" added in Part 2.6.
+  // Canonical nav list — Visitors removed in Part 2.7
   const navItems: NavItem[] = [
     { icon: <LayoutDashboard className="h-4 w-4" />, label: 'Dashboard', href: '/admin/dashboard' },
     { icon: <MessageSquare className="h-4 w-4" />, label: 'Messages', href: '/admin/messages', badge: msgStats?.unread ?? 0 },
     { icon: <BarChart2 className="h-4 w-4" />, label: 'Analytics', href: '/admin/analytics' },
     { icon: <FileText className="h-4 w-4" />, label: 'Resume', href: '/admin/resume' },
-    { icon: <FileText className="h-4 w-4" />, label: 'Content', href: '/admin/content' },
-    { icon: <Users className="h-4 w-4" />, label: 'Visitors', href: '/admin/visitors' },
+    { icon: <FolderKanban className="h-4 w-4" />, label: 'Content', href: '/admin/content' },
     { icon: <SettingsIcon className="h-4 w-4" />, label: 'Settings', href: '/admin/settings', active: true },
     { icon: <ShieldCheck className="h-4 w-4" />, label: 'Security', href: '/admin/security' },
   ]
@@ -453,10 +396,7 @@ export default function SettingsClient() {
           </button>
         </div>
 
-        {/* Nav items — scrollable middle zone.
-            `min-h-0` is required alongside `flex-1` so this flex child can
-            actually shrink and scroll internally instead of clipping the
-            bottom-most nav links. */}
+        {/* Nav items — scrollable middle zone */}
         <nav className="flex-1 min-h-0 overflow-y-auto p-3 space-y-1">
           {navItems.map(item => (
             <SideNavItem key={item.href} {...item} />

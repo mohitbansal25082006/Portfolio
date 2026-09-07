@@ -4,41 +4,25 @@
  * app/admin/security/security-client.tsx
  *
  * Part 2.6 — Security & Session
- * ---------------------------------------------------------------------------
- * Four features, each its own panel:
- *   1. Active Sessions   — lists this admin's tracked sessions (IP, login
- *      time, last-seen time, device/browser parsed from user agent),
- *      current session flagged.
- *   2. Force Logout All  — single confirm-gated action that revokes every
- *      session for this admin (including the one making the request) and
- *      redirects to the login page.
- *   3. Change Password   — current + new + confirm fields, writes a runtime
- *      override (lib/admin-security.ts) so the change takes effect without
- *      touching .env or redeploying.
- *   4. Login Attempt Log — table of recent login attempts (success/fail)
- *      across all configured admins, with IP + timestamp, failures
- *      highlighted, filterable to failed-only.
- *
- * Follows the exact same shell as every other admin page since Part 2.1:
- * useAdminTheme (localStorage 'admin-theme'), CSS-var-only styling so all
- * 6 themes apply, identical sidebar/header markup, canonical 8-item nav
- * list (this page adds "Security" as the 8th item, placed after Settings).
+ * Part 2.7 update: removed "Visitors" nav item, added "Content" with
+ * FolderKanban icon. Canonical nav list now spans Dashboard, Messages,
+ * Analytics, Resume, Content, Settings, Security.
  * ---------------------------------------------------------------------------
  */
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  LayoutDashboard, LogOut, Mail, Users, FileText, Settings as SettingsIcon,
+  LayoutDashboard, LogOut, Mail, FileText, Settings as SettingsIcon,
   ExternalLink, TrendingUp, MessageSquare, Loader2, Menu, X, Palette,
   BarChart2, AlertTriangle, Check, ShieldCheck, KeyRound, Monitor,
   Smartphone, LogOutIcon, Clock, Globe2, ChevronDown, Eye, EyeOff,
-  CheckCircle2, XCircle, ListChecks,
+  CheckCircle2, XCircle, ListChecks, FolderKanban,
 } from 'lucide-react'
 import { themes } from '@/lib/content'
 import type { ActiveSession, LoginAttempt } from '@/lib/admin-security'
 
-// ─── Theme hook (identical to every other admin client) ──────────────────────
+// ─── Theme hook ───────────────────────────────────────────────────────────────
 
 function useAdminTheme() {
   const [theme, setThemeState] = useState<string>('midnight')
@@ -53,7 +37,7 @@ function useAdminTheme() {
   return { theme, setTheme }
 }
 
-// ─── Sidebar nav item (identical shape) ──────────────────────────────────────
+// ─── Sidebar nav item ─────────────────────────────────────────────────────────
 
 interface NavItem {
   icon: React.ReactNode
@@ -88,7 +72,7 @@ function SideNavItem({ icon, label, href, active, badge }: NavItem) {
   )
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
@@ -105,7 +89,6 @@ function timeAgo(iso: string): string {
   return `${days}d ago`
 }
 
-/** Very small UA parse — just enough to show a friendly device label. */
 function parseDevice(ua: string): { label: string; icon: React.ReactNode } {
   const lower = ua.toLowerCase()
   const isMobile = /mobile|android|iphone/.test(lower)
@@ -128,7 +111,7 @@ function parseDevice(ua: string): { label: string; icon: React.ReactNode } {
   }
 }
 
-// ─── Section card wrapper (matches settings-client.tsx pattern) ─────────────
+// ─── Section card wrapper ─────────────────────────────────────────────────────
 
 function SecuritySection({
   title,
@@ -169,7 +152,7 @@ const inputStyle: React.CSSProperties = {
   color: 'var(--foreground)',
 }
 
-// ─── Main component ─────────────────────────────────────────────────────────
+// ─── Main component ───────────────────────────────────────────────────────────
 
 export default function SecurityClient({ adminEmail }: { adminEmail: string }) {
   const router = useRouter()
@@ -249,7 +232,6 @@ export default function SecurityClient({ adminEmail }: { adminEmail: string }) {
         setLoggingOutAll(false)
         return
       }
-      // Own session was revoked too — go to login.
       router.replace('/admin')
     } catch {
       setLogoutAllError('Network error — please try again.')
@@ -302,14 +284,13 @@ export default function SecurityClient({ adminEmail }: { adminEmail: string }) {
     }
   }
 
-  // Canonical nav list — Security added as the 8th item, after Settings.
+  // Canonical nav list — Visitors removed in Part 2.7
   const navItems: NavItem[] = [
     { icon: <LayoutDashboard className="h-4 w-4" />, label: 'Dashboard', href: '/admin/dashboard' },
     { icon: <MessageSquare className="h-4 w-4" />, label: 'Messages', href: '/admin/messages', badge: msgStats?.unread ?? 0 },
     { icon: <BarChart2 className="h-4 w-4" />, label: 'Analytics', href: '/admin/analytics' },
     { icon: <FileText className="h-4 w-4" />, label: 'Resume', href: '/admin/resume' },
-    { icon: <FileText className="h-4 w-4" />, label: 'Content', href: '/admin/content' },
-    { icon: <Users className="h-4 w-4" />, label: 'Visitors', href: '/admin/visitors' },
+    { icon: <FolderKanban className="h-4 w-4" />, label: 'Content', href: '/admin/content' },
     { icon: <SettingsIcon className="h-4 w-4" />, label: 'Settings', href: '/admin/settings' },
     { icon: <ShieldCheck className="h-4 w-4" />, label: 'Security', href: '/admin/security', active: true },
   ]

@@ -3,19 +3,20 @@
 /**
  * components/portfolio-site.tsx
  *
- * Part 2.5 update:
- *  - Live site settings (maintenance mode banner, contact email, availability
- *    status, social links) fetched from GET /api/settings on mount, falling
- *    back to the static values in lib/content.ts until that resolves —
- *    identical fallback pattern to the resumeUrl/resumeFileName fetch from
- *    Part 2.4. Every place that previously read siteConfig.availability,
- *    contactInfo.email, or siteConfig.social now reads from `liveSettings`.
- *  - A maintenance-mode banner renders at the very top of the page (sticky,
- *    above the scroll progress bar) whenever an admin has toggled it on.
+ * Part 2.7 update:
+ *  - Live content (projects, about, skills, timeline) fetched from
+ *    GET /api/content on mount, falling back to the static values in
+ *    lib/content.ts until that resolves — identical fallback pattern to
+ *    the resumeUrl/resumeFileName fetch from Part 2.4 and the
+ *    liveSettings fetch from Part 2.5.
+ *  - Every place that previously read the static `projects`, `about`,
+ *    `skillGroups`, or `timeline` exports now reads from `liveContent`
+ *    instead, so admin edits made in the Content Management page are
+ *    reflected on the public site without a redeploy.
  *
  * All earlier functionality (intro loader, particle field, theme system,
  * OTP contact form, resume viewer, GitHub section, project gallery, etc.)
- * is unchanged from Parts 1 and 2.4.
+ * is unchanged from Parts 1, 2.4, and 2.5.
  */
 
 import { useEffect, useMemo, useRef, useState, type ReactNode, type CSSProperties } from 'react'
@@ -26,13 +27,16 @@ import {
   Users, Wrench, X, ZoomIn, ShieldCheck, RotateCcw, AlertTriangle,
 } from 'lucide-react'
 import {
-  about, contactInfo, githubConfig, navItems, projectFilters, projects,
-  projects as allProjects, siteConfig, skillGroups, stats, techStack,
-  themes, timeline,
+  about as staticAbout, contactInfo, githubConfig, navItems, projectFilters,
+  projects as staticProjects, siteConfig, skillGroups as staticSkillGroups,
+  stats, techStack, themes, timeline as staticTimeline,
 } from '@/lib/content'
 import { GitHubSection } from '@/components/github-section'
 import { PdfViewer } from '@/components/pdf-viewer'
 import { ImageViewer } from '@/components/image-viewer'
+import type {
+  ProjectContent, AboutContent, SkillGroup, TimelineEntry,
+} from '@/lib/content-store'
 
 /* ---------------- Custom Brand Icons (SVG) ---------------- */
 const GithubIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -635,7 +639,7 @@ const categoryLabels: Record<string, string> = {
 }
 
 /* ---------------- Project Gallery ---------------- */
-function ProjectGallery({ project }: { project: typeof projects[0] }) {
+function ProjectGallery({ project }: { project: ProjectContent }) {
   const [active, setActive] = useState(0)
   const [lightboxOpen, setLightboxOpen] = useState(false)
   const touchStartX = useRef<number | null>(null)
@@ -726,7 +730,7 @@ function ProjectGallery({ project }: { project: typeof projects[0] }) {
 }
 
 /* ---------------- Project Card ---------------- */
-function ProjectCard({ project, index }: { project: typeof projects[0]; index: number }) {
+function ProjectCard({ project, index }: { project: ProjectContent; index: number }) {
   const [expanded, setExpanded] = useState(false)
   const FEATURES_COLLAPSED_COUNT = 6
   const visibleFeatures = expanded ? project.features : project.features.slice(0, FEATURES_COLLAPSED_COUNT)
@@ -973,9 +977,6 @@ export function PortfolioSite() {
   const [introComplete, setIntroComplete] = useState(false)
 
   // ---- Live resume metadata (Part 2.4) ----
-  // Falls back to the static siteConfig.resumeUrl / "resume.pdf" until the
-  // client fetch resolves, so there's no layout shift or broken link during
-  // the brief window before this loads.
   const [resumeUrl, setResumeUrl] = useState(siteConfig.resumeUrl)
   const [resumeFileName, setResumeFileName] = useState('resume.pdf')
 
@@ -992,9 +993,6 @@ export function PortfolioSite() {
   }, [])
 
   // ---- Live site settings (Part 2.5) ----
-  // Falls back to the static siteConfig values (email, availability, social
-  // links) until the client fetch resolves — same fallback pattern as the
-  // resume metadata fetch above, so there's no flash of missing/blank content.
   const [liveSettings, setLiveSettings] = useState<{
     maintenanceMode: boolean
     maintenanceMessage: string
@@ -1027,14 +1025,40 @@ export function PortfolioSite() {
       })
   }, [])
 
+  // ---- Live content (Part 2.7) ----
+  // Falls back to static imports until the fetch resolves, so there's no
+  // flash of missing content. Admin edits made in the Content Management
+  // page are reflected here once saved.
+  const [liveContent, setLiveContent] = useState<{
+    projects: ProjectContent[]
+    about: AboutContent
+    skillGroups: SkillGroup[]
+    timeline: TimelineEntry[]
+  }>({
+    projects: staticProjects,
+    about: staticAbout,
+    skillGroups: staticSkillGroups,
+    timeline: staticTimeline,
+  })
+
+  useEffect(() => {
+    fetch('/api/content')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!d?.content) return
+        setLiveContent({
+          projects: d.content.projects || staticProjects,
+          about: d.content.about || staticAbout,
+          skillGroups: d.content.skillGroups || staticSkillGroups,
+          timeline: d.content.timeline || staticTimeline,
+        })
+      })
+      .catch(() => {
+        // Silent fallback — static values already cover this case.
+      })
+  }, [])
+
   // ---- Contact form state ----
-  // formStatus stages:
-  //   idle            -> filling out the form
-  //   submitting-otp  -> requesting a verification code
-  //   awaiting-otp    -> code sent, waiting for user to enter it
-  //   verifying       -> verifying the entered code + sending final email
-  //   success         -> message sent
-  //   error           -> something failed (see formError for detail)
   const [formStatus, setFormStatus] = useState<
     'idle' | 'submitting-otp' | 'awaiting-otp' | 'verifying' | 'success' | 'error'
   >('idle')
@@ -1050,10 +1074,6 @@ export function PortfolioSite() {
   const EMAIL_REGEX = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/
   const emailLooksValid = EMAIL_REGEX.test(form.email.trim())
   const emailTouched = form.email.length > 0
-  // Only surface the invalid-email styling once the user has left the field
-  // (or tried to submit). Showing it on every keystroke was what made the
-  // input's ring + helper text flicker in and out while typing, which read
-  // as the box "squeezing".
   const emailHasError = emailBlurred && emailTouched && !emailLooksValid
 
   useEffect(() => { document.documentElement.setAttribute('data-theme', theme) }, [theme])
@@ -1108,7 +1128,6 @@ export function PortfolioSite() {
     setEmailBlurred(false)
   }
 
-  // Step 1: validate + request an OTP to be emailed to the address entered.
   const requestOtp = async (e: React.FormEvent) => {
     e.preventDefault()
     setFormError(null)
@@ -1143,7 +1162,6 @@ export function PortfolioSite() {
     }
   }
 
-  // Resend: re-request a fresh OTP (same underlying endpoint).
   const resendOtp = async () => {
     if (resendCooldown > 0) return
     setOtpError(null)
@@ -1170,8 +1188,6 @@ export function PortfolioSite() {
     }
   }
 
-  // Step 2: verify the code the user entered; on success the server sends
-  // the actual contact email and this becomes the terminal success state.
   const verifyOtpAndSend = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!otpToken || otpCode.length !== 6) {
@@ -1200,7 +1216,7 @@ export function PortfolioSite() {
   }
 
   const filteredProjects = useMemo(() => {
-    return allProjects.filter((p) => {
+    return liveContent.projects.filter((p) => {
       const f = activeFilter
       const matchesFilter =
         f === 'All' ||
@@ -1217,7 +1233,7 @@ export function PortfolioSite() {
         p.features.join(' ').toLowerCase().includes(q)
       return matchesFilter && matchesQuery
     })
-  }, [activeFilter, query])
+  }, [activeFilter, query, liveContent.projects])
 
   return (
     <main className="min-h-screen overflow-hidden bg-background text-foreground">
@@ -1328,26 +1344,26 @@ export function PortfolioSite() {
           <Reveal variant="left">
             <p className="eyebrow">A little context</p>
             <p className="mt-6 max-w-48 font-mono text-[10px] leading-5 tracking-[0.12em] text-muted-foreground uppercase">
-              {about.college}<br />{about.currentYear}
+              {liveContent.about.college}<br />{liveContent.about.currentYear}
             </p>
           </Reveal>
           <div>
             <Reveal variant="blur">
-              <p className="max-w-4xl text-3xl leading-[1.12] tracking-[-0.05em] text-pretty md:text-5xl">{about.paragraphs[0]}</p>
+              <p className="max-w-4xl text-3xl leading-[1.12] tracking-[-0.05em] text-pretty md:text-5xl">{liveContent.about.paragraphs[0]}</p>
             </Reveal>
             <Reveal delay={80} variant="blur">
-              <p className="mt-6 max-w-3xl text-lg leading-7 text-muted-foreground">{about.paragraphs[1]} {about.paragraphs[2]}</p>
+              <p className="mt-6 max-w-3xl text-lg leading-7 text-muted-foreground">{liveContent.about.paragraphs[1]} {liveContent.about.paragraphs[2]}</p>
             </Reveal>
             <Reveal delay={160}>
               <div className="mt-10 flex flex-wrap gap-2">
-                {about.interests.map((i) => (
+                {liveContent.about.interests.map((i) => (
                   <span key={i} className="rounded-full border border-border px-3 py-1.5 font-mono text-[10px] tracking-[0.12em] text-muted-foreground uppercase transition-all hover:border-primary hover:text-primary hover:-translate-y-0.5">{i}</span>
                 ))}
               </div>
             </Reveal>
             <Reveal delay={220}>
               <div className="mt-14 grid gap-10 border-t border-border pt-8 sm:grid-cols-3">
-                {about.pillars.map((p) => (
+                {liveContent.about.pillars.map((p) => (
                   <div key={p.num}>
                     <span className="eyebrow">{p.num} / {p.label}</span>
                     <p className="mt-4 max-w-48 text-sm leading-6 text-muted-foreground">{p.text}</p>
@@ -1408,7 +1424,7 @@ export function PortfolioSite() {
             </div>
           </Reveal>
           <div className="grid gap-4 md:grid-cols-3">
-            {skillGroups.map((group, i) => {
+            {liveContent.skillGroups.map((group, i) => {
               const Icon = skillIcons[group.category] || Layers
               return (
                 <Reveal key={group.category} delay={i * 60} variant="scale">
@@ -1534,7 +1550,7 @@ export function PortfolioSite() {
           <div className="relative">
             <div className="absolute left-4 top-2 bottom-2 w-px bg-border md:left-1/2 md:-translate-x-1/2" />
             <div className="space-y-8 md:space-y-12">
-              {timeline.map((item, i) => (
+              {liveContent.timeline.map((item, i) => (
                 <Reveal key={i} delay={i * 40} variant={i % 2 === 0 ? 'left' : 'right'}>
                   <div className={`relative flex items-start gap-6 md:gap-0 ${i % 2 === 0 ? 'md:flex-row-reverse' : ''}`}>
                     <div className="absolute left-4 top-3 z-10 grid size-4 -translate-x-1/2 place-items-center md:left-1/2">

@@ -5,35 +5,9 @@
  * ─────────────────────────────────────────────────────────────────────────────
  * Part 2.3 — Analytics Overview
  *
- * Part 2.6 update: added "Security" nav item (8th item, after Settings) —
- * canonical nav list now spans Dashboard, Messages, Analytics, Resume,
- * Content, Visitors, Settings, Security.
- *
- * Fixes applied:
- *  1. "Avg. Daily Views" now derives from the trend array (sum of daily
- *     pageviews / number of days with data), not totalViews/period. The
- *     count endpoint and the aggregate endpoint can disagree slightly or
- *     one can legitimately return 0 while the other has data — deriving
- *     from trend keeps the number consistent with the chart the user is
- *     looking at right above it.
- *  2. "Top Referrers" stat card previously showed referrers.length (i.e.
- *     "3" sources found) mislabeled under a views-style stat card, which
- *     read as broken/zero whenever the referrers call failed silently.
- *     It now shows total referred page views, matching the other three
- *     cards' units, and falls back to "—" (not "0") when the referrers
- *     endpoint actually errored (see _errors below) vs. genuinely empty.
- *  3. The API route now returns `_errors` per section when a Vercel call
- *     fails. This client surfaces those inline under the relevant panel
- *     so "no data" and "the call broke" are never visually identical.
- *  4. Sidebar nav list was missing the "Resume" item entirely, which made
- *     it look like the Resume tab disappeared whenever the user was on
- *     the Analytics page. Restored to match the canonical list used on
- *     every other admin page.
- *  5. Sidebar `<nav>` now has `min-h-0` alongside `flex-1` so the flex
- *     child can actually shrink and scroll internally instead of
- *     potentially clipping the bottom-most nav links (same fix already
- *     applied to dashboard-client.tsx / messages-client.tsx /
- *     settings-client.tsx).
+ * Part 2.7 update: removed "Visitors" nav item, added "Content" with
+ * FolderKanban icon. Canonical nav list now spans Dashboard, Messages,
+ * Analytics, Resume, Content, Settings, Security.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
@@ -45,7 +19,6 @@ import {
   Mail,
   MessageSquare,
   FileText,
-  Users,
   Settings,
   ExternalLink,
   Eye,
@@ -63,6 +36,8 @@ import {
   ChevronDown,
   AlertCircle,
   ShieldCheck,
+  FolderKanban,
+  Users,
 } from 'lucide-react'
 import { themes } from '@/lib/content'
 
@@ -401,12 +376,6 @@ function formatNumber(n: number): string {
   return String(n)
 }
 
-/**
- * Average daily views derived from the trend array itself, not from
- * totalViews / period. This keeps the number consistent with what the
- * bar chart directly above it shows, and avoids showing "0" when the
- * count endpoint disagrees with (or lags) the aggregate endpoint.
- */
 function computeAvgDailyViews(trend: { date: string; views: number }[]): number | null {
   if (trend.length === 0) return null
   const sum = trend.reduce((acc, d) => acc + d.views, 0)
@@ -471,18 +440,14 @@ export default function AnalyticsClient({ adminEmail }: { adminEmail: string }) 
   }
 
   // ── Nav items ────────────────────────────────────────────────────────────────
-  // Canonical nav list — kept identical (order + items) across every admin
-  // page's client component. This page was previously missing the
-  // "Resume" item, which made it look like that tab vanished whenever the
-  // user was on Analytics. "Security" added in Part 2.6.
+  // Canonical nav list — Visitors removed in Part 2.7
 
   const navItems: NavItem[] = [
     { icon: <LayoutDashboard className="h-4 w-4" />, label: 'Dashboard', href: '/admin/dashboard' },
     { icon: <MessageSquare className="h-4 w-4" />, label: 'Messages', href: '/admin/messages', badge: unreadCount },
     { icon: <BarChart2 className="h-4 w-4" />, label: 'Analytics', href: '/admin/analytics', active: true },
     { icon: <FileText className="h-4 w-4" />, label: 'Resume', href: '/admin/resume' },
-    { icon: <FileText className="h-4 w-4" />, label: 'Content', href: '/admin/content' },
-    { icon: <Users className="h-4 w-4" />, label: 'Visitors', href: '/admin/visitors' },
+    { icon: <FolderKanban className="h-4 w-4" />, label: 'Content', href: '/admin/content' },
     { icon: <Settings className="h-4 w-4" />, label: 'Settings', href: '/admin/settings' },
     { icon: <ShieldCheck className="h-4 w-4" />, label: 'Security', href: '/admin/security' },
   ]
@@ -531,10 +496,7 @@ export default function AnalyticsClient({ adminEmail }: { adminEmail: string }) 
           </button>
         </div>
 
-        {/* Nav items — scrollable middle zone.
-            `min-h-0` is required alongside `flex-1` so this flex child can
-            actually shrink and scroll internally instead of clipping the
-            bottom-most nav links. */}
+        {/* Nav items — scrollable middle zone */}
         <nav className="flex-1 min-h-0 overflow-y-auto p-3 space-y-1">
           {navItems.map(item => <SideNavItem key={item.href} {...item} />)}
         </nav>
@@ -707,7 +669,6 @@ export default function AnalyticsClient({ adminEmail }: { adminEmail: string }) 
             </div>
           )}
 
-          {/* Per-section error banner (shown when credentials ARE configured but a call still failed) */}
           {!data?._placeholder && Object.keys(errors).length > 0 && (
             <div
               className="mb-4 flex items-start gap-3 rounded-2xl border p-4"
