@@ -9,6 +9,12 @@
  * Analytics, Resume, Content, Settings, Security.
  * Part 2.8 update: added Two-Factor Authentication section with QR code
  * setup, code verification, and disable functionality.
+ * Part 2.9 update: added recovery code display, regeneration, status
+ * tracking, and IP geolocation display in sessions panel.
+ * Part 2.9.1 update: fixed recovery code count display, added scrollable
+ * sessions list for better UI with many active sessions.
+ * Part 2.9.2 update: fixed recovery code regeneration to properly display
+ * new codes after regeneration.
  *
  * Mobile fix (Part D):
  *   - Changed h-screen to admin-viewport-height for dynamic viewport support
@@ -26,7 +32,7 @@ import {
   BarChart2, AlertTriangle, Check, ShieldCheck, KeyRound, Monitor,
   Smartphone, LogOutIcon, Clock, Globe2, ChevronDown, Eye, EyeOff,
   CheckCircle2, XCircle, ListChecks, FolderKanban, Smartphone as SmartphoneIcon,
-  Copy, RefreshCw, Trash2, Shield, ShieldOff,
+  Copy, RefreshCw, Trash2, Shield, ShieldOff, Key, Download, MapPin,
 } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { themes } from '@/lib/content'
@@ -209,6 +215,20 @@ export default function SecurityClient({ adminEmail }: { adminEmail: string }) {
   const [showDisableConfirm, setShowDisableConfirm] = useState(false)
   const [copiedSecret, setCopiedSecret] = useState(false)
 
+  // Part 2.9 — Recovery codes state
+  const [recoveryCodes, setRecoveryCodes] = useState<string[]>([])
+  const [showRecoveryCodes, setShowRecoveryCodes] = useState(false)
+  const [recoveryCodeStatus, setRecoveryCodeStatus] = useState<{
+    totalCodes: number
+    remainingCount: number
+    generatedAt?: string
+  }>({ totalCodes: 0, remainingCount: 0 })
+  const [regeneratingCodes, setRegeneratingCodes] = useState(false)
+  const [showRegenConfirm, setShowRegenConfirm] = useState(false)
+  const [regenCode, setRegenCode] = useState('')
+  const [regenError, setRegenError] = useState<string | null>(null)
+  const [copiedCodes, setCopiedCodes] = useState(false)
+
   useEffect(() => {
     fetch('/api/admin/messages?filter=all')
       .then(r => r.ok ? r.json() : null)
@@ -247,6 +267,10 @@ export default function SecurityClient({ adminEmail }: { adminEmail: string }) {
       } else {
         setTwoFactorSecret(null)
         setTwoFactorURI(null)
+      }
+      // Part 2.9 — Load recovery code status
+      if (data.recoveryCodes) {
+        setRecoveryCodeStatus(data.recoveryCodes)
       }
     } catch {
       // 2FA section will show unavailable state
@@ -344,6 +368,9 @@ export default function SecurityClient({ adminEmail }: { adminEmail: string }) {
       }
       setTwoFactorSecret(data.secret ?? null)
       setTwoFactorURI(data.otpauthURI ?? null)
+      // Part 2.9 — Store recovery codes for display
+      setRecoveryCodes(data.recoveryCodes ?? [])
+      setShowRecoveryCodes(true)
       setTwoFactorCode('')
     } catch {
       setTwoFactorError('Network error — please try again.')
@@ -378,6 +405,10 @@ export default function SecurityClient({ adminEmail }: { adminEmail: string }) {
       setTwoFactorURI(null)
       setTwoFactorCode('')
       setTwoFactorSuccess(true)
+      setShowRecoveryCodes(false)
+      setRecoveryCodes([])
+      // Reload to get updated recovery code status
+      await loadTwoFactor()
       setTimeout(() => setTwoFactorSuccess(false), 4000)
     } catch {
       setTwoFactorError('Network error — please try again.')
@@ -420,6 +451,84 @@ export default function SecurityClient({ adminEmail }: { adminEmail: string }) {
       setTimeout(() => setCopiedSecret(false), 2000)
     } catch {
       // Clipboard API may not be available — user can copy manually
+    }
+  }
+
+  // Part 2.9 — Recovery code handlers
+  const handleCopyRecoveryCodes = async () => {
+    if (recoveryCodes.length === 0) return
+    try {
+      const text = recoveryCodes.join('\n')
+      await navigator.clipboard.writeText(text)
+      setCopiedCodes(true)
+      setTimeout(() => setCopiedCodes(false), 2000)
+    } catch {
+      // Clipboard API may not be available
+    }
+  }
+
+  const handleDownloadRecoveryCodes = () => {
+    if (recoveryCodes.length === 0) return
+    const text = [
+      'Two-Factor Authentication Recovery Codes',
+      `Email: ${adminEmail}`,
+      `Generated: ${new Date().toLocaleString()}`,
+      '',
+      'Store these codes in a safe place. Each code can only be used once.',
+      '',
+      ...recoveryCodes,
+      '',
+      'If you lose access to your authenticator app, use one of these codes to sign in.',
+      'After using a recovery code, it will no longer be valid.',
+    ].join('\n')
+    
+    const blob = new Blob([text], { type: 'text/plain' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `recovery-codes-${adminEmail}.txt`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
+  const handleRegenerateCodes = async () => {
+    setRegenError(null)
+    setRegeneratingCodes(true)
+    try {
+      const res = await fetch('/api/admin/2fa/recovery', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: regenCode }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setRegenError(data.error || 'Failed to regenerate recovery codes.')
+        return
+      }
+      
+      // FIX: Properly set the new recovery codes and show them
+      const newCodes = data.recoveryCodes ?? []
+      setRecoveryCodes(newCodes)
+      setShowRecoveryCodes(true)
+      setShowRegenConfirm(false)
+      setRegenCode('')
+      setCopiedCodes(false)
+      
+      // Update the status display
+      setRecoveryCodeStatus({
+        totalCodes: newCodes.length,
+        remainingCount: newCodes.length,
+        generatedAt: new Date().toISOString(),
+      })
+      
+      // Also reload from server to ensure consistency
+      await loadTwoFactor()
+    } catch {
+      setRegenError('Network error — please try again.')
+    } finally {
+      setRegeneratingCodes(false)
     }
   }
 
@@ -664,6 +773,143 @@ export default function SecurityClient({ adminEmail }: { adminEmail: string }) {
                       </div>
                     </div>
 
+                    {/* Part 2.9 — Recovery code status */}
+                    {recoveryCodeStatus.totalCodes > 0 && (
+                      <div
+                        className="mb-4 rounded-xl border p-3"
+                        style={{
+                          borderColor: 'color-mix(in oklch, oklch(0.65 0.15 250) 30%, transparent)',
+                          background: 'color-mix(in oklch, oklch(0.65 0.15 250) 8%, transparent)',
+                        }}
+                      >
+                        <div className="flex items-center gap-2 mb-2">
+                          <Key className="h-4 w-4 shrink-0" style={{ color: 'oklch(0.65 0.15 250)' }} />
+                          <p className="text-sm font-medium">Recovery Codes</p>
+                        </div>
+                        <p className="text-xs mb-2" style={{ color: 'var(--muted-foreground)' }}>
+                          <strong>{recoveryCodeStatus.remainingCount}</strong> of {recoveryCodeStatus.totalCodes} codes remaining
+                          {recoveryCodeStatus.generatedAt && (
+                            <> · Generated {formatDateTime(recoveryCodeStatus.generatedAt)}</>
+                          )}
+                        </p>
+                        <p className="text-xs mb-3" style={{ color: 'var(--muted-foreground)' }}>
+                          Use these if you lose access to your authenticator app. Each code can only be used once.
+                        </p>
+                        <button
+                          onClick={() => { setShowRegenConfirm(true); setRegenCode(''); setRegenError(null) }}
+                          className="flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all"
+                          style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
+                        >
+                          <RefreshCw className="h-3.5 w-3.5" />
+                          Regenerate codes
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Part 2.9 — Regenerate confirmation */}
+                    {showRegenConfirm && (
+                      <div
+                        className="mb-4 rounded-xl border p-4"
+                        style={{
+                          borderColor: 'color-mix(in oklch, var(--destructive) 35%, transparent)',
+                          background: 'color-mix(in oklch, var(--destructive) 6%, transparent)',
+                        }}
+                      >
+                        <p className="text-sm font-medium mb-3">Enter current 6-digit code to regenerate recovery codes</p>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          maxLength={6}
+                          value={regenCode}
+                          onChange={e => { setRegenCode(e.target.value.replace(/\D/g, '')); setRegenError(null) }}
+                          placeholder="000000"
+                          className="w-full rounded-xl border px-4 py-2.5 text-center text-lg font-mono tracking-widest outline-none focus:border-[var(--primary)]"
+                          style={inputStyle}
+                        />
+                        {regenError && (
+                          <p className="mt-2 text-xs" style={{ color: 'var(--destructive)' }}>{regenError}</p>
+                        )}
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <button
+                            onClick={handleRegenerateCodes}
+                            disabled={regeneratingCodes || regenCode.length !== 6}
+                            className="flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-semibold transition-all disabled:opacity-50"
+                            style={{ background: 'var(--primary)', color: 'var(--primary-foreground)' }}
+                          >
+                            {regeneratingCodes ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                            Regenerate
+                          </button>
+                          <button
+                            onClick={() => { setShowRegenConfirm(false); setRegenCode(''); setRegenError(null) }}
+                            disabled={regeneratingCodes}
+                            className="rounded-lg border px-4 py-2 text-xs font-medium transition-all"
+                            style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Part 2.9 — Display regenerated recovery codes */}
+                    {showRecoveryCodes && recoveryCodes.length > 0 && !showRegenConfirm && (
+                      <div
+                        className="mb-4 rounded-xl border p-4"
+                        style={{
+                          borderColor: 'color-mix(in oklch, oklch(0.65 0.15 250) 30%, transparent)',
+                          background: 'color-mix(in oklch, oklch(0.65 0.15 250) 8%, transparent)',
+                        }}
+                      >
+                        <div className="flex items-center gap-2 mb-3">
+                          <Key className="h-4 w-4 shrink-0" style={{ color: 'oklch(0.65 0.15 250)' }} />
+                          <p className="text-sm font-medium">New Recovery Codes</p>
+                        </div>
+                        <p className="text-xs mb-3" style={{ color: 'var(--muted-foreground)' }}>
+                          Store these new codes in a safe place. The previous codes are no longer valid. Each code can only be used once.
+                        </p>
+                        <div
+                          className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3"
+                          style={{ maxHeight: '200px', overflowY: 'auto' }}
+                        >
+                          {recoveryCodes.map((code, idx) => (
+                            <div
+                              key={idx}
+                              className="rounded-lg border px-3 py-2 font-mono text-sm text-center"
+                              style={{ borderColor: 'var(--border)', background: 'var(--background)', color: 'var(--foreground)' }}
+                            >
+                              {code}
+                            </div>
+                          ))}
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            onClick={handleCopyRecoveryCodes}
+                            className="flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all"
+                            style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
+                          >
+                            {copiedCodes ? <Check className="h-3.5 w-3.5" style={{ color: 'oklch(0.75 0.18 150)' }} /> : <Copy className="h-3.5 w-3.5" />}
+                            {copiedCodes ? 'Copied!' : 'Copy all'}
+                          </button>
+                          <button
+                            onClick={handleDownloadRecoveryCodes}
+                            className="flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all"
+                            style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
+                          >
+                            <Download className="h-3.5 w-3.5" />
+                            Download
+                          </button>
+                          <button
+                            onClick={() => { setShowRecoveryCodes(false); setRecoveryCodes([]) }}
+                            className="flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all"
+                            style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                            Hide
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
                     {!showDisableConfirm ? (
                       <button
                         onClick={() => { setShowDisableConfirm(true); setTwoFactorCode(''); setTwoFactorError(null) }}
@@ -761,6 +1007,57 @@ export default function SecurityClient({ adminEmail }: { adminEmail: string }) {
                       </div>
                     </div>
 
+                    {/* Part 2.9 — Recovery codes display during setup */}
+                    {showRecoveryCodes && recoveryCodes.length > 0 && (
+                      <div
+                        className="mb-4 rounded-xl border p-4"
+                        style={{
+                          borderColor: 'color-mix(in oklch, oklch(0.65 0.15 250) 30%, transparent)',
+                          background: 'color-mix(in oklch, oklch(0.65 0.15 250) 8%, transparent)',
+                        }}
+                      >
+                        <div className="flex items-center gap-2 mb-3">
+                          <Key className="h-4 w-4 shrink-0" style={{ color: 'oklch(0.65 0.15 250)' }} />
+                          <p className="text-sm font-medium">Recovery Codes</p>
+                        </div>
+                        <p className="text-xs mb-3" style={{ color: 'var(--muted-foreground)' }}>
+                          Store these codes in a safe place. They can be used to sign in if you lose access to your authenticator app. Each code can only be used once.
+                        </p>
+                        <div
+                          className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3"
+                          style={{ maxHeight: '200px', overflowY: 'auto' }}
+                        >
+                          {recoveryCodes.map((code, idx) => (
+                            <div
+                              key={idx}
+                              className="rounded-lg border px-3 py-2 font-mono text-sm text-center"
+                              style={{ borderColor: 'var(--border)', background: 'var(--background)', color: 'var(--foreground)' }}
+                            >
+                              {code}
+                            </div>
+                          ))}
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            onClick={handleCopyRecoveryCodes}
+                            className="flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all"
+                            style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
+                          >
+                            {copiedCodes ? <Check className="h-3.5 w-3.5" style={{ color: 'oklch(0.75 0.18 150)' }} /> : <Copy className="h-3.5 w-3.5" />}
+                            {copiedCodes ? 'Copied!' : 'Copy all'}
+                          </button>
+                          <button
+                            onClick={handleDownloadRecoveryCodes}
+                            className="flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all"
+                            style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
+                          >
+                            <Download className="h-3.5 w-3.5" />
+                            Download
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
                     <label className="block">
                       <span className="text-xs font-medium">Enter 6-digit code</span>
                       <input
@@ -834,7 +1131,10 @@ export default function SecurityClient({ adminEmail }: { adminEmail: string }) {
                 description="Devices currently signed in to your admin account."
                 icon={<Monitor className="h-5 w-5" />}
               >
-                <div className="space-y-2">
+                <div 
+                  className="space-y-2 overflow-y-auto"
+                  style={{ maxHeight: '400px', paddingRight: '4px' }}
+                >
                   {sessions.length === 0 ? (
                     <p className="text-sm" style={{ color: 'var(--muted-foreground)' }}>
                       No active sessions found.
@@ -874,6 +1174,12 @@ export default function SecurityClient({ adminEmail }: { adminEmail: string }) {
                               <span className="flex items-center gap-1">
                                 <Globe2 className="h-3 w-3" /> {s.ip}
                               </span>
+                              {/* Part 2.9 — Display geolocation if available */}
+                              {s.location && (
+                                <span className="flex items-center gap-1">
+                                  <MapPin className="h-3 w-3" /> {s.location}
+                                </span>
+                              )}
                               <span className="flex items-center gap-1">
                                 <Clock className="h-3 w-3" /> Signed in {formatDateTime(s.createdAt)}
                               </span>
@@ -1098,8 +1404,10 @@ export default function SecurityClient({ adminEmail }: { adminEmail: string }) {
                           <p className="truncate" style={{ color: 'var(--muted-foreground)' }}>
                             {a.ip} · {formatDateTime(a.timestamp)}
                             {a.reason === 'invalid_2fa_code' && ' · Failed 2FA'}
+                            {a.reason === 'invalid_recovery_code' && ' · Failed recovery code'}
                             {a.reason === '2fa_enabled' && ' · 2FA enabled'}
                             {a.reason === '2fa_disabled' && ' · 2FA disabled'}
+                            {a.reason === 'recovery_codes_regenerated' && ' · Recovery codes regenerated'}
                           </p>
                         </div>
                         <span

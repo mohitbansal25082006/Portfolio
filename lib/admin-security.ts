@@ -2,6 +2,7 @@
  * lib/admin-security.ts
  * ─────────────────────────────────────────────────────────────────────────────
  * Part 2.6 — Security & Session
+ * Part 2.9 — Added optional location field to ActiveSession
  *
  * Backs four features on the new /admin/security page:
  *   1. Active session tracking   — list every signed-in session (IP, login
@@ -10,26 +11,15 @@
  *   2. Force logout all sessions — revokes every tracked session at once by
  *      writing a "revoked before" cutoff timestamp per admin email; any
  *      token issued before that cutoff fails verification from then on,
- *      even though its HMAC signature is still technically valid. This is
- *      what lets one click invalidate sessions running on other devices
- *      without needing a live server-side blocklist per token.
+ *      even though its HMAC signature is still technically valid.
  *   3. Password change without touching .env — a runtime credential
- *      override store. `ADMIN_MAILn` / `ADMIN_PASSWORDn` in .env remain the
- *      bootstrap/fallback credentials, but once an admin changes their
- *      password from the dashboard, the new hash is written here and takes
- *      priority over the .env value for that email on every future login
- *      check. Works identically on serverless (Redis) and local dev (JSON
- *      file), so it survives redeploys in production.
+ *      override store.
  *   4. Login attempt log         — every login POST (success or failure) is
- *      appended here with email, IP, timestamp, and outcome, so failed
- *      attempts are visible per-IP for auditing.
+ *      appended here with email, IP, timestamp, and outcome.
  *
  * DUAL-BACKEND STORAGE (mirrors lib/messages.ts / lib/settings.ts exactly)
  * ---------------------------------------------------------------------------
- * Production (Vercel):   Upstash Redis via @upstash/redis, reusing the same
- *                         KV_REST_API_URL / KV_REST_API_TOKEN already
- *                         configured for messages/resume/settings. No new
- *                         env vars required.
+ * Production (Vercel):   Upstash Redis via @upstash/redis
  * Local dev / fallback:  JSON file at .data/portfolio-security.json.
  *
  * Passwords are never stored in plaintext — the override store keeps a
@@ -48,6 +38,7 @@ export interface ActiveSession {
   userAgent: string
   createdAt: string     // ISO-8601, login time
   lastSeenAt: string     // ISO-8601, updated on each verified request (best-effort)
+  location?: string | null // Part 2.9 — Approximate city/country from IP geolocation
 }
 
 export interface LoginAttempt {
@@ -205,6 +196,7 @@ export async function registerSession(params: {
     userAgent: params.userAgent,
     createdAt: now,
     lastSeenAt: now,
+    location: null, // Part 2.9 — Will be populated on-demand by API route
   })
   await writeStore(store)
   return id
@@ -226,8 +218,7 @@ export async function removeSession(id: string): Promise<void> {
 /**
  * Force-logs-out every session for an email: clears the tracked session
  * list AND sets a revocation cutoff so any token issued before "now" fails
- * verification even if its signature is still valid (covers sessions this
- * store doesn't have a live row for, e.g. created before Part 2.6 shipped).
+ * verification even if its signature is still valid.
  */
 export async function revokeAllSessions(email: string): Promise<number> {
   const store = await readStore()

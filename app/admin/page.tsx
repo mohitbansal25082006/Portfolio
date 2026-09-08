@@ -7,6 +7,11 @@
  *  - Added two-factor authentication step — after email+password verification,
  *    if 2FA is enabled for the admin, a 6-digit code input appears.
  *
+ * Part 2.9 update:
+ *  - Added recovery code input option during 2FA step
+ *  - Recovery codes can be entered instead of TOTP code
+ *  - Format validation for recovery codes (XXXX-XXXX-XX)
+ *
  * Mobile fix (Part E):
  *  - Changed min-h-screen to admin-viewport-height for dynamic viewport support
  *  - Added safe-area padding for mobile
@@ -15,7 +20,7 @@
 
 import { useSearchParams, useRouter } from 'next/navigation'
 import { useState, useRef, useEffect, type FormEvent, Suspense } from 'react'
-import { Eye, EyeOff, Loader2, ShieldCheck, AlertTriangle, Palette, Smartphone } from 'lucide-react'
+import { Eye, EyeOff, Loader2, ShieldCheck, AlertTriangle, Palette, Smartphone, KeyRound } from 'lucide-react'
 import { themes } from '@/lib/content'
 
 // ─── Theme switcher hook (localStorage-persisted) ─────────────────────────────
@@ -58,6 +63,9 @@ function AdminLoginForm() {
   const [twoFactorStep, setTwoFactorStep] = useState(false)
   const [twoFactorCode, setTwoFactorCode] = useState('')
   const [twoFactorError, setTwoFactorError] = useState<string | null>(null)
+  
+  // Part 2.9 — Recovery code mode toggle
+  const [useRecoveryMode, setUseRecoveryMode] = useState(false)
 
   function validate(): boolean {
     const errs: typeof fieldErrors = {}
@@ -70,9 +78,18 @@ function AdminLoginForm() {
   }
 
   function validateTwoFactor(): boolean {
-    if (!twoFactorCode || !/^\d{6}$/.test(twoFactorCode)) {
-      setTwoFactorError('Enter the 6-digit code from your authenticator app.')
-      return false
+    if (useRecoveryMode) {
+      // Part 2.9 — Recovery code format: XXXX-XXXX-XX
+      if (!twoFactorCode || !/^[A-Za-z0-9]{4}-[A-Za-z0-9]{4}-[A-Za-z0-9]{2}$/.test(twoFactorCode)) {
+        setTwoFactorError('Enter a valid recovery code (format: XXXX-XXXX-XX).')
+        return false
+      }
+    } else {
+      // TOTP code format: 6 digits
+      if (!twoFactorCode || !/^\d{6}$/.test(twoFactorCode)) {
+        setTwoFactorError('Enter the 6-digit code from your authenticator app.')
+        return false
+      }
     }
     return true
   }
@@ -83,14 +100,14 @@ function AdminLoginForm() {
     setTwoFactorError(null)
 
     if (twoFactorStep) {
-      // Step 2: Verify 2FA code
+      // Step 2: Verify 2FA code or recovery code
       if (!validateTwoFactor()) return
       setLoading(true)
       try {
         const res = await fetch('/api/admin/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: email.trim(), password, twoFactorCode }),
+          body: JSON.stringify({ email: email.trim(), password, twoFactorCode: twoFactorCode.trim() }),
         })
 
         const data = await res.json()
@@ -135,6 +152,7 @@ function AdminLoginForm() {
       // Part 2.8 — Check if 2FA is required
       if (data.twoFactorRequired) {
         setTwoFactorStep(true)
+        setUseRecoveryMode(false)
         setLoading(false)
         // Focus the code input after render
         setTimeout(() => {
@@ -156,6 +174,13 @@ function AdminLoginForm() {
     setTwoFactorCode('')
     setTwoFactorError(null)
     setPassword('')
+    setUseRecoveryMode(false)
+  }
+
+  function handleToggleMode() {
+    setUseRecoveryMode(v => !v)
+    setTwoFactorCode('')
+    setTwoFactorError(null)
   }
 
   // Input style — uses foreground + muted vars (readable on all themes)
@@ -265,7 +290,11 @@ function AdminLoginForm() {
               style={{ background: 'color-mix(in oklch, var(--primary) 15%, transparent)' }}
             >
               {twoFactorStep ? (
-                <Smartphone className="h-6 w-6 sm:h-7 sm:w-7" style={{ color: 'var(--primary)' }} />
+                useRecoveryMode ? (
+                  <KeyRound className="h-6 w-6 sm:h-7 sm:w-7" style={{ color: 'var(--primary)' }} />
+                ) : (
+                  <Smartphone className="h-6 w-6 sm:h-7 sm:w-7" style={{ color: 'var(--primary)' }} />
+                )
               ) : (
                 /* eslint-disable-next-line @next/next/no-img-element */
                 <img src="/icon.ico" alt="Logo" className="h-8 w-8 sm:h-9 sm:w-9 object-contain" />
@@ -273,11 +302,15 @@ function AdminLoginForm() {
             </div>
             <div>
               <h1 className="text-lg sm:text-xl font-semibold tracking-tight">
-                {twoFactorStep ? 'Two-Factor Authentication' : 'Admin Access'}
+                {twoFactorStep ? (
+                  useRecoveryMode ? 'Recovery Code' : 'Two-Factor Authentication'
+                ) : 'Admin Access'}
               </h1>
               <p className="mt-1 text-xs sm:text-sm" style={{ color: 'var(--muted-foreground)' }}>
                 {twoFactorStep
-                  ? 'Enter the 6-digit code from your authenticator app'
+                  ? useRecoveryMode
+                    ? 'Enter a recovery code to sign in'
+                    : 'Enter the 6-digit code from your authenticator app'
                   : 'Sign in to manage your portfolio'}
               </p>
             </div>
@@ -316,42 +349,56 @@ function AdminLoginForm() {
           {/* Form */}
           <form onSubmit={handleSubmit} noValidate className="space-y-4 sm:space-y-5">
             {twoFactorStep ? (
-              /* ─── Step 2: 2FA code input ─── */
+              /* ─── Step 2: 2FA code or recovery code input ─── */
               <div className="space-y-4 sm:space-y-5">
                 <div className="space-y-1.5">
                   <label htmlFor="admin-2fa-code" className="block text-sm font-medium">
-                    Authentication code
+                    {useRecoveryMode ? 'Recovery code' : 'Authentication code'}
                   </label>
                   <input
                     id="admin-2fa-code"
                     type="text"
-                    inputMode="numeric"
-                    autoComplete="one-time-code"
+                    inputMode={useRecoveryMode ? 'text' : 'numeric'}
+                    autoComplete={useRecoveryMode ? 'off' : 'one-time-code'}
                     autoFocus
-                    maxLength={6}
+                    maxLength={useRecoveryMode ? 12 : 6}
                     value={twoFactorCode}
                     onChange={e => {
-                      setTwoFactorCode(e.target.value.replace(/\D/g, ''))
+                      if (useRecoveryMode) {
+                        // Allow recovery code format: XXXX-XXXX-XX
+                        const value = e.target.value.toUpperCase()
+                        const cleaned = value.replace(/[^A-Z0-9]/g, '')
+                        let formatted = cleaned
+                        if (cleaned.length > 4) formatted = `${cleaned.slice(0, 4)}-${cleaned.slice(4)}`
+                        if (cleaned.length > 8) formatted = `${cleaned.slice(0, 4)}-${cleaned.slice(4, 8)}-${cleaned.slice(8, 10)}`
+                        setTwoFactorCode(formatted)
+                      } else {
+                        setTwoFactorCode(e.target.value.replace(/\D/g, ''))
+                      }
                       setTwoFactorError(null)
                     }}
-                    placeholder="000000"
-                    className="w-full text-center text-xl sm:text-2xl font-mono tracking-[0.5em]"
+                    placeholder={useRecoveryMode ? 'XXXX-XXXX-XX' : '000000'}
+                    className="w-full text-center font-mono"
                     style={{
                       ...inputStyle,
-                      letterSpacing: '0.5em',
+                      fontSize: useRecoveryMode ? '1rem' : '1.5rem',
+                      letterSpacing: useRecoveryMode ? '0.15em' : '0.5em',
                       textAlign: 'center',
                     }}
                     aria-invalid={!!twoFactorError}
                     disabled={loading}
                   />
                   <p className="text-xs text-center" style={{ color: 'var(--muted-foreground)' }}>
-                    Open your authenticator app and enter the 6-digit code for <strong>{email.trim()}</strong>
+                    {useRecoveryMode
+                      ? <>Enter a recovery code for <strong>{email.trim()}</strong>. Each code can only be used once.</>
+                      : <>Open your authenticator app and enter the 6-digit code for <strong>{email.trim()}</strong></>
+                    }
                   </p>
                 </div>
 
                 <button
                   type="submit"
-                  disabled={loading || twoFactorCode.length !== 6}
+                  disabled={loading || twoFactorCode.length === 0}
                   className="mt-2 w-full overflow-hidden rounded-xl px-6 py-3 text-sm font-semibold transition-all duration-200 disabled:opacity-60"
                   style={{
                     background: 'var(--primary)',
@@ -366,6 +413,19 @@ function AdminLoginForm() {
                   ) : (
                     'Verify & Sign in'
                   )}
+                </button>
+
+                {/* Part 2.9 — Toggle between TOTP and recovery code */}
+                <button
+                  type="button"
+                  onClick={handleToggleMode}
+                  disabled={loading}
+                  className="w-full text-center text-sm font-medium transition-colors"
+                  style={{ color: 'var(--muted-foreground)' }}
+                >
+                  {useRecoveryMode
+                    ? '← Use authenticator app instead'
+                    : 'Lost access to your authenticator? Use a recovery code'}
                 </button>
 
                 <button

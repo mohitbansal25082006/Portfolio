@@ -2,15 +2,26 @@
  * lib/admin-2fa.ts
  * ─────────────────────────────────────────────────────────────────────────────
  * Part 2.8 — Two-Factor Authentication (TOTP)
+ * Part 2.9 — Added one-time recovery codes for authenticator loss scenarios
  * ---------------------------------------------------------------------------
  * Implements TOTP (Time-based One-Time Password) as specified in RFC 6238,
  * compatible with Google Authenticator, Authy, Microsoft Authenticator,
  * and other authenticator apps.
  *
+ * Part 2.9 Recovery Codes:
+ *   - Generated alongside QR setup (10 codes, single-use)
+ *   - Displayed once during setup, stored hashed
+ *   - Can be used as fallback when authenticator device is unavailable
+ *   - Each code can only be used once, then becomes invalid
+ *   - New codes can be regenerated (invalidates previous set)
+ *
  * Flow:
  *   1. Admin logs in with email + password (verified first)
- *   2. If 2FA is enabled for that admin, a 6-digit code is required
- *   3. Code is verified against the admin's TOTP secret using HMAC-SHA1
+ *   2. If 2FA is enabled for that admin, a 6-digit code OR recovery code
+ *      is required
+ *   3. TOTP codes are verified against the admin's TOTP secret using HMAC-SHA1
+ *   4. Recovery codes are verified against hashed versions stored alongside
+ *      the 2FA config
  *
  * Storage:
  *   Uses the SAME dual-backend pattern as messages/settings/content:
@@ -24,12 +35,14 @@
  * Security:
  *   - Secrets are stored in the same protected store as sessions/logins
  *   - Codes are valid for 30-second windows (±1 window for clock drift)
- *   - Each code can only be used once (replay protection via lastUsedTimestamp)
+ *   - Each TOTP code can only be used once (replay protection)
+ *   - Recovery codes are stored as SHA-256 hashes (never plaintext)
+ *   - Each recovery code can only be used once (single-use)
  *   - Rate limiting is handled by the login route's existing logic
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-import { createHmac, randomBytes, timingSafeEqual } from 'crypto'
+import { createHmac, randomBytes, timingSafeEqual, createHash } from 'crypto'
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
@@ -42,15 +55,26 @@ export interface TwoFactorConfig {
   enabledAt?: string
   /** ISO timestamp of when the secret was last used (for replay protection) */
   lastUsedAt?: string
-  /** The most recent code that was successfully used (replay protection) */
+  /** The most recent TOTP code that was successfully used (replay protection) */
   lastUsedCode?: string
+}
+
+export interface RecoveryCodeInfo {
+  /** SHA-256 hashed recovery codes (never stored in plaintext) */
+  hashedCodes: string[]
+  /** ISO timestamp of when codes were generated */
+  generatedAt: string
+  /** Total number of codes originally generated */
+  totalCodes: number
+  /** Number of codes remaining */
+  remainingCount: number
 }
 
 interface TwoFactorStore {
   /** Keyed by lowercase admin email */
   configs: Record<string, TwoFactorConfig>
   /** Recovery codes (hashed) for bypass if authenticator is lost */
-  recoveryCodes: Record<string, string[]> // email -> hashed recovery codes
+  recoveryCodes: Record<string, RecoveryCodeInfo> // email -> recovery code info
 }
 
 const REDIS_KEY = 'portfolio:2fa'
@@ -58,6 +82,7 @@ const LOCAL_FILE_ENV = 'TWO_FACTOR_FILE'
 const DEFAULT_TIMESTEP = 30 // seconds
 const DEFAULT_DIGITS = 6
 const DEFAULT_WINDOW = 1 // ±1 window for clock drift
+const RECOVERY_CODE_COUNT = 10 // Number of recovery codes to generate
 
 function emptyStore(): TwoFactorStore {
   return { configs: {}, recoveryCodes: {} }
@@ -226,6 +251,33 @@ function verifyTOTP(secret: string, code: string): boolean {
   return false
 }
 
+// ─── Recovery Code Generation & Verification ──────────────────────────────
+
+/**
+ * Part 2.9 — Generates a set of recovery codes for an admin.
+ * Returns the plaintext codes (displayed once) and stores only their hashes.
+ */
+function generateRecoveryCodes(): { plaintextCodes: string[]; hashedCodes: string[] } {
+  const plaintextCodes: string[] = []
+  const hashedCodes: string[] = []
+
+  for (let i = 0; i < RECOVERY_CODE_COUNT; i++) {
+    // Generate a random recovery code (format: XXXX-XXXX-XX)
+    const raw = randomBytes(5).toString('hex').toUpperCase() // 10 hex chars
+    const formatted = `${raw.slice(0, 4)}-${raw.slice(4, 8)}-${raw.slice(8, 10)}`
+    plaintextCodes.push(formatted)
+    hashedCodes.push(hashRecoveryCode(formatted))
+  }
+
+  return { plaintextCodes, hashedCodes }
+}
+
+/** Part 2.9 — Hash a recovery code for storage (SHA-256). */
+function hashRecoveryCode(code: string): string {
+  const normalized = code.toUpperCase().replace(/[^A-Z0-9]/g, '')
+  return createHash('sha256').update(normalized).digest('hex')
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────
 
 /** Get the 2FA configuration for an admin email. Returns null if not set up. */
@@ -241,24 +293,36 @@ export async function isTwoFactorEnabled(email: string): Promise<boolean> {
 }
 
 /**
- * Generate a new TOTP secret for an admin (but don't enable it yet).
- * The admin must verify a code from their authenticator app to enable 2FA.
+ * Generate a new TOTP secret AND recovery codes for an admin.
+ * Returns the plaintext secret and recovery codes (displayed once).
+ * The admin must verify a TOTP code from their authenticator app to enable 2FA.
  */
-export async function generateTwoFactorSecret(email: string): Promise<string> {
+export async function generateTwoFactorSetup(email: string): Promise<{
+  secret: string
+  recoveryCodes: string[]
+}> {
   const store = await readStore()
   const secret = base32Encode(randomBytes(20)) // 160-bit secret
+  const { plaintextCodes, hashedCodes } = generateRecoveryCodes()
   
-  store.configs[email.toLowerCase().trim()] = {
+  const key = email.toLowerCase().trim()
+  store.configs[key] = {
     secret,
     enabled: false,
   }
+  store.recoveryCodes[key] = {
+    hashedCodes,
+    generatedAt: new Date().toISOString(),
+    totalCodes: RECOVERY_CODE_COUNT,
+    remainingCount: hashedCodes.length,
+  }
   
   await writeStore(store)
-  return secret
+  return { secret, recoveryCodes: plaintextCodes }
 }
 
 /**
- * Enable 2FA for an admin after they've verified a code.
+ * Enable 2FA for an admin after they've verified a TOTP code.
  * Returns true if the code was valid, false otherwise.
  */
 export async function enableTwoFactor(email: string, code: string): Promise<boolean> {
@@ -272,7 +336,8 @@ export async function enableTwoFactor(email: string, code: string): Promise<bool
   }
 
   const store = await readStore()
-  store.configs[email.toLowerCase().trim()] = {
+  const key = email.toLowerCase().trim()
+  store.configs[key] = {
     ...config,
     enabled: true,
     enabledAt: new Date().toISOString(),
@@ -305,13 +370,92 @@ export async function verifyTwoFactorCode(email: string, code: string): Promise<
 
   // Mark as used to prevent replay
   const store = await readStore()
-  store.configs[email.toLowerCase().trim()] = {
+  const key = email.toLowerCase().trim()
+  store.configs[key] = {
     ...config,
     lastUsedAt: new Date().toISOString(),
     lastUsedCode: code,
   }
   await writeStore(store)
   return true
+}
+
+/**
+ * Part 2.9 — Verify a recovery code for an admin during login.
+ * Recovery codes are single-use — each code can only be used once.
+ * Returns true if the code is valid and not previously used.
+ */
+export async function verifyRecoveryCode(email: string, code: string): Promise<boolean> {
+  const store = await readStore()
+  const key = email.toLowerCase().trim()
+  const recoveryInfo = store.recoveryCodes[key]
+  
+  if (!recoveryInfo || recoveryInfo.remainingCount <= 0) {
+    return false
+  }
+
+  const normalized = code.toUpperCase().replace(/[^A-Z0-9]/g, '')
+  const hashedInput = createHash('sha256').update(normalized).digest('hex')
+  
+  const codeIndex = recoveryInfo.hashedCodes.indexOf(hashedInput)
+  if (codeIndex === -1) {
+    return false
+  }
+
+  // Remove the used code from the list (single-use)
+  recoveryInfo.hashedCodes.splice(codeIndex, 1)
+  recoveryInfo.remainingCount = recoveryInfo.hashedCodes.length
+  
+  store.recoveryCodes[key] = recoveryInfo
+  await writeStore(store)
+  
+  return true
+}
+
+/**
+ * Part 2.9 — Get recovery code status for an admin.
+ * Returns the number of remaining codes (not the codes themselves).
+ */
+export async function getRecoveryCodeStatus(email: string): Promise<{
+  totalCodes: number
+  remainingCount: number
+  generatedAt?: string
+}> {
+  const store = await readStore()
+  const recoveryInfo = store.recoveryCodes[email.toLowerCase().trim()]
+  
+  if (!recoveryInfo) {
+    return { totalCodes: 0, remainingCount: 0 }
+  }
+  
+  return {
+    totalCodes: recoveryInfo.totalCodes || RECOVERY_CODE_COUNT,
+    remainingCount: recoveryInfo.remainingCount,
+    generatedAt: recoveryInfo.generatedAt,
+  }
+}
+
+/**
+ * Part 2.9 — Regenerate recovery codes for an admin.
+ * Invalidates all previous codes and generates a new set.
+ * Returns the plaintext codes (displayed once).
+ */
+export async function regenerateRecoveryCodes(email: string): Promise<string[]> {
+  const store = await readStore()
+  const key = email.toLowerCase().trim()
+  const { plaintextCodes, hashedCodes } = generateRecoveryCodes()
+  
+  store.recoveryCodes[key] = {
+    hashedCodes,
+    generatedAt: new Date().toISOString(),
+    totalCodes: RECOVERY_CODE_COUNT,
+    remainingCount: hashedCodes.length,
+  }
+  
+  await writeStore(store)
+  
+  // Return the plaintext codes so they can be displayed to the user
+  return plaintextCodes
 }
 
 /**

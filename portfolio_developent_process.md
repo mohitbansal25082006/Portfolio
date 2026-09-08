@@ -378,3 +378,58 @@ package.json
 npm install qrcode.react
 npm run dev
 ```
+
+---
+
+# Part 2.9 — 2FA Recovery Codes & Session Geolocation
+
+## Overview
+Enhances 2FA with one-time recovery codes for authenticator loss scenarios and adds approximate city-level geolocation to the Active Sessions panel.
+
+## Features Added
+
+**2FA Recovery Codes:**
+- 10 single-use recovery codes generated alongside QR setup (format: `XXXX-XXXX-XX`)
+- Recovery codes displayed once during setup with copy/download options
+- Codes stored as SHA-256 hashes (never plaintext) in dual-backend storage
+- Recovery code login flow — toggle between TOTP and recovery code on login page
+- Each recovery code is single-use — removed from store after successful use
+- Recovery code status tracking (X of 10 remaining) with generated date
+- Regeneration flow — requires current TOTP code, invalidates previous codes, displays new set
+- Login attempt logging for recovery code events (`invalid_recovery_code`, `recovery_codes_regenerated`)
+- Auto-formatting input for recovery codes on login page
+
+**Session Geolocation:**
+- Approximate city/country display in Active Sessions panel (e.g., "San Francisco, United States")
+- IP geolocation via ipapi.co free tier (no API key required, 1000 req/day)
+- 24-hour in-memory caching with negative cache for failed lookups
+- Private/loopback IP detection (localhost, 10.x.x.x, 172.16-31.x.x, 192.168.x.x) — no external calls
+- Batch lookup with concurrency limiting (5 parallel requests) to avoid rate limits
+- Graceful fallback if geolocation service unavailable
+- Scrollable sessions list (max-height 400px) for better UI with many active sessions
+
+## Files Created
+```
+lib/ip-geolocation.ts
+app/api/admin/2fa/recovery/route.ts
+```
+
+## Files Updated
+```
+lib/admin-2fa.ts
+lib/admin-security.ts
+app/api/admin/security/route.ts
+app/api/admin/login/route.ts
+app/api/admin/2fa/route.ts
+app/api/admin/2fa/setup/route.ts
+app/admin/page.tsx
+app/admin/security/security-client.tsx
+```
+
+## Commands Run
+```bash
+# No new dependencies — geolocation uses native fetch, recovery codes use Node's built-in crypto
+npm run dev
+npm run build
+npm run lint
+```

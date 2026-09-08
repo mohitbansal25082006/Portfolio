@@ -2,12 +2,11 @@
  * app/api/admin/security/route.ts
  * ─────────────────────────────────────────────────────────────────────────────
  * Part 2.6 — Security & Session
- *
+ * Part 2.9 — Added IP geolocation for sessions
+ * ---------------------------------------------------------------------------
  * GET  /api/admin/security
- *   Returns the current admin's active sessions, the full login attempt
- *   log (all admins — useful for auditing who's being targeted), and
- *   storage status (whether Redis is configured, matching the warning
- *   pattern from Settings/Resume in earlier parts).
+ *   Returns the current admin's active sessions (with geolocation info),
+ *   the full login attempt log, and storage status.
  *
  * POST /api/admin/security/logout-all
  *   Body: {} — revokes every session for the CURRENTLY authenticated
@@ -18,9 +17,7 @@
  *   Body: { currentPassword: string, newPassword: string }
  *   Verifies currentPassword against the effective password (override or
  *   .env), then writes a new override so future logins use the new
- *   password — no .env edit or redeploy required. Does NOT revoke the
- *   current session (the admin stays logged in after changing their
- *   password); use "force logout all" separately if that's also wanted.
+ *   password — no .env edit or redeploy required.
  *
  * All three actions require a valid, non-revoked session — enforced the
  * same way as every other /api/admin/* route: reading + verifying the
@@ -42,6 +39,7 @@ import {
   setPasswordOverride,
   getSecurityStorageStatus,
 } from '@/lib/admin-security'
+import { batchGetGeoLocations } from '@/lib/ip-geolocation'
 
 async function getSession(req: NextRequest) {
   const token = req.cookies.get(ADMIN_COOKIE_NAME)?.value
@@ -49,7 +47,7 @@ async function getSession(req: NextRequest) {
   return verifySessionTokenWithRevocation(token)
 }
 
-// ─── GET — sessions + login log ─────────────────────────────────────────────
+// ─── GET — sessions + login log + geolocation ──────────────────────────────
 
 export async function GET(req: NextRequest) {
   const session = await getSession(req)
@@ -68,8 +66,18 @@ export async function GET(req: NextRequest) {
   // account are visible for auditing.
   const mySessions = allSessions.filter(s => s.email === session.email)
 
+  // Part 2.9 — Get geolocation for session IPs (batch lookup with caching)
+  const sessionIps = [...new Set(mySessions.map(s => s.ip))]
+  const geoLocations = await batchGetGeoLocations(sessionIps)
+
+  // Attach geolocation to each session
+  const sessionsWithGeo = mySessions.map(s => ({
+    ...s,
+    location: geoLocations[s.ip] || null,
+  }))
+
   return NextResponse.json({
-    sessions: mySessions,
+    sessions: sessionsWithGeo,
     currentSessionId: session.sid,
     loginAttempts,
     storage: getSecurityStorageStatus(),

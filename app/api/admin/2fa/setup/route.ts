@@ -2,17 +2,18 @@
  * app/api/admin/2fa/setup/route.ts
  * ─────────────────────────────────────────────────────────────────────────────
  * Part 2.8 — Two-Factor Authentication Setup
+ * Part 2.9 — Added recovery code generation alongside QR setup
  * ---------------------------------------------------------------------------
  * POST /api/admin/2fa/setup
- * Body: {} — generates a new TOTP secret and returns it with otpauth URI
- * for QR code display. Does NOT enable 2FA yet.
+ * Body: {} — generates a new TOTP secret AND recovery codes, returns them
+ * with otpauth URI for QR code display. Does NOT enable 2FA yet.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import { ADMIN_COOKIE_NAME, verifySessionTokenWithRevocation } from '@/lib/admin-auth'
 import {
-  generateTwoFactorSecret,
+  generateTwoFactorSetup,
   generateOTPAuthURI,
 } from '@/lib/admin-2fa'
 
@@ -29,13 +30,14 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const secret = await generateTwoFactorSecret(session.email)
+    const { secret, recoveryCodes } = await generateTwoFactorSetup(session.email)
     const otpauthURI = generateOTPAuthURI(session.email, secret)
 
     return NextResponse.json({
       success: true,
       secret,
       otpauthURI,
+      recoveryCodes, // Plaintext codes — displayed once, never stored
     })
   } catch {
     return NextResponse.json(

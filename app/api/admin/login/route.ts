@@ -8,8 +8,12 @@
  *   1. Verify email + password
  *   2. If 2FA is enabled for this admin, check for twoFactorCode
  *      - If no code provided: return { twoFactorRequired: true }
- *      - If code provided: verify TOTP
- *   3. If all checks pass, create session
+ *      - If code provided: verify TOTP code
+ *
+ * Part 2.9 — Recovery codes:
+ *   - Recovery codes can be used as fallback when authenticator is unavailable
+ *   - Format: XXXX-XXXX-XX (10 characters + hyphens)
+ *   - Each recovery code is single-use
  *
  * On success → sets an httpOnly session cookie, registers the session in the
  * active-sessions store (lib/admin-security.ts), logs the successful attempt,
@@ -28,6 +32,7 @@ import {
   requiresTwoFactor,
   verifyTwoFactor,
 } from '@/lib/admin-auth'
+import { verifyRecoveryCode } from '@/lib/admin-2fa'
 import { logLoginAttempt, registerSession } from '@/lib/admin-security'
 
 function getClientIp(req: NextRequest): string {
@@ -74,13 +79,30 @@ export async function POST(req: NextRequest) {
         )
       }
 
+      // Part 2.9 — Try TOTP first, then recovery code
       const twoFactorValid = await verifyTwoFactor(email, twoFactorCode)
-      if (!twoFactorValid) {
-        await logLoginAttempt({ email, ip, userAgent, success: false, reason: 'invalid_2fa_code' })
-        return NextResponse.json(
-          { error: 'Invalid two-factor authentication code.' },
-          { status: 401 },
-        )
+      if (twoFactorValid) {
+        // Valid TOTP code
+      } else {
+        // Part 2.9 — Check if it's a recovery code (format: XXXX-XXXX-XX)
+        const isRecoveryCodeFormat = /^[A-Za-z0-9]{4}-[A-Za-z0-9]{4}-[A-Za-z0-9]{2}$/.test(twoFactorCode)
+        if (isRecoveryCodeFormat) {
+          const recoveryValid = await verifyRecoveryCode(email, twoFactorCode)
+          if (!recoveryValid) {
+            await logLoginAttempt({ email, ip, userAgent, success: false, reason: 'invalid_recovery_code' })
+            return NextResponse.json(
+              { error: 'Invalid two-factor authentication code or recovery code.' },
+              { status: 401 },
+            )
+          }
+          // Valid recovery code — log and continue
+        } else {
+          await logLoginAttempt({ email, ip, userAgent, success: false, reason: 'invalid_2fa_code' })
+          return NextResponse.json(
+            { error: 'Invalid two-factor authentication code.' },
+            { status: 401 },
+          )
+        }
       }
     }
 

@@ -2,15 +2,17 @@
  * app/api/admin/2fa/route.ts
  * ─────────────────────────────────────────────────────────────────────────────
  * Part 2.8 — Two-Factor Authentication API
+ * Part 2.9 — Added recovery code management endpoints
  * ---------------------------------------------------------------------------
  * Base endpoint for 2FA management:
  *
- * GET    /api/admin/2fa    — Returns 2FA status for authenticated admin
- * DELETE /api/admin/2fa    — Disables 2FA (requires current code)
+ * GET    /api/admin/2fa           — Returns 2FA status + recovery code info
+ * DELETE /api/admin/2fa           — Disables 2FA (requires current code)
+ * POST   /api/admin/2fa/recovery  — Regenerates recovery codes
  *
  * Sub-routes (separate files):
- * POST   /api/admin/2fa/setup   — Generates new secret + otpauth URI
- * POST   /api/admin/2fa/verify  — Verifies code and enables 2FA
+ * POST   /api/admin/2fa/setup     — Generates new secret + recovery codes
+ * POST   /api/admin/2fa/verify    — Verifies code and enables 2FA
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
@@ -22,6 +24,8 @@ import {
   generateOTPAuthURI,
   verifyTwoFactorCode,
   getTwoFactorStorageStatus,
+  getRecoveryCodeStatus,
+  regenerateRecoveryCodes,
 } from '@/lib/admin-2fa'
 import { logLoginAttempt } from '@/lib/admin-security'
 
@@ -37,7 +41,7 @@ function getClientIp(req: NextRequest): string {
   return req.headers.get('x-real-ip') ?? 'unknown'
 }
 
-// ─── GET — current 2FA status ────────────────────────────────────────────────
+// ─── GET — current 2FA status + recovery code info ─────────────────────────
 
 export async function GET(req: NextRequest) {
   const session = await getSession(req)
@@ -46,6 +50,7 @@ export async function GET(req: NextRequest) {
   }
 
   const config = await getTwoFactorConfig(session.email)
+  const recoveryStatus = await getRecoveryCodeStatus(session.email)
 
   if (!config || !config.enabled) {
     // If there's a pending setup (secret generated but not verified),
@@ -70,6 +75,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     enabled: true,
     enabledAt: config.enabledAt,
+    recoveryCodes: recoveryStatus, // Only counts + dates, never actual codes
     storage: getTwoFactorStorageStatus(),
   })
 }
