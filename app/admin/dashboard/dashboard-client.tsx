@@ -9,11 +9,10 @@
  *   - Content section preview
  *   - Activity feed showing recent events
  *
- * Earlier features retained:
- *   - Live analytics (Page Views card)
- *   - Message stats
- *   - Theme system
- *   - Sidebar with canonical nav
+ * Mobile fix (Part A):
+ *   - Changed h-screen to admin-viewport-height for dynamic viewport support
+ *   - Added safe-area padding for mobile
+ *   - Improved sidebar mobile behavior
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
@@ -415,7 +414,7 @@ export default function AdminDashboardClient({ adminEmail }: { adminEmail: strin
     // data-theme drives all CSS vars — changing this string swaps the full theme
     <div
       data-theme={theme}
-      className="flex h-screen overflow-hidden"
+      className="admin-viewport-height flex overflow-hidden"
       style={{ background: 'var(--background)', color: 'var(--foreground)' }}
     >
       {/* ── Mobile sidebar overlay ── */}
@@ -427,11 +426,11 @@ export default function AdminDashboardClient({ adminEmail }: { adminEmail: strin
       )}
 
       {/* ══════════════════════════════════════════════════════
-          SIDEBAR — fixed height via parent h-screen overflow-hidden
+          SIDEBAR — fixed height via parent admin-viewport-height overflow-hidden
           ══════════════════════════════════════════════════════ */}
       <aside
         className={`
-          fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r
+          admin-sidebar-mobile fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r
           transition-transform duration-300
           lg:static lg:translate-x-0
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
@@ -589,7 +588,7 @@ export default function AdminDashboardClient({ adminEmail }: { adminEmail: strin
         </header>
 
         {/* Scrollable page body */}
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
+        <main className="admin-main-scroll flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 admin-content-safe-bottom">
 
           {/* Welcome banner */}
           <div

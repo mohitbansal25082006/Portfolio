@@ -9,7 +9,12 @@
  * Analytics, Resume, Content, Settings, Security.
  * Part 2.8 update: added Two-Factor Authentication section with QR code
  * setup, code verification, and disable functionality.
- * Part 2.8 fix: corrected API endpoint paths for 2FA setup/verify.
+ *
+ * Mobile fix (Part D):
+ *   - Changed h-screen to admin-viewport-height for dynamic viewport support
+ *   - Added safe-area padding for mobile
+ *   - QR code responsive sizing
+ *   - Improved responsive grid layouts for mobile
  * ---------------------------------------------------------------------------
  */
 
@@ -131,12 +136,12 @@ function SecuritySection({
 }) {
   return (
     <div
-      className="rounded-2xl border p-6"
+      className="rounded-2xl border p-4 sm:p-6"
       style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
     >
       <div className="mb-5 flex items-start gap-3">
         <div
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+          className="flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-xl"
           style={{ background: 'color-mix(in oklch, var(--primary) 15%, transparent)', color: 'var(--primary)' }}
         >
           {icon}
@@ -437,7 +442,7 @@ export default function SecurityClient({ adminEmail }: { adminEmail: string }) {
   return (
     <div
       data-theme={theme}
-      className="flex h-screen overflow-hidden"
+      className="admin-viewport-height flex overflow-hidden"
       style={{ background: 'var(--background)', color: 'var(--foreground)' }}
     >
       {sidebarOpen && (
@@ -450,7 +455,7 @@ export default function SecurityClient({ adminEmail }: { adminEmail: string }) {
       {/* ── Sidebar ── */}
       <aside
         className={`
-          fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r
+          admin-sidebar-mobile fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r
           transition-transform duration-300
           lg:static lg:translate-x-0
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
@@ -499,7 +504,7 @@ export default function SecurityClient({ adminEmail }: { adminEmail: string }) {
       {/* ── Main content ── */}
       <div className="flex flex-1 flex-col overflow-hidden">
         <header
-          className="flex h-16 shrink-0 items-center gap-3 border-b px-4 sm:px-6"
+          className="flex h-16 shrink-0 items-center gap-2 sm:gap-3 border-b px-3 sm:px-6"
           style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
         >
           <button
@@ -511,10 +516,10 @@ export default function SecurityClient({ adminEmail }: { adminEmail: string }) {
             <Menu className="h-5 w-5" />
           </button>
 
-          <div className="flex items-center gap-2 text-sm">
+          <div className="flex items-center gap-2 text-sm min-w-0">
             <span style={{ color: 'var(--muted-foreground)' }}>Admin</span>
             <span style={{ color: 'var(--border)' }}>/</span>
-            <span className="font-medium">Security</span>
+            <span className="font-medium truncate">Security</span>
           </div>
 
           <div className="flex-1" />
@@ -522,13 +527,13 @@ export default function SecurityClient({ adminEmail }: { adminEmail: string }) {
           <div className="relative">
             <button
               onClick={() => setShowThemePicker(v => !v)}
-              className="flex items-center gap-1.5 rounded-xl border px-2.5 py-2 text-xs font-medium transition-all duration-200"
+              className="flex items-center gap-1.5 rounded-xl border px-2 py-2 text-xs font-medium transition-all duration-200"
               style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
               aria-label="Change theme"
             >
               <Palette className="h-3.5 w-3.5" />
               <span
-                className="h-3 w-3 rounded-full"
+                className="h-3 w-3 rounded-full hidden sm:inline"
                 style={{ background: themes.find(t => t.id === theme)?.swatch ?? 'var(--primary)' }}
               />
               <span className="hidden sm:inline capitalize">{theme}</span>
@@ -570,7 +575,7 @@ export default function SecurityClient({ adminEmail }: { adminEmail: string }) {
           </div>
 
           <div
-            className="hidden items-center gap-2 rounded-full border px-3 py-1.5 text-xs sm:flex"
+            className="hidden items-center gap-2 rounded-full border px-3 py-1.5 text-xs md:flex"
             style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
           >
             <div
@@ -585,7 +590,7 @@ export default function SecurityClient({ adminEmail }: { adminEmail: string }) {
           <button
             onClick={handleLogout}
             disabled={loggingOut}
-            className="flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-all duration-200 disabled:opacity-50 hover:border-[var(--destructive)] hover:text-[var(--destructive)]"
+            className="flex items-center gap-2 rounded-xl border px-2.5 sm:px-3 py-2 text-sm font-medium transition-all duration-200 disabled:opacity-50 hover:border-[var(--destructive)] hover:text-[var(--destructive)]"
             style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
           >
             {loggingOut ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
@@ -593,7 +598,7 @@ export default function SecurityClient({ adminEmail }: { adminEmail: string }) {
           </button>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
+        <main className="admin-main-scroll flex-1 overflow-y-auto p-3 sm:p-6 lg:p-8 admin-content-safe-bottom">
           <div className="mb-8">
             <p className="eyebrow mb-2">Account Protection</p>
             <h1 className="text-2xl font-bold sm:text-3xl">Security &amp; Session</h1>
@@ -629,7 +634,7 @@ export default function SecurityClient({ adminEmail }: { adminEmail: string }) {
               {loadError}
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:gap-6 xl:grid-cols-2">
 
               {/* ── Two-Factor Authentication ── */}
               <SecuritySection
@@ -690,7 +695,7 @@ export default function SecurityClient({ adminEmail }: { adminEmail: string }) {
                         {twoFactorError && (
                           <p className="mt-2 text-xs" style={{ color: 'var(--destructive)' }}>{twoFactorError}</p>
                         )}
-                        <div className="mt-3 flex gap-2">
+                        <div className="mt-3 flex flex-wrap gap-2">
                           <button
                             onClick={handleDisable2FA}
                             disabled={disabling2FA || twoFactorCode.length !== 6}
@@ -721,12 +726,12 @@ export default function SecurityClient({ adminEmail }: { adminEmail: string }) {
                     <div className="flex flex-col sm:flex-row gap-4 mb-4">
                       {/* QR Code */}
                       <div
-                        className="flex h-48 w-48 shrink-0 items-center justify-center rounded-xl border p-2"
+                        className="flex h-40 w-40 sm:h-48 sm:w-48 shrink-0 items-center justify-center rounded-xl border p-2 mx-auto sm:mx-0"
                         style={{ borderColor: 'var(--border)', background: 'white' }}
                       >
                         <QRCodeSVG
                           value={twoFactorURI}
-                          size={160}
+                          size={140}
                           level="M"
                           includeMargin={false}
                         />
@@ -774,7 +779,7 @@ export default function SecurityClient({ adminEmail }: { adminEmail: string }) {
                       <p className="mt-2 text-xs" style={{ color: 'var(--destructive)' }}>{twoFactorError}</p>
                     )}
 
-                    <div className="mt-4 flex gap-2">
+                    <div className="mt-4 flex flex-wrap gap-2">
                       <button
                         onClick={handleVerify2FA}
                         disabled={verifying2FA || twoFactorCode.length !== 6}
@@ -855,10 +860,10 @@ export default function SecurityClient({ adminEmail }: { adminEmail: string }) {
                           </div>
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-2">
-                              <p className="text-sm font-medium">{device.label}</p>
+                              <p className="text-sm font-medium truncate">{device.label}</p>
                               {isCurrent && (
                                 <span
-                                  className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                                  className="rounded-full px-2 py-0.5 text-[10px] font-semibold shrink-0"
                                   style={{ background: 'color-mix(in oklch, var(--primary) 20%, transparent)', color: 'var(--primary)' }}
                                 >
                                   This device
@@ -920,7 +925,7 @@ export default function SecurityClient({ adminEmail }: { adminEmail: string }) {
                       <p className="text-xs" style={{ color: 'var(--foreground)' }}>
                         This will sign you out everywhere, including here. Continue?
                       </p>
-                      <div className="ml-auto flex gap-2">
+                      <div className="ml-auto flex flex-wrap gap-2">
                         <button
                           onClick={handleLogoutAll}
                           disabled={loggingOutAll}
@@ -1024,7 +1029,7 @@ export default function SecurityClient({ adminEmail }: { adminEmail: string }) {
                   </p>
                 )}
 
-                <div className="mt-5 flex items-center gap-3 border-t pt-4" style={{ borderColor: 'var(--border)' }}>
+                <div className="mt-5 flex flex-wrap items-center gap-3 border-t pt-4" style={{ borderColor: 'var(--border)' }}>
                   <button
                     onClick={handleChangePassword}
                     disabled={changingPassword}
@@ -1048,7 +1053,7 @@ export default function SecurityClient({ adminEmail }: { adminEmail: string }) {
                 description="Recent sign-in attempts across all admin accounts."
                 icon={<ListChecks className="h-5 w-5" />}
               >
-                <div className="mb-3 flex items-center gap-2">
+                <div className="mb-3 flex items-center gap-2 flex-wrap">
                   {(['all', 'failed'] as const).map(f => (
                     <button
                       key={f}
@@ -1075,7 +1080,7 @@ export default function SecurityClient({ adminEmail }: { adminEmail: string }) {
                     filteredAttempts.map(a => (
                       <div
                         key={a.id}
-                        className="flex items-center gap-3 rounded-lg border px-3 py-2 text-xs"
+                        className="flex items-center gap-2 sm:gap-3 rounded-lg border px-3 py-2 text-xs"
                         style={{
                           borderColor: a.success
                             ? 'var(--border)'
@@ -1090,7 +1095,7 @@ export default function SecurityClient({ adminEmail }: { adminEmail: string }) {
                           : <XCircle className="h-3.5 w-3.5 shrink-0" style={{ color: 'var(--destructive)' }} />}
                         <div className="min-w-0 flex-1">
                           <p className="truncate font-medium" style={{ color: 'var(--foreground)' }}>{a.email}</p>
-                          <p style={{ color: 'var(--muted-foreground)' }}>
+                          <p className="truncate" style={{ color: 'var(--muted-foreground)' }}>
                             {a.ip} · {formatDateTime(a.timestamp)}
                             {a.reason === 'invalid_2fa_code' && ' · Failed 2FA'}
                             {a.reason === '2fa_enabled' && ' · 2FA enabled'}

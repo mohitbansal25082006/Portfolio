@@ -5,17 +5,11 @@
  * ─────────────────────────────────────────────────────────────────────────────
  * Full-featured messages inbox for the admin dashboard.
  *
- * Part 2.7 update: removed "Visitors" nav item, added "Content" with
- * FolderKanban icon. Canonical nav list now spans Dashboard, Messages,
- * Analytics, Resume, Content, Settings, Security.
- *
- * Features:
- *  • Lists all contact form submissions with live search & filter tabs
- *  • Read / Unread toggle (per message + bulk)
- *  • Delete single or bulk
- *  • Detail modal — full message, reply composer (sends via nodemailer)
- *  • Unread badge on sidebar nav item
- *  • All 6 portfolio themes respected
+ * Mobile fix (Part B):
+ *   - Changed h-screen to admin-viewport-height for dynamic viewport support
+ *   - Added safe-area padding for mobile
+ *   - Modal uses admin-modal-max-height for proper mobile display
+ *   - Improved sidebar mobile behavior
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
@@ -188,7 +182,7 @@ function MessageRow({
             Replied
           </span>
         )}
-        <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+        <div className="flex gap-1 opacity-100 sm:opacity-0 transition-opacity sm:group-hover:opacity-100">
           <button
             onClick={() => onToggleRead(msg)}
             className="rounded-lg p-1.5 transition-colors"
@@ -263,7 +257,7 @@ function MessageModal({
   }, [onClose])
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4">
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/60 backdrop-blur-sm"
@@ -272,12 +266,12 @@ function MessageModal({
 
       {/* Panel */}
       <div
-        className="relative z-10 flex w-full max-w-xl flex-col rounded-2xl border shadow-2xl"
-        style={{ background: 'var(--card)', borderColor: 'var(--border)', maxHeight: '90vh' }}
+        className="admin-modal-mobile relative z-10 flex w-full max-w-xl flex-col rounded-2xl border shadow-2xl"
+        style={{ background: 'var(--card)', borderColor: 'var(--border)', maxHeight: 'calc(100dvh - 1rem)' }}
       >
         {/* Header */}
         <div
-          className="flex shrink-0 items-center gap-3 border-b px-5 py-4"
+          className="flex shrink-0 items-center gap-3 border-b px-4 sm:px-5 py-3 sm:py-4"
           style={{ borderColor: 'var(--border)' }}
         >
           <div
@@ -290,7 +284,7 @@ function MessageModal({
             <p className="truncate text-sm font-semibold">{msg.name}</p>
             <p className="truncate text-xs" style={{ color: 'var(--primary)' }}>{msg.email}</p>
           </div>
-          <div className="flex shrink-0 items-center gap-1">
+          <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
             <button
               onClick={() => onToggleRead(msg)}
               className="rounded-lg p-2 transition-colors hover:bg-[var(--muted)]"
@@ -318,7 +312,7 @@ function MessageModal({
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+        <div className="flex-1 overflow-y-auto px-4 sm:px-5 py-4 space-y-3">
           <div>
             <p
               className="mb-1 font-mono text-[10px] uppercase tracking-widest"
@@ -602,7 +596,6 @@ export default function MessagesClient({ adminEmail }: { adminEmail: string }) {
   }
 
   // ── Nav ──────────────────────────────────────────────────────────────────────
-  // Canonical nav list — Visitors removed in Part 2.7
 
   const navItems: NavItem[] = [
     { icon: <LayoutDashboard className="h-4 w-4" />, label: 'Dashboard', href: '/admin/dashboard' },
@@ -626,7 +619,7 @@ export default function MessagesClient({ adminEmail }: { adminEmail: string }) {
   return (
     <div
       data-theme={theme}
-      className="flex h-screen overflow-hidden"
+      className="admin-viewport-height flex overflow-hidden"
       style={{ background: 'var(--background)', color: 'var(--foreground)' }}
     >
       {/* Mobile sidebar overlay */}
@@ -639,7 +632,7 @@ export default function MessagesClient({ adminEmail }: { adminEmail: string }) {
 
       {/* ── Sidebar ── */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r transition-transform duration-300 lg:static lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
+        className={`admin-sidebar-mobile fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r transition-transform duration-300 lg:static lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
         style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
       >
         <div className="flex h-16 shrink-0 items-center gap-3 border-b px-5" style={{ borderColor: 'var(--border)' }}>
@@ -680,7 +673,7 @@ export default function MessagesClient({ adminEmail }: { adminEmail: string }) {
 
         {/* Top nav */}
         <header
-          className="flex h-16 shrink-0 items-center gap-3 border-b px-4 sm:px-6"
+          className="flex h-16 shrink-0 items-center gap-2 sm:gap-3 border-b px-3 sm:px-6"
           style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
         >
           <button
@@ -691,10 +684,10 @@ export default function MessagesClient({ adminEmail }: { adminEmail: string }) {
             <Menu className="h-5 w-5" />
           </button>
 
-          <div className="flex items-center gap-2 text-sm">
+          <div className="flex items-center gap-2 text-sm min-w-0">
             <span style={{ color: 'var(--muted-foreground)' }}>Admin</span>
             <span style={{ color: 'var(--border)' }}>/</span>
-            <span className="font-medium">Messages</span>
+            <span className="font-medium truncate">Messages</span>
           </div>
 
           <div className="flex-1" />
@@ -703,12 +696,12 @@ export default function MessagesClient({ adminEmail }: { adminEmail: string }) {
           <div className="relative">
             <button
               onClick={() => setShowThemePicker(v => !v)}
-              className="flex items-center gap-1.5 rounded-xl border px-2.5 py-2 text-xs font-medium transition-all duration-200"
+              className="flex items-center gap-1.5 rounded-xl border px-2 py-2 text-xs font-medium transition-all duration-200"
               style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
             >
               <Palette className="h-3.5 w-3.5" />
               <span
-                className="h-3 w-3 rounded-full"
+                className="h-3 w-3 rounded-full hidden sm:inline"
                 style={{ background: themes.find(t => t.id === theme)?.swatch ?? 'var(--primary)' }}
               />
               <span className="hidden sm:inline capitalize">{theme}</span>
@@ -744,9 +737,9 @@ export default function MessagesClient({ adminEmail }: { adminEmail: string }) {
             )}
           </div>
 
-          {/* Admin email */}
+          {/* Admin email - hidden on mobile */}
           <div
-            className="hidden items-center gap-2 rounded-full border px-3 py-1.5 text-xs sm:flex"
+            className="hidden items-center gap-2 rounded-full border px-3 py-1.5 text-xs md:flex"
             style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
           >
             <div
@@ -761,7 +754,7 @@ export default function MessagesClient({ adminEmail }: { adminEmail: string }) {
           <button
             onClick={handleLogout}
             disabled={loggingOut}
-            className="flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-all duration-200 disabled:opacity-50 hover:border-[var(--destructive)] hover:text-[var(--destructive)]"
+            className="flex items-center gap-2 rounded-xl border px-2.5 sm:px-3 py-2 text-sm font-medium transition-all duration-200 disabled:opacity-50 hover:border-[var(--destructive)] hover:text-[var(--destructive)]"
             style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
           >
             {loggingOut ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
@@ -770,7 +763,7 @@ export default function MessagesClient({ adminEmail }: { adminEmail: string }) {
         </header>
 
         {/* Page body */}
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6">
+        <main className="admin-main-scroll flex-1 overflow-y-auto p-3 sm:p-6 admin-content-safe-bottom">
 
           {/* Page title + refresh */}
           <div className="mb-5 flex items-center justify-between gap-3">
@@ -799,10 +792,10 @@ export default function MessagesClient({ adminEmail }: { adminEmail: string }) {
             <Search className="h-4 w-4 shrink-0" style={{ color: 'var(--muted-foreground)' }} />
             <input
               type="text"
-              placeholder="Search name, email, subject, message…"
+              placeholder="Search name, email, subject…"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              className="flex-1 bg-transparent text-sm outline-none"
+              className="flex-1 bg-transparent text-sm outline-none min-w-0"
               style={{ color: 'var(--foreground)' }}
             />
             {search && (
@@ -813,7 +806,7 @@ export default function MessagesClient({ adminEmail }: { adminEmail: string }) {
           </div>
 
           {/* Filter tabs */}
-          <div className="mb-4 flex gap-1 overflow-x-auto pb-1">
+          <div className="mb-4 flex gap-1 overflow-x-auto pb-1 -mx-3 px-3">
             {filterTabs.map(tab => (
               <button
                 key={tab.id}
@@ -847,7 +840,7 @@ export default function MessagesClient({ adminEmail }: { adminEmail: string }) {
           {/* Bulk action bar */}
           {selected.size > 0 && (
             <div
-              className="mb-4 flex items-center gap-2 rounded-xl border px-4 py-2.5"
+              className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border px-4 py-2.5"
               style={{
                 background: 'color-mix(in oklch, var(--primary) 8%, var(--card))',
                 borderColor: 'color-mix(in oklch, var(--primary) 30%, transparent)',
@@ -856,7 +849,7 @@ export default function MessagesClient({ adminEmail }: { adminEmail: string }) {
               <span className="text-xs font-semibold" style={{ color: 'var(--primary)' }}>
                 {selected.size} selected
               </span>
-              <div className="flex gap-2 ml-auto">
+              <div className="flex flex-wrap gap-2 ml-auto">
                 <button
                   onClick={() => handleBulkMarkRead(true)}
                   className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all"

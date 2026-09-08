@@ -7,12 +7,10 @@
  *  - Added two-factor authentication step — after email+password verification,
  *    if 2FA is enabled for the admin, a 6-digit code input appears.
  *
- * Earlier fixes retained:
- *  1. Input text now uses var(--foreground) + var(--muted-foreground) for
- *     placeholder — fully readable across every theme (not primary-foreground
- *     which is near-black on dark themes).
- *  2. Theme switcher integrated — reads from localStorage, applies data-theme
- *     on the wrapper div, and renders theme swatches in the footer.
+ * Mobile fix (Part E):
+ *  - Changed min-h-screen to admin-viewport-height for dynamic viewport support
+ *  - Added safe-area padding for mobile
+ *  - Improved responsive spacing for mobile
  */
 
 import { useSearchParams, useRouter } from 'next/navigation'
@@ -175,8 +173,8 @@ function AdminLoginForm() {
   }
 
   return (
-    <div data-theme={theme} className="min-h-screen bg-background text-foreground">
-      <div className="relative flex min-h-screen items-center justify-center px-4 py-16 overflow-hidden">
+    <div data-theme={theme} className="admin-viewport-height bg-background text-foreground overflow-y-auto">
+      <div className="relative flex min-h-full items-center justify-center px-4 py-8 sm:py-16 overflow-hidden">
 
         {/* Aurora blobs */}
         <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
@@ -200,11 +198,11 @@ function AdminLoginForm() {
         />
 
         {/* Theme picker button (top-right) */}
-        <div className="absolute top-4 right-4 z-20">
+        <div className="absolute top-3 right-3 sm:top-4 sm:right-4 z-20">
           <div className="relative">
             <button
               onClick={() => setShowThemePicker(v => !v)}
-              className="flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-medium transition-all duration-200"
+              className="flex items-center gap-2 rounded-xl border px-2.5 sm:px-3 py-2 text-xs font-medium transition-all duration-200"
               style={{
                 background: 'color-mix(in oklch, var(--card) 90%, transparent)',
                 borderColor: 'var(--border)',
@@ -253,7 +251,7 @@ function AdminLoginForm() {
 
         {/* Login card */}
         <div
-          className="relative z-10 w-full max-w-md rounded-2xl border p-8 shadow-2xl"
+          className="relative z-10 w-full max-w-md rounded-2xl border p-5 sm:p-8 shadow-2xl"
           style={{
             background: 'color-mix(in oklch, var(--card) 95%, transparent)',
             borderColor: 'var(--border)',
@@ -261,23 +259,23 @@ function AdminLoginForm() {
           }}
         >
           {/* Header */}
-          <div className="mb-8 flex flex-col items-center gap-3 text-center">
+          <div className="mb-6 sm:mb-8 flex flex-col items-center gap-3 text-center">
             <div
-              className="flex h-14 w-14 items-center justify-center rounded-2xl overflow-hidden"
+              className="flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-2xl overflow-hidden"
               style={{ background: 'color-mix(in oklch, var(--primary) 15%, transparent)' }}
             >
               {twoFactorStep ? (
-                <Smartphone className="h-7 w-7" style={{ color: 'var(--primary)' }} />
+                <Smartphone className="h-6 w-6 sm:h-7 sm:w-7" style={{ color: 'var(--primary)' }} />
               ) : (
                 /* eslint-disable-next-line @next/next/no-img-element */
-                <img src="/icon.ico" alt="Logo" className="h-9 w-9 object-contain" />
+                <img src="/icon.ico" alt="Logo" className="h-8 w-8 sm:h-9 sm:w-9 object-contain" />
               )}
             </div>
             <div>
-              <h1 className="text-xl font-semibold tracking-tight">
+              <h1 className="text-lg sm:text-xl font-semibold tracking-tight">
                 {twoFactorStep ? 'Two-Factor Authentication' : 'Admin Access'}
               </h1>
-              <p className="mt-1 text-sm" style={{ color: 'var(--muted-foreground)' }}>
+              <p className="mt-1 text-xs sm:text-sm" style={{ color: 'var(--muted-foreground)' }}>
                 {twoFactorStep
                   ? 'Enter the 6-digit code from your authenticator app'
                   : 'Sign in to manage your portfolio'}
@@ -316,10 +314,10 @@ function AdminLoginForm() {
           )}
 
           {/* Form */}
-          <form onSubmit={handleSubmit} noValidate className="space-y-5">
+          <form onSubmit={handleSubmit} noValidate className="space-y-4 sm:space-y-5">
             {twoFactorStep ? (
               /* ─── Step 2: 2FA code input ─── */
-              <div className="space-y-5">
+              <div className="space-y-4 sm:space-y-5">
                 <div className="space-y-1.5">
                   <label htmlFor="admin-2fa-code" className="block text-sm font-medium">
                     Authentication code
@@ -337,7 +335,7 @@ function AdminLoginForm() {
                       setTwoFactorError(null)
                     }}
                     placeholder="000000"
-                    className="w-full text-center text-2xl font-mono tracking-[0.5em]"
+                    className="w-full text-center text-xl sm:text-2xl font-mono tracking-[0.5em]"
                     style={{
                       ...inputStyle,
                       letterSpacing: '0.5em',
@@ -489,7 +487,7 @@ function AdminLoginForm() {
             )}
           </form>
 
-          <p className="mt-6 text-center text-xs" style={{ color: 'var(--muted-foreground)' }}>
+          <p className="mt-5 sm:mt-6 text-center text-xs" style={{ color: 'var(--muted-foreground)' }}>
             Access is restricted to authorised administrators only.
           </p>
         </div>

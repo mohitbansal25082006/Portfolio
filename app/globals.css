@@ -839,3 +839,76 @@ body {
   .modal-backdrop { animation: none !important; }
   .modal-panel { animation: none !important; }
 }
+
+
+/* ============================================================================
+   MOBILE VIEWPORT FIX — Dynamic Viewport Height
+   ----------------------------------------------------------------------------
+   Problem: Mobile browsers (iOS Safari, Chrome Android) have dynamic toolbars
+   that change the visible viewport height. Using `h-screen` (100vh) causes
+   bottom content to be hidden behind the browser's bottom toolbar.
+   
+   Fix: Use `100dvh` (dynamic viewport height) which adjusts to the actual
+   visible area. Fallback to `100vh` for older browsers.
+   ========================================================================== */
+@supports (height: 100dvh) {
+  .admin-viewport-height {
+    height: 100dvh;
+  }
+  
+  .admin-modal-max-height {
+    max-height: calc(100dvh - 2rem);
+  }
+  
+  .admin-pdf-viewer-height {
+    height: calc(100dvh - 8rem);
+  }
+}
+
+/* Fallback for browsers without dvh support */
+@supports not (height: 100dvh) {
+  .admin-viewport-height {
+    height: 100vh;
+  }
+  
+  .admin-modal-max-height {
+    max-height: calc(100vh - 2rem);
+  }
+  
+  .admin-pdf-viewer-height {
+    height: calc(100vh - 8rem);
+  }
+}
+
+/* Mobile-specific fixes */
+@media (max-width: 768px) {
+  /* Ensure main content area scrolls properly on mobile */
+  .admin-main-scroll {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  
+  /* Fix iOS Safari 100vh issue */
+  .admin-viewport-height {
+    height: 100dvh;
+    min-height: -webkit-fill-available;
+  }
+  
+  /* Modal fixes for mobile */
+  .admin-modal-mobile {
+    max-height: calc(100dvh - 1rem) !important;
+    margin: 0.5rem !important;
+  }
+  
+  /* Sidebar full height on mobile */
+  .admin-sidebar-mobile {
+    height: 100dvh;
+    position: fixed;
+  }
+  
+  /* Ensure bottom padding for content with safe area */
+  .admin-content-safe-bottom {
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 1rem);
+  }
+}

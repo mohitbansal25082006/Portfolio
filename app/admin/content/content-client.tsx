@@ -11,11 +11,11 @@
  *   • About — edit section paragraphs
  *   • Skills — edit skill groups
  *
- * Follows the exact same shell as every other admin page:
- *   - useAdminTheme hook (localStorage 'admin-theme')
- *   - CSS-var-only styling so all 6 themes apply
- *   - Identical sidebar/header markup
- *   - Canonical nav list (minus Visitors in Part 2.7)
+ * Mobile fix (Part E):
+ *   - Changed h-screen to admin-viewport-height for dynamic viewport support
+ *   - Added safe-area padding for mobile
+ *   - Project editor modal uses admin-modal-mobile for proper display
+ *   - Improved responsive grid layouts for mobile
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
@@ -34,11 +34,6 @@ import type {
 } from '@/lib/content-store'
 
 // ─── GitHub icon ────────────────────────────────────────────────────────
-// NOTE: `Github` was removed/deprecated from lucide-react in newer package
-// versions ("Module has no exported member 'Github'"). Rather than pin to
-// an older lucide-react version, we ship the mark locally so this keeps
-// working across upgrades. Drop-in replacement — same props as any
-// lucide-react icon (className, etc.) via a plain <svg>.
 
 function GithubIcon({ className, style }: { className?: string; style?: React.CSSProperties }) {
   return (
@@ -77,7 +72,7 @@ interface NavItem {
   badge?: number
 }
 
-// ─── Theme hook (identical to every other admin client) ──────────────────
+// ─── Theme hook ──────────────────────────────────────────────────────────
 
 function useAdminTheme() {
   const [theme, setThemeState] = useState<string>('midnight')
@@ -273,7 +268,7 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
   return (
     <div
       data-theme={theme}
-      className="flex h-screen overflow-hidden"
+      className="admin-viewport-height flex overflow-hidden"
       style={{ background: 'var(--background)', color: 'var(--foreground)' }}
     >
       {sidebarOpen && (
@@ -286,7 +281,7 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
       {/* ── Sidebar ── */}
       <aside
         className={`
-          fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r
+          admin-sidebar-mobile fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r
           transition-transform duration-300
           lg:static lg:translate-x-0
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
@@ -335,7 +330,7 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
       {/* ── Main content ── */}
       <div className="flex flex-1 flex-col overflow-hidden">
         <header
-          className="flex h-16 shrink-0 items-center gap-3 border-b px-4 sm:px-6"
+          className="flex h-16 shrink-0 items-center gap-2 sm:gap-3 border-b px-3 sm:px-6"
           style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
         >
           <button
@@ -347,10 +342,10 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
             <Menu className="h-5 w-5" />
           </button>
 
-          <div className="flex items-center gap-2 text-sm">
+          <div className="flex items-center gap-2 text-sm min-w-0">
             <span style={{ color: 'var(--muted-foreground)' }}>Admin</span>
             <span style={{ color: 'var(--border)' }}>/</span>
-            <span className="font-medium">Content</span>
+            <span className="font-medium truncate">Content</span>
           </div>
 
           <div className="flex-1" />
@@ -358,13 +353,13 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
           <div className="relative">
             <button
               onClick={() => setShowThemePicker(v => !v)}
-              className="flex items-center gap-1.5 rounded-xl border px-2.5 py-2 text-xs font-medium transition-all duration-200"
+              className="flex items-center gap-1.5 rounded-xl border px-2 py-2 text-xs font-medium transition-all duration-200"
               style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
               aria-label="Change theme"
             >
               <Palette className="h-3.5 w-3.5" />
               <span
-                className="h-3 w-3 rounded-full"
+                className="h-3 w-3 rounded-full hidden sm:inline"
                 style={{ background: themes.find(t => t.id === theme)?.swatch ?? 'var(--primary)' }}
               />
               <span className="hidden sm:inline capitalize">{theme}</span>
@@ -405,7 +400,7 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
           </div>
 
           <div
-            className="hidden items-center gap-2 rounded-full border px-3 py-1.5 text-xs sm:flex"
+            className="hidden items-center gap-2 rounded-full border px-3 py-1.5 text-xs md:flex"
             style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
           >
             <div
@@ -420,7 +415,7 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
           <button
             onClick={handleLogout}
             disabled={loggingOut}
-            className="flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-all duration-200 disabled:opacity-50 hover:border-[var(--destructive)] hover:text-[var(--destructive)]"
+            className="flex items-center gap-2 rounded-xl border px-2.5 sm:px-3 py-2 text-sm font-medium transition-all duration-200 disabled:opacity-50 hover:border-[var(--destructive)] hover:text-[var(--destructive)]"
             style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
           >
             {loggingOut ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
@@ -428,7 +423,7 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
           </button>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
+        <main className="admin-main-scroll flex-1 overflow-y-auto p-3 sm:p-6 lg:p-8 admin-content-safe-bottom">
           <div className="mb-8">
             <p className="eyebrow mb-2">Site Content</p>
             <h1 className="text-2xl font-bold sm:text-3xl">Content Management</h1>
@@ -466,12 +461,12 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
           ) : (
             <>
               {/* Tab bar */}
-              <div className="mb-6 flex gap-1 overflow-x-auto rounded-2xl border p-1" style={{ borderColor: 'var(--border)' }}>
+              <div className="mb-6 flex gap-1 overflow-x-auto rounded-2xl border p-1 -mx-1 px-1" style={{ borderColor: 'var(--border)' }}>
                 {tabs.map(tab => (
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
-                    className="flex shrink-0 items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-all"
+                    className="flex shrink-0 items-center gap-1.5 sm:gap-2 rounded-xl px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium transition-all"
                     style={{
                       background: activeTab === tab.id
                         ? 'color-mix(in oklch, var(--primary) 15%, transparent)'
@@ -489,7 +484,7 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
               <div className="mb-6 flex flex-wrap items-center gap-3 rounded-2xl border p-4" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium">Save changes</p>
-                  <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                  <p className="text-xs truncate" style={{ color: 'var(--muted-foreground)' }}>
                     {content && content.updatedAt !== new Date(0).toISOString()
                       ? `Last updated ${new Date(content.updatedAt).toLocaleString()}`
                       : 'Using default content (no edits yet)'}
@@ -630,7 +625,7 @@ function ProjectsTab({
       {projects.map((project, index) => (
         <div
           key={`${project.number}-${project.name}-${index}`}
-          className="group flex items-center gap-3 rounded-xl border p-4 transition-all"
+          className="group flex items-center gap-2 sm:gap-3 rounded-xl border p-3 sm:p-4 transition-all"
           style={{
             background: 'var(--card)',
             borderColor: draggedIndex === index ? 'var(--primary)' : 'var(--border)',
@@ -647,7 +642,7 @@ function ProjectsTab({
             }
           }}
         >
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1 shrink-0">
             <button
               onClick={() => moveProject(index, index - 1)}
               disabled={index === 0}
@@ -667,7 +662,7 @@ function ProjectsTab({
           </div>
 
           <div
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm font-bold"
+            className="flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-xl text-sm font-bold"
             style={{
               background: 'color-mix(in oklch, var(--primary) 15%, transparent)',
               color: 'var(--primary)',
@@ -683,7 +678,7 @@ function ProjectsTab({
             </p>
           </div>
 
-          <div className="flex shrink-0 gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+          <div className="flex shrink-0 gap-1 opacity-100 sm:opacity-0 transition-opacity sm:group-hover:opacity-100">
             <button
               onClick={() => onEdit(project, index)}
               className="rounded-lg p-2 transition-colors hover:bg-[var(--muted)]"
@@ -758,31 +753,33 @@ function TimelineTab({
       {timeline.map((entry, index) => (
         <div
           key={index}
-          className="rounded-xl border p-4"
+          className="rounded-xl border p-3 sm:p-4"
           style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
         >
-          <div className="mb-3 flex items-center gap-2">
-            <button
-              onClick={() => moveEntry(index, index - 1)}
-              disabled={index === 0}
-              className="rounded-lg p-1 transition-colors hover:bg-[var(--muted)] disabled:opacity-30"
-              style={{ color: 'var(--muted-foreground)' }}
-            >
-              <ChevronUp className="h-3.5 w-3.5" />
-            </button>
-            <button
-              onClick={() => moveEntry(index, index + 1)}
-              disabled={index === timeline.length - 1}
-              className="rounded-lg p-1 transition-colors hover:bg-[var(--muted)] disabled:opacity-30"
-              style={{ color: 'var(--muted-foreground)' }}
-            >
-              <ChevronDown className="h-3.5 w-3.5" />
-            </button>
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <div className="flex gap-1">
+              <button
+                onClick={() => moveEntry(index, index - 1)}
+                disabled={index === 0}
+                className="rounded-lg p-1 transition-colors hover:bg-[var(--muted)] disabled:opacity-30"
+                style={{ color: 'var(--muted-foreground)' }}
+              >
+                <ChevronUp className="h-3.5 w-3.5" />
+              </button>
+              <button
+                onClick={() => moveEntry(index, index + 1)}
+                disabled={index === timeline.length - 1}
+                className="rounded-lg p-1 transition-colors hover:bg-[var(--muted)] disabled:opacity-30"
+                style={{ color: 'var(--muted-foreground)' }}
+              >
+                <ChevronDown className="h-3.5 w-3.5" />
+              </button>
+            </div>
             <input
               type="text"
               value={entry.year}
               onChange={e => updateEntry(index, 'year', e.target.value)}
-              className="w-24 rounded-lg border px-3 py-1.5 text-sm font-medium outline-none focus:border-[var(--primary)]"
+              className="w-20 sm:w-24 rounded-lg border px-3 py-1.5 text-sm font-medium outline-none focus:border-[var(--primary)]"
               style={inputStyle}
             />
             <button
@@ -1006,7 +1003,7 @@ function SkillsTab({
       {skillGroups.map((group, groupIndex) => (
         <div
           key={groupIndex}
-          className="rounded-xl border p-4"
+          className="rounded-xl border p-3 sm:p-4"
           style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
         >
           <div className="mb-3 flex items-center gap-2">
@@ -1092,27 +1089,27 @@ function ProjectEditorModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
 
       <div
-        className="relative z-10 flex w-full max-w-3xl flex-col rounded-2xl border shadow-2xl"
-        style={{ background: 'var(--card)', borderColor: 'var(--border)', maxHeight: '90vh' }}
+        className="admin-modal-mobile relative z-10 flex w-full max-w-3xl flex-col rounded-2xl border shadow-2xl"
+        style={{ background: 'var(--card)', borderColor: 'var(--border)', maxHeight: 'calc(100dvh - 1rem)' }}
       >
         {/* Header */}
         <div
-          className="flex shrink-0 items-center gap-3 border-b px-5 py-4"
+          className="flex shrink-0 items-center gap-3 border-b px-4 sm:px-5 py-3 sm:py-4"
           style={{ borderColor: 'var(--border)' }}
         >
-          <div>
-            <p className="text-sm font-semibold">Edit Project</p>
-            <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold truncate">Edit Project</p>
+            <p className="text-xs truncate" style={{ color: 'var(--muted-foreground)' }}>
               {draft.number} · {draft.name}
             </p>
           </div>
           <button
             onClick={onClose}
-            className="ml-auto rounded-lg p-2 transition-colors hover:bg-[var(--muted)]"
+            className="ml-auto shrink-0 rounded-lg p-2 transition-colors hover:bg-[var(--muted)]"
             style={{ color: 'var(--muted-foreground)' }}
           >
             <X className="h-4 w-4" />
@@ -1120,12 +1117,12 @@ function ProjectEditorModal({
         </div>
 
         {/* Section tabs */}
-        <div className="flex shrink-0 gap-1 border-b px-4 py-2" style={{ borderColor: 'var(--border)' }}>
+        <div className="flex shrink-0 gap-1 border-b px-3 sm:px-4 py-2 overflow-x-auto" style={{ borderColor: 'var(--border)' }}>
           {(['basic', 'features', 'stack', 'images'] as const).map(section => (
             <button
               key={section}
               onClick={() => setActiveSection(section)}
-              className="rounded-lg px-3 py-1.5 text-xs font-medium capitalize transition-all"
+              className="shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium capitalize transition-all"
               style={{
                 background: activeSection === section
                   ? 'color-mix(in oklch, var(--primary) 15%, transparent)'
@@ -1139,7 +1136,7 @@ function ProjectEditorModal({
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto px-5 py-4">
+        <div className="flex-1 overflow-y-auto px-4 sm:px-5 py-4">
           {activeSection === 'basic' && (
             <div className="space-y-4">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -1365,7 +1362,7 @@ function ProjectEditorModal({
 
         {/* Footer */}
         <div
-          className="flex shrink-0 items-center gap-3 border-t px-5 py-4"
+          className="flex shrink-0 items-center gap-3 border-t px-4 sm:px-5 py-3 sm:py-4"
           style={{ borderColor: 'var(--border)' }}
         >
           <button
@@ -1377,7 +1374,7 @@ function ProjectEditorModal({
           </button>
           <button
             onClick={() => onSave(draft)}
-            className="flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-all"
+            className="flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-all ml-auto"
             style={{ background: 'var(--primary)', color: 'var(--primary-foreground)' }}
           >
             <Save className="h-4 w-4" />

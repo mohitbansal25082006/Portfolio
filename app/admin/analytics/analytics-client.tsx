@@ -3,11 +3,11 @@
 /**
  * app/admin/analytics/analytics-client.tsx
  * ─────────────────────────────────────────────────────────────────────────────
- * Part 2.3 — Analytics Overview
- *
- * Part 2.7 update: removed "Visitors" nav item, added "Content" with
- * FolderKanban icon. Canonical nav list now spans Dashboard, Messages,
- * Analytics, Resume, Content, Settings, Security.
+ * Mobile fix (Part B):
+ *   - Changed h-screen to admin-viewport-height for dynamic viewport support
+ *   - Added safe-area padding for mobile
+ *   - Improved responsive grid layouts for mobile
+ *   - Chart containers now properly scroll on mobile
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
@@ -129,7 +129,7 @@ function StatCard({
 
   return (
     <div
-      className="stat-card relative overflow-hidden rounded-2xl border p-5 transition-all duration-300 hover:shadow-lg"
+      className="stat-card relative overflow-hidden rounded-2xl border p-4 sm:p-5 transition-all duration-300 hover:shadow-lg"
       style={{ background: 'var(--card)', borderColor: error ? 'color-mix(in oklch, oklch(0.7 0.2 25) 40%, transparent)' : 'var(--border)' }}
     >
       <div className="stat-card-shine" />
@@ -137,9 +137,9 @@ function StatCard({
         <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: bg }}>
           {icon}
         </div>
-        <p className="text-2xl font-bold tabular-nums">
+        <p className="text-xl sm:text-2xl font-bold tabular-nums">
           {value === null ? (
-            <span style={{ color: 'var(--muted-foreground)', fontSize: '0.9rem' }}>
+            <span style={{ color: 'var(--muted-foreground)', fontSize: '0.85rem' }}>
               {error ? '—' : 'Not configured'}
             </span>
           ) : (
@@ -188,7 +188,7 @@ function TrendChart({ data }: { data: { date: string; views: number }[] }) {
   return (
     <svg
       viewBox={`0 0 ${W} ${H}`}
-      className="w-full"
+      className="w-full min-w-[320px]"
       style={{ height: H, overflow: 'visible' }}
       role="img"
       aria-label="Visit trend chart"
@@ -273,8 +273,8 @@ function DeviceDonut({ mobile, desktop, tablet }: { mobile: number; desktop: num
   let accumulated = 0
 
   return (
-    <div className="flex flex-wrap items-center justify-center gap-6">
-      <svg viewBox="0 0 140 140" className="h-32 w-32 shrink-0">
+    <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-6">
+      <svg viewBox="0 0 140 140" className="h-28 w-28 sm:h-32 sm:w-32 shrink-0">
         {slices.map((s) => {
           if (s.pct === 0) { accumulated += s.pct; return null }
           const start = accumulated
@@ -295,7 +295,7 @@ function DeviceDonut({ mobile, desktop, tablet }: { mobile: number; desktop: num
         </text>
       </svg>
 
-      <div className="space-y-2">
+      <div className="space-y-2 min-w-[120px]">
         {slices.map((s) => (
           <div key={s.label} className="flex items-center gap-2 text-sm">
             <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: s.color }} />
@@ -342,7 +342,7 @@ function ReferrersTable({
   return (
     <div className="space-y-2">
       {referrers.map((r) => (
-        <div key={r.source} className="group flex items-center gap-3">
+        <div key={r.source} className="group flex items-center gap-2 sm:gap-3">
           <div className="relative flex-1 overflow-hidden rounded-lg" style={{ background: 'var(--muted)' }}>
             <div
               className="h-8 rounded-lg transition-all duration-700"
@@ -352,11 +352,11 @@ function ReferrersTable({
                 minWidth: '2rem',
               }}
             />
-            <span className="absolute inset-0 flex items-center px-3 text-xs font-medium" style={{ color: 'var(--foreground)' }}>
+            <span className="absolute inset-0 flex items-center px-2 sm:px-3 text-[11px] sm:text-xs font-medium truncate" style={{ color: 'var(--foreground)' }}>
               {r.source}
             </span>
           </div>
-          <div className="w-16 shrink-0 text-right">
+          <div className="w-14 sm:w-16 shrink-0 text-right">
             <p className="text-xs font-semibold tabular-nums">{formatNumber(r.views)}</p>
             <p className="text-[10px]" style={{ color: 'var(--muted-foreground)' }}>
               {Math.round((r.views / total) * 100)}%
@@ -440,7 +440,6 @@ export default function AnalyticsClient({ adminEmail }: { adminEmail: string }) 
   }
 
   // ── Nav items ────────────────────────────────────────────────────────────────
-  // Canonical nav list — Visitors removed in Part 2.7
 
   const navItems: NavItem[] = [
     { icon: <LayoutDashboard className="h-4 w-4" />, label: 'Dashboard', href: '/admin/dashboard' },
@@ -463,7 +462,7 @@ export default function AnalyticsClient({ adminEmail }: { adminEmail: string }) 
   return (
     <div
       data-theme={theme}
-      className="flex h-screen overflow-hidden"
+      className="admin-viewport-height flex overflow-hidden"
       style={{ background: 'var(--background)', color: 'var(--foreground)' }}
     >
       {sidebarOpen && (
@@ -475,7 +474,7 @@ export default function AnalyticsClient({ adminEmail }: { adminEmail: string }) 
 
       {/* ── Sidebar ── */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r transition-transform duration-300 lg:static lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
+        className={`admin-sidebar-mobile fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r transition-transform duration-300 lg:static lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
         style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
       >
         <div className="flex h-16 shrink-0 items-center gap-3 border-b px-5" style={{ borderColor: 'var(--border)' }}>
@@ -496,7 +495,6 @@ export default function AnalyticsClient({ adminEmail }: { adminEmail: string }) 
           </button>
         </div>
 
-        {/* Nav items — scrollable middle zone */}
         <nav className="flex-1 min-h-0 overflow-y-auto p-3 space-y-1">
           {navItems.map(item => <SideNavItem key={item.href} {...item} />)}
         </nav>
@@ -519,7 +517,7 @@ export default function AnalyticsClient({ adminEmail }: { adminEmail: string }) 
       <div className="flex flex-1 flex-col overflow-hidden">
 
         <header
-          className="flex h-16 shrink-0 items-center gap-3 border-b px-4 sm:px-6"
+          className="flex h-16 shrink-0 items-center gap-2 sm:gap-3 border-b px-3 sm:px-6"
           style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
         >
           <button
@@ -530,10 +528,10 @@ export default function AnalyticsClient({ adminEmail }: { adminEmail: string }) 
             <Menu className="h-5 w-5" />
           </button>
 
-          <div className="flex items-center gap-2 text-sm">
+          <div className="flex items-center gap-2 text-sm min-w-0">
             <span style={{ color: 'var(--muted-foreground)' }}>Admin</span>
             <span style={{ color: 'var(--border)' }}>/</span>
-            <span className="font-medium">Analytics</span>
+            <span className="font-medium truncate">Analytics</span>
           </div>
 
           <div className="flex-1" />
@@ -541,11 +539,11 @@ export default function AnalyticsClient({ adminEmail }: { adminEmail: string }) 
           <div className="relative">
             <button
               onClick={() => setShowThemePicker(v => !v)}
-              className="flex items-center gap-1.5 rounded-xl border px-2.5 py-2 text-xs font-medium transition-all duration-200"
+              className="flex items-center gap-1.5 rounded-xl border px-2 py-2 text-xs font-medium transition-all duration-200"
               style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
             >
               <Palette className="h-3.5 w-3.5" />
-              <span className="h-3 w-3 rounded-full" style={{ background: themes.find(t => t.id === theme)?.swatch ?? 'var(--primary)' }} />
+              <span className="h-3 w-3 rounded-full hidden sm:inline" style={{ background: themes.find(t => t.id === theme)?.swatch ?? 'var(--primary)' }} />
               <span className="hidden sm:inline capitalize">{theme}</span>
               <ChevronDown className="h-3 w-3" />
             </button>
@@ -580,7 +578,7 @@ export default function AnalyticsClient({ adminEmail }: { adminEmail: string }) 
           </div>
 
           <div
-            className="hidden items-center gap-2 rounded-full border px-3 py-1.5 text-xs sm:flex"
+            className="hidden items-center gap-2 rounded-full border px-3 py-1.5 text-xs md:flex"
             style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
           >
             <div
@@ -595,7 +593,7 @@ export default function AnalyticsClient({ adminEmail }: { adminEmail: string }) 
           <button
             onClick={handleLogout}
             disabled={loggingOut}
-            className="flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-all duration-200 disabled:opacity-50 hover:border-[var(--destructive)] hover:text-[var(--destructive)]"
+            className="flex items-center gap-2 rounded-xl border px-2.5 sm:px-3 py-2 text-sm font-medium transition-all duration-200 disabled:opacity-50 hover:border-[var(--destructive)] hover:text-[var(--destructive)]"
             style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
           >
             {loggingOut ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
@@ -603,7 +601,7 @@ export default function AnalyticsClient({ adminEmail }: { adminEmail: string }) 
           </button>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
+        <main className="admin-main-scroll flex-1 overflow-y-auto p-3 sm:p-6 lg:p-8 admin-content-safe-bottom">
 
           <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -615,19 +613,19 @@ export default function AnalyticsClient({ adminEmail }: { adminEmail: string }) 
               </p>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <div className="flex items-center rounded-xl border p-1 text-xs font-medium" style={{ borderColor: 'var(--border)' }}>
                 {(['7d', '30d'] as Period[]).map(p => (
                   <button
                     key={p}
                     onClick={() => setPeriod(p)}
-                    className="rounded-lg px-3 py-1.5 transition-all duration-200"
+                    className="rounded-lg px-2.5 sm:px-3 py-1.5 transition-all duration-200"
                     style={{
                       background: period === p ? 'var(--primary)' : 'transparent',
                       color: period === p ? 'var(--primary-foreground)' : 'var(--muted-foreground)',
                     }}
                   >
-                    {p === '7d' ? 'Last 7 days' : 'Last 30 days'}
+                    {p === '7d' ? '7 days' : '30 days'}
                   </button>
                 ))}
               </div>
@@ -700,7 +698,7 @@ export default function AnalyticsClient({ adminEmail }: { adminEmail: string }) 
             <>
               <section className="mb-6">
                 <h2 className="eyebrow mb-4">Key Metrics</h2>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-2 xl:grid-cols-4">
                   <StatCard
                     icon={<Eye className="h-5 w-5" style={{ color: 'var(--primary)' }} />}
                     label="Total Page Views"
@@ -736,10 +734,10 @@ export default function AnalyticsClient({ adminEmail }: { adminEmail: string }) 
               </section>
 
               <section className="mb-6">
-                <div className="rounded-2xl border p-5" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
+                <div className="rounded-2xl border p-4 sm:p-5" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
                   <div className="mb-4 flex items-center justify-between">
                     <h2 className="text-sm font-semibold">Visit Trend</h2>
-                    <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                    <span className="text-xs hidden sm:inline" style={{ color: 'var(--muted-foreground)' }}>
                       {period === '7d' ? 'Last 7 days' : 'Last 30 days'} · page views / day
                     </span>
                   </div>
@@ -749,13 +747,15 @@ export default function AnalyticsClient({ adminEmail }: { adminEmail: string }) 
                       Couldn&apos;t load trend data ({errors.trend})
                     </div>
                   ) : (
-                    <TrendChart data={data?.trend ?? []} />
+                    <div className="overflow-x-auto">
+                      <TrendChart data={data?.trend ?? []} />
+                    </div>
                   )}
                 </div>
               </section>
 
-              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                <div className="rounded-2xl border p-5" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
+              <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-2">
+                <div className="rounded-2xl border p-4 sm:p-5" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
                   <div className="mb-4 flex items-center gap-2">
                     <Monitor className="h-4 w-4" style={{ color: 'var(--primary)' }} />
                     <h2 className="text-sm font-semibold">Device Breakdown</h2>
@@ -774,7 +774,7 @@ export default function AnalyticsClient({ adminEmail }: { adminEmail: string }) 
                   )}
                 </div>
 
-                <div className="rounded-2xl border p-5" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
+                <div className="rounded-2xl border p-4 sm:p-5" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
                   <div className="mb-4 flex items-center gap-2">
                     <Globe className="h-4 w-4" style={{ color: 'var(--primary)' }} />
                     <h2 className="text-sm font-semibold">Top Referrers</h2>
