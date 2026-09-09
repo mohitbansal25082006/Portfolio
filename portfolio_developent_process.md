@@ -36,17 +36,6 @@ public/deepdive/ (21 images), public/finsight-ai/ (8 images),
 public/mannsahay/ (11 images), public/neurafusion/ (6 images), public/teamscript/ (3 images)
 ```
 
-## Commands Run
-```bash
-git clone https://github.com/mohitbansal25082006/Portfolio.git
-cd portfolio-website
-npm install   # or pnpm install
-cp .env.example .env.local
-npm run dev
-npm run build
-npm run lint
-```
-
 ---
 
 # Part 2.1 — Admin Authentication
@@ -230,13 +219,6 @@ app/admin/settings/settings-client.tsx
 components/portfolio-site.tsx
 ```
 
-## Commands Run
-```bash
-# No new dependencies — reuses @upstash/redis already installed in Part 2.2
-npm run dev
-npm run build
-```
-
 ---
 
 # Part 2.6 — Security & Session Management
@@ -276,14 +258,6 @@ app/admin/analytics/analytics-client.tsx
 app/admin/resume/resume-client.tsx
 app/admin/settings/settings-client.tsx
 .env.example
-```
-
-## Commands Run
-```bash
-# No new dependencies — password hashing uses Node's built-in crypto,
-# session/login-log storage reuses @upstash/redis already installed in Part 2.2
-npm run dev
-npm run build
 ```
 
 ---
@@ -326,14 +300,6 @@ app/admin/security/security-client.tsx
 components/portfolio-site.tsx
 ```
 
-## Commands Run
-```bash
-# No new dependencies — reuses @upstash/redis already installed in Part 2.2
-npm run dev
-npm run build
-npm run lint
-```
-
 ---
 
 # Part 2.8 — Two-Factor Authentication (TOTP)
@@ -371,12 +337,6 @@ app/admin/page.tsx
 app/admin/security/security-client.tsx
 package.json
 .env.example
-```
-
-## Commands Run
-```bash
-npm install qrcode.react
-npm run dev
 ```
 
 ---
@@ -425,11 +385,36 @@ app/api/admin/2fa/setup/route.ts
 app/admin/page.tsx
 app/admin/security/security-client.tsx
 ```
+# Part 2.10 — Content Version History & Backup
 
-## Commands Run
-```bash
-# No new dependencies — geolocation uses native fetch, recovery codes use Node's built-in crypto
-npm run dev
-npm run build
-npm run lint
+## Overview
+Adds version history with rollback capability to content edits and a one-click JSON backup/export system for all site data. Includes version renaming, deletion, and prevents double version creation during rollback operations.
+
+## Features Added
+- **Version History** — every content save automatically creates a snapshot
+- **Rollback** — restore any previous version with one click (creates single new version, not double)
+- **Rename Versions** — custom names for easy identification
+- **Delete Versions** — remove unwanted snapshots (current version protected)
+- **JSON Backup/Export** — one-click download of all content, settings, and messages
+- **Import Backup** — restore from previously exported JSON file
+- **Dual-backend storage** — Upstash Redis in prod, local `.data/portfolio-content-versions.json` fallback
+- **Version cap** — max 100 versions with automatic trimming
+- **Full theme integration** — matches all 6 admin themes
+- **Mobile responsive** — proper viewport handling and safe-area padding
+
+## Files Created
+```
+lib/content-versioning.ts
+app/api/admin/content/versions/route.ts
+app/api/admin/content/versions/[id]/route.ts
+app/api/admin/backup/route.ts
+app/admin/content/version-history-client.tsx
+app/admin/content/backup-client.tsx
+```
+
+## Files Updated
+```
+lib/content-store.ts
+app/api/admin/content/route.ts
+app/admin/content/content-client.tsx
 ```

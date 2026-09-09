@@ -4,12 +4,16 @@
  * app/admin/content/content-client.tsx
  * ─────────────────────────────────────────────────────────────────────────────
  * Part 2.7 — Content Management System
+ * Part 2.10 — Added Version History & Backup tabs
+ * Updated — Fixed rollback, added rename and delete handlers
  * ---------------------------------------------------------------------------
  * Full-featured admin page for editing all portfolio content:
  *   • Projects — edit descriptions, links, stack, add/remove/reorder
  *   • Timeline — edit entries
  *   • About — edit section paragraphs
  *   • Skills — edit skill groups
+ *   • History — view version history, rollback, rename, delete
+ *   • Backup — export/import JSON backup
  *
  * Mobile fix (Part E):
  *   - Changed h-screen to admin-viewport-height for dynamic viewport support
@@ -27,11 +31,14 @@ import {
   BarChart2, AlertTriangle, Check, ShieldCheck, Save, RotateCcw,
   Plus, Trash2, ChevronUp, ChevronDown, Edit3, FolderKanban,
   Clock, User, Wrench, Eye, EyeOff, GripVertical, Link2,
+  History, Database, Download, Upload,
 } from 'lucide-react'
 import { themes } from '@/lib/content'
 import type {
   ProjectContent, AboutContent, SkillGroup, TimelineEntry,
 } from '@/lib/content-store'
+import VersionHistory from './version-history-client'
+import BackupClient from './backup-client'
 
 // ─── GitHub icon ────────────────────────────────────────────────────────
 
@@ -62,6 +69,15 @@ interface ContentStore {
   skillGroups: SkillGroup[]
   timeline: TimelineEntry[]
   updatedAt: string
+}
+
+interface ContentVersion {
+  id: string
+  timestamp: string
+  content: ContentStore
+  name: string
+  note?: string
+  changeCount?: number
 }
 
 interface NavItem {
@@ -144,7 +160,7 @@ function Field({
 
 // ─── Tab type ────────────────────────────────────────────────────────────
 
-type Tab = 'projects' | 'timeline' | 'about' | 'skills'
+type Tab = 'projects' | 'timeline' | 'about' | 'skills' | 'history' | 'backup'
 
 // ─── Main component ──────────────────────────────────────────────────────
 
@@ -161,6 +177,10 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [content, setContent] = useState<ContentStore | null>(null)
   const [redisConfigured, setRedisConfigured] = useState(true)
+
+  // Version history state
+  const [versions, setVersions] = useState<ContentVersion[]>([])
+  const [versionCount, setVersionCount] = useState(0)
 
   // Per-tab save state
   const [saving, setSaving] = useState(false)
@@ -198,6 +218,12 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
       setTimeline(data.content.timeline)
       setAbout(data.content.about)
       setSkillGroups(data.content.skillGroups)
+      
+      // Load version info if available
+      if (data.versions) {
+        setVersions(data.versions.recent || [])
+        setVersionCount(data.versions.totalCount || 0)
+      }
     } catch {
       setLoadError('Could not load content. Please refresh the page.')
     } finally {
@@ -206,6 +232,24 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
   }, [])
 
   useEffect(() => { loadContent() }, [loadContent])
+
+  const loadVersions = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/content/versions', { cache: 'no-store' })
+      if (!res.ok) return
+      const data = await res.json()
+      setVersions(data.versions || [])
+      setVersionCount(data.versions?.length || 0)
+    } catch (err) {
+      console.error('Failed to load versions:', err)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (activeTab === 'history') {
+      loadVersions()
+    }
+  }, [activeTab, loadVersions])
 
   const handleLogout = useCallback(async () => {
     setLoggingOut(true)
@@ -238,13 +282,86 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
         return
       }
       setContent(data.content)
+      
+      // Update version info from response
+      if (data.versions) {
+        setVersions(data.versions.recent || [])
+        setVersionCount(data.versions.totalCount || 0)
+      }
+      
       setSaved(true)
       setTimeout(() => setSaved(false), 2500)
+      
+      // Reload versions to get the new one
+      await loadVersions()
     } catch {
       setSaveError('Network error — please try again.')
     } finally {
       setSaving(false)
     }
+  }
+
+  const handleRollback = async (versionId: string): Promise<boolean> => {
+    try {
+      const res = await fetch(`/api/admin/content/versions/${versionId}`, {
+        method: 'POST',
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to rollback')
+      }
+      
+      // Reload content after rollback
+      await loadContent()
+      await loadVersions()
+      return true
+    } catch (err) {
+      console.error('Rollback failed:', err)
+      return false
+    }
+  }
+
+  const handleRenameVersion = async (versionId: string, newName: string): Promise<boolean> => {
+    try {
+      const res = await fetch('/api/admin/content/versions', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: versionId, name: newName }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to rename version')
+      }
+      
+      await loadVersions()
+      return true
+    } catch (err) {
+      console.error('Rename failed:', err)
+      return false
+    }
+  }
+
+  const handleDeleteVersion = async (versionId: string): Promise<boolean> => {
+    try {
+      const res = await fetch(`/api/admin/content/versions?id=${versionId}`, {
+        method: 'DELETE',
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to delete version')
+      }
+      
+      await loadVersions()
+      return true
+    } catch (err) {
+      console.error('Delete failed:', err)
+      return false
+    }
+  }
+
+  const handleImportComplete = async () => {
+    await loadContent()
+    await loadVersions()
   }
 
   // Canonical nav list — Visitors removed in Part 2.7
@@ -263,6 +380,8 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
     { id: 'timeline', label: 'Timeline', icon: <Clock className="h-4 w-4" /> },
     { id: 'about', label: 'About', icon: <User className="h-4 w-4" /> },
     { id: 'skills', label: 'Skills', icon: <Wrench className="h-4 w-4" /> },
+    { id: 'history', label: 'History', icon: <History className="h-4 w-4" /> },
+    { id: 'backup', label: 'Backup', icon: <Database className="h-4 w-4" /> },
   ]
 
   return (
@@ -476,38 +595,48 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
                   >
                     {tab.icon}
                     {tab.label}
+                    {tab.id === 'history' && versionCount > 0 && (
+                      <span
+                        className="flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold"
+                        style={{ background: 'var(--primary)', color: 'var(--primary-foreground)' }}
+                      >
+                        {versionCount}
+                      </span>
+                    )}
                   </button>
                 ))}
               </div>
 
-              {/* Save bar */}
-              <div className="mb-6 flex flex-wrap items-center gap-3 rounded-2xl border p-4" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">Save changes</p>
-                  <p className="text-xs truncate" style={{ color: 'var(--muted-foreground)' }}>
-                    {content && content.updatedAt !== new Date(0).toISOString()
-                      ? `Last updated ${new Date(content.updatedAt).toLocaleString()}`
-                      : 'Using default content (no edits yet)'}
-                  </p>
+              {/* Save bar - only show for content tabs */}
+              {activeTab !== 'history' && activeTab !== 'backup' && (
+                <div className="mb-6 flex flex-wrap items-center gap-3 rounded-2xl border p-4" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium">Save changes</p>
+                    <p className="text-xs truncate" style={{ color: 'var(--muted-foreground)' }}>
+                      {content && content.updatedAt !== new Date(0).toISOString()
+                        ? `Last updated ${new Date(content.updatedAt).toLocaleString()}`
+                        : 'Using default content (no edits yet)'}
+                    </p>
+                  </div>
+                  {saveError && (
+                    <p className="text-xs" style={{ color: 'var(--destructive)' }}>{saveError}</p>
+                  )}
+                  <button
+                    onClick={saveCurrentTab}
+                    disabled={saving}
+                    className="flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-all duration-200 disabled:opacity-60"
+                    style={{ background: 'var(--primary)', color: 'var(--primary-foreground)' }}
+                  >
+                    {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                    {saving ? 'Saving...' : 'Save changes'}
+                  </button>
+                  {saved && (
+                    <span className="flex items-center gap-1.5 text-xs font-medium" style={{ color: 'oklch(0.75 0.18 150)' }}>
+                      <Check className="h-3.5 w-3.5" /> Saved
+                    </span>
+                  )}
                 </div>
-                {saveError && (
-                  <p className="text-xs" style={{ color: 'var(--destructive)' }}>{saveError}</p>
-                )}
-                <button
-                  onClick={saveCurrentTab}
-                  disabled={saving}
-                  className="flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-all duration-200 disabled:opacity-60"
-                  style={{ background: 'var(--primary)', color: 'var(--primary-foreground)' }}
-                >
-                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                  {saving ? 'Saving...' : 'Save changes'}
-                </button>
-                {saved && (
-                  <span className="flex items-center gap-1.5 text-xs font-medium" style={{ color: 'oklch(0.75 0.18 150)' }}>
-                    <Check className="h-3.5 w-3.5" /> Saved
-                  </span>
-                )}
-              </div>
+              )}
 
               {/* Content sections */}
               {activeTab === 'projects' && (
@@ -532,6 +661,59 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
 
               {activeTab === 'skills' && (
                 <SkillsTab skillGroups={skillGroups} setSkillGroups={setSkillGroups} />
+              )}
+
+              {activeTab === 'history' && (
+                <div className="space-y-4">
+                  <div
+                    className="flex items-start gap-3 rounded-2xl border p-4"
+                    style={{
+                      background: 'color-mix(in oklch, var(--primary) 8%, transparent)',
+                      borderColor: 'color-mix(in oklch, var(--primary) 20%, transparent)',
+                    }}
+                  >
+                    <History className="h-5 w-5 shrink-0" style={{ color: 'var(--primary)' }} />
+                    <div className="text-sm">
+                      <p className="font-medium">Version History</p>
+                      <p className="mt-0.5 text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                        Every save creates a snapshot. Roll back, rename, or delete versions.
+                        {versionCount > 0 && ` ${versionCount} versions available.`}
+                      </p>
+                    </div>
+                  </div>
+                  <VersionHistory
+                    versions={versions}
+                    onRollback={handleRollback}
+                    onRename={handleRenameVersion}
+                    onDelete={handleDeleteVersion}
+                    onRefresh={loadVersions}
+                  />
+                </div>
+              )}
+
+              {activeTab === 'backup' && (
+                <div className="space-y-4">
+                  <div
+                    className="flex items-start gap-3 rounded-2xl border p-4"
+                    style={{
+                      background: 'color-mix(in oklch, var(--primary) 8%, transparent)',
+                      borderColor: 'color-mix(in oklch, var(--primary) 20%, transparent)',
+                    }}
+                  >
+                    <Database className="h-5 w-5 shrink-0" style={{ color: 'var(--primary)' }} />
+                    <div className="text-sm">
+                      <p className="font-medium">Backup & Export</p>
+                      <p className="mt-0.5 text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                        Download a complete JSON backup of all site data, or import a previously
+                        exported backup to restore your content.
+                      </p>
+                    </div>
+                  </div>
+                  <BackupClient
+                    onBackupComplete={() => loadVersions()}
+                    onImportComplete={handleImportComplete}
+                  />
+                </div>
               )}
             </>
           )}

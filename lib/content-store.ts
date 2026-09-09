@@ -2,6 +2,7 @@
  * lib/content-store.ts
  * ─────────────────────────────────────────────────────────────────────────────
  * Part 2.7 — Content Management Store
+ * Part 2.10 — Added version history integration with single version creation
  * ---------------------------------------------------------------------------
  * Dual-backend storage for dynamic content (projects, about, skills, timeline)
  * that the admin can edit from the Content Management page.
@@ -14,6 +15,11 @@
  * Storage backends (mirrors lib/messages.ts / lib/settings.ts / lib/resume.ts):
  *   • Production: Upstash Redis (KV_REST_API_URL + KV_REST_API_TOKEN)
  *   • Local dev:  .data/portfolio-content.json
+ *
+ * Version History (Part 2.10):
+ *   • Every save automatically creates a version snapshot
+ *   • saveContentWithoutVersion allows saving without version creation
+ *   • Used during rollback to prevent double version creation
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
@@ -103,7 +109,6 @@ async function writeLocal(store: ContentStore) {
 
 // ─── Default content (imported from static lib/content.ts) ────────────────
 
-// We'll import statically to avoid circular deps
 async function getDefaultContent(): Promise<ContentStore> {
   const { projects, about, skillGroups, timeline } = await import('@/lib/content')
   return {
@@ -128,7 +133,12 @@ export async function getContent(): Promise<ContentStore> {
   return local ?? getDefaultContent()
 }
 
-export async function saveContent(
+/**
+ * Save content WITHOUT creating a version snapshot.
+ * Used internally during rollback and import operations to prevent
+ * double version creation.
+ */
+export async function saveContentWithoutVersion(
   patch: Partial<Omit<ContentStore, 'updatedAt'>>,
 ): Promise<ContentStore> {
   const current = await getContent()
@@ -143,6 +153,27 @@ export async function saveContent(
     await redis.set(REDIS_KEY, next)
   } else {
     await writeLocal(next)
+  }
+
+  return next
+}
+
+/**
+ * Save content AND automatically create a version snapshot.
+ * This is the main save function used by the admin UI.
+ */
+export async function saveContent(
+  patch: Partial<Omit<ContentStore, 'updatedAt'>>,
+): Promise<ContentStore> {
+  const next = await saveContentWithoutVersion(patch)
+
+  // Auto-create version snapshot after each save
+  try {
+    const { createContentVersion } = await import('@/lib/content-versioning')
+    await createContentVersion('Content updated')
+  } catch (err) {
+    console.error('Failed to create version snapshot:', err)
+    // Don't fail the save if version creation fails
   }
 
   return next

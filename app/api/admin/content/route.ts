@@ -2,10 +2,10 @@
  * app/api/admin/content/route.ts
  * ─────────────────────────────────────────────────────────────────────────────
  * Part 2.7 — Content Management API
+ * Part 2.10 — Added version history integration
  * ---------------------------------------------------------------------------
- * GET  -> returns current content store (projects, about, skills, timeline)
- *          + storage status for the "not persistent" warning.
- * PUT  -> accepts partial patches and saves them via lib/content-store.ts.
+ * GET  -> returns current content store + storage status + version count
+ * PUT  -> accepts partial patches, saves them, and creates version snapshot
  *
  * Auth: same pattern as every other /api/admin/* route.
  * ─────────────────────────────────────────────────────────────────────────────
@@ -20,6 +20,7 @@ import {
   getContentStorageStatus,
   type ContentStore,
 } from '@/lib/content-store'
+import { getContentVersions, getVersionStorageStatus } from '@/lib/content-versioning'
 
 async function requireAuth() {
   const cookieStore = await cookies()
@@ -35,12 +36,21 @@ export async function GET() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const [content, storage] = await Promise.all([
+  const [content, storage, versions] = await Promise.all([
     getContent(),
     Promise.resolve(getContentStorageStatus()),
+    getContentVersions(5), // Get recent versions for quick access
   ])
 
-  return NextResponse.json({ content, storage })
+  return NextResponse.json({ 
+    content, 
+    storage,
+    versions: {
+      recent: versions,
+      totalCount: versions.length,
+      storage: getVersionStorageStatus(),
+    }
+  })
 }
 
 export async function PUT(req: NextRequest) {
@@ -107,7 +117,18 @@ export async function PUT(req: NextRequest) {
 
   try {
     const updated = await saveContent(body)
-    return NextResponse.json({ content: updated })
+    
+    // Get updated version info
+    const versions = await getContentVersions(5)
+    
+    return NextResponse.json({ 
+      content: updated,
+      versions: {
+        recent: versions,
+        totalCount: versions.length,
+        storage: getVersionStorageStatus(),
+      }
+    })
   } catch (err) {
     console.error('Failed to update content:', err)
     return NextResponse.json({ error: 'Failed to save content. Please try again.' }, { status: 500 })
