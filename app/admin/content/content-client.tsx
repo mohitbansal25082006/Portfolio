@@ -6,7 +6,7 @@
  * Part 2.7 — Content Management System
  * Part 2.10 — Added Version History & Backup tabs
  * Part 3 — Advanced Project Image Management Integration
- * Updated — Removed max images limit, removed captions, any URL allowed
+ * Updated — Full mobile compatibility, removed max limit, removed captions
  * ---------------------------------------------------------------------------
  * Full-featured admin page for editing all portfolio content:
  *   • Projects — edit descriptions, links, stack, add/remove/reorder
@@ -18,12 +18,15 @@
  *
  * Part 3 Updates:
  *   • Advanced image manager with drag-and-drop upload
- *   • Image preview grid with hover actions
+ *   • Image preview grid with touch-friendly actions
  *   • Orphaned image cleanup
  *   • Image storage status indicators
  *   • No maximum image limit
- *   • Any URL type supported (Google Drive, external links, etc.)
- *   • Full theme integration for all new components
+ *   • Any URL type supported
+ *   • Full theme integration
+ *   • Mobile responsive with touch support
+ *   • Bottom sheet modal on mobile
+ *   • Safe-area padding for notched devices
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
@@ -122,7 +125,7 @@ function SideNavItem({ icon, label, href, active, badge }: NavItem) {
   return (
     <a
       href={href}
-      className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200"
+      className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200 active:scale-[0.98]"
       style={{
         background: active ? 'color-mix(in oklch, var(--primary) 15%, transparent)' : 'transparent',
         color: active ? 'var(--primary)' : 'var(--muted-foreground)',
@@ -130,10 +133,10 @@ function SideNavItem({ icon, label, href, active, badge }: NavItem) {
       }}
     >
       <span className="shrink-0">{icon}</span>
-      <span className="flex-1">{label}</span>
+      <span className="flex-1 truncate">{label}</span>
       {badge !== undefined && badge > 0 && (
         <span
-          className="flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold"
+          className="flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold shrink-0"
           style={{ background: 'var(--primary)', color: 'var(--primary-foreground)' }}
         >
           {badge}
@@ -481,14 +484,14 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
       {/* ── Sidebar ── */}
       <aside
         className={`
-          admin-sidebar-mobile fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r
+          admin-sidebar-mobile fixed inset-y-0 left-0 z-50 flex w-64 sm:w-72 flex-col border-r
           transition-transform duration-300
           lg:static lg:translate-x-0
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
         `}
         style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
       >
-        <div className="flex h-16 shrink-0 items-center gap-3 border-b px-5" style={{ borderColor: 'var(--border)' }}>
+        <div className="flex h-16 shrink-0 items-center gap-3 border-b px-4 sm:px-5" style={{ borderColor: 'var(--border)' }}>
           <div
             className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg"
             style={{ background: 'color-mix(in oklch, var(--primary) 20%, transparent)' }}
@@ -499,7 +502,7 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
           <span className="text-sm font-semibold tracking-tight truncate">Admin Panel</span>
           <button
             onClick={() => setSidebarOpen(false)}
-            className="ml-auto shrink-0 rounded-lg p-1 lg:hidden"
+            className="ml-auto shrink-0 rounded-lg p-1.5 lg:hidden active:bg-[var(--muted)]"
             style={{ color: 'var(--muted-foreground)' }}
             aria-label="Close sidebar"
           >
@@ -518,24 +521,24 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
             href="/"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200 hover:bg-[var(--muted)]"
+            className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200 hover:bg-[var(--muted)] active:bg-[var(--muted)]"
             style={{ color: 'var(--muted-foreground)' }}
           >
             <ExternalLink className="h-4 w-4 shrink-0" />
-            <span>View Portfolio</span>
+            <span className="truncate">View Portfolio</span>
           </a>
         </div>
       </aside>
 
       {/* ── Main content ── */}
-      <div className="flex flex-1 flex-col overflow-hidden">
+      <div className="flex flex-1 flex-col overflow-hidden min-w-0">
         <header
           className="flex h-16 shrink-0 items-center gap-2 sm:gap-3 border-b px-3 sm:px-6"
           style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
         >
           <button
             onClick={() => setSidebarOpen(true)}
-            className="rounded-lg p-2 transition-colors hover:bg-[var(--muted)] lg:hidden"
+            className="rounded-lg p-2 transition-colors hover:bg-[var(--muted)] active:bg-[var(--muted)] lg:hidden shrink-0"
             style={{ color: 'var(--muted-foreground)' }}
             aria-label="Open sidebar"
           >
@@ -543,17 +546,17 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
           </button>
 
           <div className="flex items-center gap-2 text-sm min-w-0">
-            <span style={{ color: 'var(--muted-foreground)' }}>Admin</span>
-            <span style={{ color: 'var(--border)' }}>/</span>
+            <span className="hidden sm:inline" style={{ color: 'var(--muted-foreground)' }}>Admin</span>
+            <span className="hidden sm:inline" style={{ color: 'var(--border)' }}>/</span>
             <span className="font-medium truncate">Content</span>
           </div>
 
           <div className="flex-1" />
 
-          <div className="relative">
+          <div className="relative shrink-0">
             <button
               onClick={() => setShowThemePicker(v => !v)}
-              className="flex items-center gap-1.5 rounded-xl border px-2 py-2 text-xs font-medium transition-all duration-200"
+              className="flex items-center gap-1.5 rounded-xl border px-2 py-2 text-xs font-medium transition-all duration-200 active:scale-95"
               style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
               aria-label="Change theme"
             >
@@ -576,7 +579,7 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
                     <button
                       key={t.id}
                       onClick={() => { setTheme(t.id); setShowThemePicker(false) }}
-                      className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-medium transition-all duration-150"
+                      className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-medium transition-all duration-150 active:scale-[0.98]"
                       style={{
                         background: t.id === theme
                           ? 'color-mix(in oklch, var(--primary) 15%, transparent)'
@@ -600,7 +603,7 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
           </div>
 
           <div
-            className="hidden items-center gap-2 rounded-full border px-3 py-1.5 text-xs md:flex"
+            className="hidden items-center gap-2 rounded-full border px-3 py-1.5 text-xs md:flex shrink-0"
             style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
           >
             <div
@@ -615,7 +618,7 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
           <button
             onClick={handleLogout}
             disabled={loggingOut}
-            className="flex items-center gap-2 rounded-xl border px-2.5 sm:px-3 py-2 text-sm font-medium transition-all duration-200 disabled:opacity-50 hover:border-[var(--destructive)] hover:text-[var(--destructive)]"
+            className="flex items-center gap-2 rounded-xl border px-2.5 sm:px-3 py-2 text-sm font-medium transition-all duration-200 disabled:opacity-50 hover:border-[var(--destructive)] hover:text-[var(--destructive)] active:border-[var(--destructive)] active:text-[var(--destructive)] shrink-0"
             style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
           >
             {loggingOut ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
@@ -624,10 +627,10 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
         </header>
 
         <main className="admin-main-scroll flex-1 overflow-y-auto p-3 sm:p-6 lg:p-8 admin-content-safe-bottom">
-          <div className="mb-8">
+          <div className="mb-6 sm:mb-8">
             <p className="eyebrow mb-2">Site Content</p>
-            <h1 className="text-2xl font-bold sm:text-3xl">Content Management</h1>
-            <p className="mt-1 text-sm" style={{ color: 'var(--muted-foreground)' }}>
+            <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold">Content Management</h1>
+            <p className="mt-1 text-xs sm:text-sm" style={{ color: 'var(--muted-foreground)' }}>
               Edit projects, timeline, about section, and skills shown on the live portfolio.
             </p>
           </div>
@@ -635,13 +638,13 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
           {/* Storage warnings */}
           {!redisConfigured && (
             <div
-              className="mb-6 flex items-start gap-3 rounded-2xl border p-4"
+              className="mb-4 sm:mb-6 flex items-start gap-2 sm:gap-3 rounded-2xl border p-3 sm:p-4"
               style={{ background: 'color-mix(in oklch, oklch(0.75 0.18 60) 12%, transparent)', borderColor: 'color-mix(in oklch, oklch(0.75 0.18 60) 35%, transparent)' }}
             >
-              <AlertTriangle className="h-5 w-5 shrink-0" style={{ color: 'oklch(0.75 0.18 60)' }} />
-              <div className="text-sm">
+              <AlertTriangle className="h-4 w-4 sm:h-5 sm:w-5 shrink-0 mt-0.5" style={{ color: 'oklch(0.75 0.18 60)' }} />
+              <div className="text-xs sm:text-sm">
                 <p className="font-medium">Content storage isn&apos;t persistent</p>
-                <p className="mt-0.5 text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                <p className="mt-0.5 text-[11px] sm:text-xs" style={{ color: 'var(--muted-foreground)' }}>
                   No Upstash Redis (Vercel KV) connection was detected, so changes are only saved to a local file and won&apos;t survive a redeploy.
                 </p>
               </div>
@@ -651,13 +654,13 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
           {/* Image storage warning */}
           {!imageStorage.blobConfigured && (
             <div
-              className="mb-6 flex items-start gap-3 rounded-2xl border p-4"
+              className="mb-4 sm:mb-6 flex items-start gap-2 sm:gap-3 rounded-2xl border p-3 sm:p-4"
               style={{ background: 'color-mix(in oklch, oklch(0.75 0.18 220) 12%, transparent)', borderColor: 'color-mix(in oklch, oklch(0.75 0.18 220) 35%, transparent)' }}
             >
-              <Cloud className="h-5 w-5 shrink-0" style={{ color: 'oklch(0.75 0.18 220)' }} />
-              <div className="text-sm">
+              <Cloud className="h-4 w-4 sm:h-5 sm:w-5 shrink-0 mt-0.5" style={{ color: 'oklch(0.75 0.18 220)' }} />
+              <div className="text-xs sm:text-sm">
                 <p className="font-medium">Image storage isn&apos;t persistent</p>
-                <p className="mt-0.5 text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                <p className="mt-0.5 text-[11px] sm:text-xs" style={{ color: 'var(--muted-foreground)' }}>
                   Vercel Blob isn&apos;t configured — uploaded images will only be saved locally and won&apos;t persist in production.
                 </p>
               </div>
@@ -667,19 +670,19 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
           {/* Orphaned images warning */}
           {imageUsageStats && imageUsageStats.orphanedImages > 0 && (
             <div
-              className="mb-6 flex items-start gap-3 rounded-2xl border p-4"
+              className="mb-4 sm:mb-6 flex items-start gap-2 sm:gap-3 rounded-2xl border p-3 sm:p-4"
               style={{ background: 'color-mix(in oklch, oklch(0.75 0.18 150) 12%, transparent)', borderColor: 'color-mix(in oklch, oklch(0.75 0.18 150) 35%, transparent)' }}
             >
-              <ImageIcon className="h-5 w-5 shrink-0" style={{ color: 'oklch(0.75 0.18 150)' }} />
-              <div className="flex-1 text-sm">
+              <ImageIcon className="h-4 w-4 sm:h-5 sm:w-5 shrink-0 mt-0.5" style={{ color: 'oklch(0.75 0.18 150)' }} />
+              <div className="flex-1 text-xs sm:text-sm min-w-0">
                 <p className="font-medium">{imageUsageStats.orphanedImages} orphaned image(s) found</p>
-                <p className="mt-0.5 text-xs" style={{ color: 'var(--muted-foreground)' }}>
-                  These images are not referenced by any project or version. You can safely clean them up to save storage space.
+                <p className="mt-0.5 text-[11px] sm:text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                  These images are not referenced by any project or version. You can safely clean them up.
                 </p>
               </div>
               <button
                 onClick={handleCleanupOrphans}
-                className="shrink-0 rounded-xl px-3 py-2 text-xs font-medium transition-all"
+                className="shrink-0 rounded-xl px-2.5 sm:px-3 py-1.5 sm:py-2 text-[10px] sm:text-xs font-medium transition-all active:scale-95"
                 style={{ background: 'oklch(0.75 0.18 150)', color: 'white' }}
               >
                 Clean up
@@ -688,25 +691,25 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
           )}
 
           {loading ? (
-            <div className="flex items-center justify-center py-24">
+            <div className="flex items-center justify-center py-16 sm:py-24">
               <Loader2 className="h-6 w-6 animate-spin" style={{ color: 'var(--muted-foreground)' }} />
             </div>
           ) : loadError ? (
             <div
-              className="rounded-2xl border p-6 text-sm"
+              className="rounded-2xl border p-4 sm:p-6 text-sm"
               style={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--destructive)' }}
             >
               {loadError}
             </div>
           ) : (
             <>
-              {/* Tab bar */}
-              <div className="mb-6 flex gap-1 overflow-x-auto rounded-2xl border p-1 -mx-1 px-1" style={{ borderColor: 'var(--border)' }}>
+              {/* Tab bar - scrollable on mobile */}
+              <div className="mb-4 sm:mb-6 flex gap-1 overflow-x-auto rounded-2xl border p-1 -mx-1 px-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden" style={{ borderColor: 'var(--border)' }}>
                 {tabs.map(tab => (
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
-                    className="flex shrink-0 items-center gap-1.5 sm:gap-2 rounded-xl px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium transition-all"
+                    className="flex shrink-0 items-center gap-1.5 sm:gap-2 rounded-xl px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium transition-all active:scale-95"
                     style={{
                       background: activeTab === tab.id
                         ? 'color-mix(in oklch, var(--primary) 15%, transparent)'
@@ -715,7 +718,8 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
                     }}
                   >
                     {tab.icon}
-                    {tab.label}
+                    <span className="hidden xs:inline sm:inline">{tab.label}</span>
+                    <span className="xs:hidden sm:hidden">{tab.label.slice(0, 4)}</span>
                     {tab.id === 'history' && versionCount > 0 && (
                       <span
                         className="flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold"
@@ -730,29 +734,30 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
 
               {/* Save bar */}
               {activeTab !== 'history' && activeTab !== 'backup' && (
-                <div className="mb-6 flex flex-wrap items-center gap-3 rounded-2xl border p-4" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
+                <div className="mb-4 sm:mb-6 flex flex-wrap items-center gap-2 sm:gap-3 rounded-2xl border p-3 sm:p-4" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium">Save changes</p>
-                    <p className="text-xs truncate" style={{ color: 'var(--muted-foreground)' }}>
+                    <p className="text-xs sm:text-sm font-medium">Save changes</p>
+                    <p className="text-[10px] sm:text-xs truncate" style={{ color: 'var(--muted-foreground)' }}>
                       {content && content.updatedAt !== new Date(0).toISOString()
                         ? `Last updated ${new Date(content.updatedAt).toLocaleString()}`
                         : 'Using default content (no edits yet)'}
                     </p>
                   </div>
                   {saveError && (
-                    <p className="text-xs" style={{ color: 'var(--destructive)' }}>{saveError}</p>
+                    <p className="text-[10px] sm:text-xs" style={{ color: 'var(--destructive)' }}>{saveError}</p>
                   )}
                   <button
                     onClick={saveCurrentTab}
                     disabled={saving}
-                    className="flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-all duration-200 disabled:opacity-60"
+                    className="flex items-center gap-2 rounded-xl px-3 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm font-medium transition-all duration-200 disabled:opacity-60 active:scale-95"
                     style={{ background: 'var(--primary)', color: 'var(--primary-foreground)' }}
                   >
                     {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                    {saving ? 'Saving...' : 'Save changes'}
+                    <span className="hidden sm:inline">{saving ? 'Saving...' : 'Save changes'}</span>
+                    <span className="sm:hidden">{saving ? 'Saving' : 'Save'}</span>
                   </button>
                   {saved && (
-                    <span className="flex items-center gap-1.5 text-xs font-medium" style={{ color: 'oklch(0.75 0.18 150)' }}>
+                    <span className="flex items-center gap-1.5 text-[10px] sm:text-xs font-medium" style={{ color: 'oklch(0.75 0.18 150)' }}>
                       <Check className="h-3.5 w-3.5" /> Saved
                     </span>
                   )}
@@ -785,18 +790,18 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
               )}
 
               {activeTab === 'history' && (
-                <div className="space-y-4">
+                <div className="space-y-3 sm:space-y-4">
                   <div
-                    className="flex items-start gap-3 rounded-2xl border p-4"
+                    className="flex items-start gap-2 sm:gap-3 rounded-2xl border p-3 sm:p-4"
                     style={{
                       background: 'color-mix(in oklch, var(--primary) 8%, transparent)',
                       borderColor: 'color-mix(in oklch, var(--primary) 20%, transparent)',
                     }}
                   >
-                    <History className="h-5 w-5 shrink-0" style={{ color: 'var(--primary)' }} />
-                    <div className="text-sm">
+                    <History className="h-4 w-4 sm:h-5 sm:w-5 shrink-0 mt-0.5" style={{ color: 'var(--primary)' }} />
+                    <div className="text-xs sm:text-sm">
                       <p className="font-medium">Version History</p>
-                      <p className="mt-0.5 text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                      <p className="mt-0.5 text-[10px] sm:text-xs" style={{ color: 'var(--muted-foreground)' }}>
                         Every save creates a snapshot. Roll back, rename, or delete versions.
                         {versionCount > 0 && ` ${versionCount} versions available.`}
                       </p>
@@ -813,18 +818,18 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
               )}
 
               {activeTab === 'backup' && (
-                <div className="space-y-4">
+                <div className="space-y-3 sm:space-y-4">
                   <div
-                    className="flex items-start gap-3 rounded-2xl border p-4"
+                    className="flex items-start gap-2 sm:gap-3 rounded-2xl border p-3 sm:p-4"
                     style={{
                       background: 'color-mix(in oklch, var(--primary) 8%, transparent)',
                       borderColor: 'color-mix(in oklch, var(--primary) 20%, transparent)',
                     }}
                   >
-                    <Database className="h-5 w-5 shrink-0" style={{ color: 'var(--primary)' }} />
-                    <div className="text-sm">
+                    <Database className="h-4 w-4 sm:h-5 sm:w-5 shrink-0 mt-0.5" style={{ color: 'var(--primary)' }} />
+                    <div className="text-xs sm:text-sm">
                       <p className="font-medium">Backup & Export</p>
-                      <p className="mt-0.5 text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                      <p className="mt-0.5 text-[10px] sm:text-xs" style={{ color: 'var(--muted-foreground)' }}>
                         Download a complete JSON backup of all site data including image metadata, or import a previously
                         exported backup to restore your content.
                       </p>
@@ -912,23 +917,24 @@ function ProjectsTab({
   }
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between mb-4">
-        <p className="text-sm font-medium">{projects.length} projects</p>
+    <div className="space-y-2 sm:space-y-3">
+      <div className="flex items-center justify-between mb-3 sm:mb-4">
+        <p className="text-xs sm:text-sm font-medium">{projects.length} projects</p>
         <button
           onClick={addProject}
-          className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium transition-all"
+          className="flex items-center gap-1.5 sm:gap-2 rounded-xl px-3 py-2 text-xs sm:text-sm font-medium transition-all active:scale-95"
           style={{ background: 'var(--primary)', color: 'var(--primary-foreground)' }}
         >
           <Plus className="h-3.5 w-3.5" />
-          Add project
+          <span className="hidden sm:inline">Add project</span>
+          <span className="sm:hidden">Add</span>
         </button>
       </div>
 
       {projects.map((project, index) => (
         <div
           key={`${project.number}-${project.name}-${index}`}
-          className="group flex items-center gap-2 sm:gap-3 rounded-xl border p-3 sm:p-4 transition-all"
+          className="group flex items-center gap-2 sm:gap-3 rounded-xl border p-2.5 sm:p-4 transition-all"
           style={{
             background: 'var(--card)',
             borderColor: draggedIndex === index ? 'var(--primary)' : 'var(--border)',
@@ -945,27 +951,29 @@ function ProjectsTab({
             }
           }}
         >
-          <div className="flex flex-col gap-1 shrink-0">
+          <div className="flex flex-col gap-0.5 sm:gap-1 shrink-0">
             <button
               onClick={() => moveProject(index, index - 1)}
               disabled={index === 0}
-              className="rounded-lg p-1 transition-colors hover:bg-[var(--muted)] disabled:opacity-30"
+              className="rounded-lg p-1 sm:p-1.5 transition-colors hover:bg-[var(--muted)] active:bg-[var(--muted)] disabled:opacity-30"
               style={{ color: 'var(--muted-foreground)' }}
+              aria-label="Move up"
             >
               <ChevronUp className="h-3.5 w-3.5" />
             </button>
             <button
               onClick={() => moveProject(index, index + 1)}
               disabled={index === projects.length - 1}
-              className="rounded-lg p-1 transition-colors hover:bg-[var(--muted)] disabled:opacity-30"
+              className="rounded-lg p-1 sm:p-1.5 transition-colors hover:bg-[var(--muted)] active:bg-[var(--muted)] disabled:opacity-30"
               style={{ color: 'var(--muted-foreground)' }}
+              aria-label="Move down"
             >
               <ChevronDown className="h-3.5 w-3.5" />
             </button>
           </div>
 
           <div
-            className="flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-xl text-sm font-bold"
+            className="flex h-8 w-8 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-xl text-xs sm:text-sm font-bold"
             style={{
               background: 'color-mix(in oklch, var(--primary) 15%, transparent)',
               color: 'var(--primary)',
@@ -982,26 +990,28 @@ function ProjectsTab({
           )}
 
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold">{project.name}</p>
-            <p className="truncate text-xs" style={{ color: 'var(--muted-foreground)' }}>
-              {project.year} · {project.categories.join(', ')} · {project.images.length} images
+            <p className="truncate text-xs sm:text-sm font-semibold">{project.name}</p>
+            <p className="truncate text-[10px] sm:text-xs" style={{ color: 'var(--muted-foreground)' }}>
+              {project.year} · {project.categories.join(', ')} · {project.images.length} img
             </p>
           </div>
 
-          <div className="flex shrink-0 gap-1 opacity-100 sm:opacity-0 transition-opacity sm:group-hover:opacity-100">
+          <div className="flex shrink-0 gap-0.5 sm:gap-1">
             <button
               onClick={() => onEdit(project, index)}
-              className="rounded-lg p-2 transition-colors hover:bg-[var(--muted)]"
+              className="rounded-lg p-1.5 sm:p-2 transition-colors hover:bg-[var(--muted)] active:bg-[var(--muted)]"
               style={{ color: 'var(--muted-foreground)' }}
               title="Edit project"
+              aria-label="Edit project"
             >
               <Edit3 className="h-3.5 w-3.5" />
             </button>
             <button
               onClick={() => removeProject(index)}
-              className="rounded-lg p-2 transition-colors hover:text-[var(--destructive)]"
+              className="rounded-lg p-1.5 sm:p-2 transition-colors hover:text-[var(--destructive)] active:text-[var(--destructive)]"
               style={{ color: 'var(--muted-foreground)' }}
               title="Remove project"
+              aria-label="Remove project"
             >
               <Trash2 className="h-3.5 w-3.5" />
             </button>
@@ -1047,40 +1057,43 @@ function TimelineTab({
   }
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between mb-4">
-        <p className="text-sm font-medium">{timeline.length} entries</p>
+    <div className="space-y-2 sm:space-y-3">
+      <div className="flex items-center justify-between mb-3 sm:mb-4">
+        <p className="text-xs sm:text-sm font-medium">{timeline.length} entries</p>
         <button
           onClick={addEntry}
-          className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium transition-all"
+          className="flex items-center gap-1.5 sm:gap-2 rounded-xl px-3 py-2 text-xs sm:text-sm font-medium transition-all active:scale-95"
           style={{ background: 'var(--primary)', color: 'var(--primary-foreground)' }}
         >
           <Plus className="h-3.5 w-3.5" />
-          Add entry
+          <span className="hidden sm:inline">Add entry</span>
+          <span className="sm:hidden">Add</span>
         </button>
       </div>
 
       {timeline.map((entry, index) => (
         <div
           key={index}
-          className="rounded-xl border p-3 sm:p-4"
+          className="rounded-xl border p-2.5 sm:p-4"
           style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
         >
-          <div className="mb-3 flex flex-wrap items-center gap-2">
-            <div className="flex gap-1">
+          <div className="mb-2 sm:mb-3 flex flex-wrap items-center gap-1.5 sm:gap-2">
+            <div className="flex gap-0.5 sm:gap-1">
               <button
                 onClick={() => moveEntry(index, index - 1)}
                 disabled={index === 0}
-                className="rounded-lg p-1 transition-colors hover:bg-[var(--muted)] disabled:opacity-30"
+                className="rounded-lg p-1 sm:p-1.5 transition-colors hover:bg-[var(--muted)] active:bg-[var(--muted)] disabled:opacity-30"
                 style={{ color: 'var(--muted-foreground)' }}
+                aria-label="Move up"
               >
                 <ChevronUp className="h-3.5 w-3.5" />
               </button>
               <button
                 onClick={() => moveEntry(index, index + 1)}
                 disabled={index === timeline.length - 1}
-                className="rounded-lg p-1 transition-colors hover:bg-[var(--muted)] disabled:opacity-30"
+                className="rounded-lg p-1 sm:p-1.5 transition-colors hover:bg-[var(--muted)] active:bg-[var(--muted)] disabled:opacity-30"
                 style={{ color: 'var(--muted-foreground)' }}
+                aria-label="Move down"
               >
                 <ChevronDown className="h-3.5 w-3.5" />
               </button>
@@ -1089,13 +1102,14 @@ function TimelineTab({
               type="text"
               value={entry.year}
               onChange={e => updateEntry(index, 'year', e.target.value)}
-              className="w-20 sm:w-24 rounded-lg border px-3 py-1.5 text-sm font-medium outline-none focus:border-[var(--primary)]"
+              className="w-16 sm:w-24 rounded-lg border px-2 sm:px-3 py-1.5 text-xs sm:text-sm font-medium outline-none focus:border-[var(--primary)]"
               style={inputStyle}
             />
             <button
               onClick={() => removeEntry(index)}
-              className="ml-auto rounded-lg p-1.5 transition-colors hover:text-[var(--destructive)]"
+              className="ml-auto rounded-lg p-1.5 transition-colors hover:text-[var(--destructive)] active:text-[var(--destructive)]"
               style={{ color: 'var(--muted-foreground)' }}
+              aria-label="Remove entry"
             >
               <Trash2 className="h-3.5 w-3.5" />
             </button>
@@ -1105,7 +1119,7 @@ function TimelineTab({
             value={entry.title}
             onChange={e => updateEntry(index, 'title', e.target.value)}
             placeholder="Title"
-            className="mb-2 w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-[var(--primary)]"
+            className="mb-2 w-full rounded-lg border px-3 py-2 text-xs sm:text-sm outline-none focus:border-[var(--primary)]"
             style={inputStyle}
           />
           <input
@@ -1113,7 +1127,7 @@ function TimelineTab({
             value={entry.subtitle}
             onChange={e => updateEntry(index, 'subtitle', e.target.value)}
             placeholder="Subtitle"
-            className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-[var(--primary)]"
+            className="w-full rounded-lg border px-3 py-2 text-xs sm:text-sm outline-none focus:border-[var(--primary)]"
             style={inputStyle}
           />
         </div>
@@ -1164,14 +1178,14 @@ function AboutTab({
   }
 
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+    <div className="space-y-5 sm:space-y-6">
+      <div className="grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-2">
         <Field label="College">
           <input
             type="text"
             value={about.college}
             onChange={e => updateField('college', e.target.value)}
-            className="mt-1.5 w-full rounded-xl border px-3 py-2 text-sm outline-none focus:border-[var(--primary)]"
+            className="mt-1.5 w-full rounded-xl border px-3 py-2 text-xs sm:text-sm outline-none focus:border-[var(--primary)]"
             style={inputStyle}
           />
         </Field>
@@ -1180,7 +1194,7 @@ function AboutTab({
             type="text"
             value={about.currentYear}
             onChange={e => updateField('currentYear', e.target.value)}
-            className="mt-1.5 w-full rounded-xl border px-3 py-2 text-sm outline-none focus:border-[var(--primary)]"
+            className="mt-1.5 w-full rounded-xl border px-3 py-2 text-xs sm:text-sm outline-none focus:border-[var(--primary)]"
             style={inputStyle}
           />
         </Field>
@@ -1188,10 +1202,10 @@ function AboutTab({
 
       <div>
         <div className="mb-2 flex items-center justify-between">
-          <p className="text-sm font-medium">Paragraphs</p>
+          <p className="text-xs sm:text-sm font-medium">Paragraphs</p>
           <button
             onClick={addParagraph}
-            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium"
+            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all active:scale-95"
             style={{ background: 'var(--muted)', color: 'var(--muted-foreground)' }}
           >
             <Plus className="h-3 w-3" /> Add
@@ -1199,18 +1213,19 @@ function AboutTab({
         </div>
         <div className="space-y-2">
           {about.paragraphs.map((para, index) => (
-            <div key={index} className="flex items-start gap-2">
+            <div key={index} className="flex items-start gap-1.5 sm:gap-2">
               <textarea
                 value={para}
                 onChange={e => updateParagraph(index, e.target.value)}
                 rows={3}
-                className="flex-1 resize-none rounded-xl border px-3 py-2 text-sm outline-none focus:border-[var(--primary)]"
+                className="flex-1 resize-none rounded-xl border px-3 py-2 text-xs sm:text-sm outline-none focus:border-[var(--primary)]"
                 style={inputStyle}
               />
               <button
                 onClick={() => removeParagraph(index)}
-                className="mt-1 rounded-lg p-1.5 transition-colors hover:text-[var(--destructive)]"
+                className="mt-1 rounded-lg p-1.5 transition-colors hover:text-[var(--destructive)] active:text-[var(--destructive)] shrink-0"
                 style={{ color: 'var(--muted-foreground)' }}
+                aria-label="Remove paragraph"
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
@@ -1221,10 +1236,10 @@ function AboutTab({
 
       <div>
         <div className="mb-2 flex items-center justify-between">
-          <p className="text-sm font-medium">Interests</p>
+          <p className="text-xs sm:text-sm font-medium">Interests</p>
           <button
             onClick={addInterest}
-            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium"
+            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all active:scale-95"
             style={{ background: 'var(--muted)', color: 'var(--muted-foreground)' }}
           >
             <Plus className="h-3 w-3" /> Add
@@ -1232,18 +1247,19 @@ function AboutTab({
         </div>
         <div className="space-y-2">
           {about.interests.map((interest, index) => (
-            <div key={index} className="flex items-center gap-2">
+            <div key={index} className="flex items-center gap-1.5 sm:gap-2">
               <input
                 type="text"
                 value={interest}
                 onChange={e => updateInterest(index, e.target.value)}
-                className="flex-1 rounded-xl border px-3 py-2 text-sm outline-none focus:border-[var(--primary)]"
+                className="flex-1 rounded-xl border px-3 py-2 text-xs sm:text-sm outline-none focus:border-[var(--primary)] min-w-0"
                 style={inputStyle}
               />
               <button
                 onClick={() => removeInterest(index)}
-                className="rounded-lg p-1.5 transition-colors hover:text-[var(--destructive)]"
+                className="rounded-lg p-1.5 transition-colors hover:text-[var(--destructive)] active:text-[var(--destructive)] shrink-0"
                 style={{ color: 'var(--muted-foreground)' }}
+                aria-label="Remove interest"
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
@@ -1297,37 +1313,39 @@ function SkillsTab({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between mb-4">
-        <p className="text-sm font-medium">{skillGroups.length} groups</p>
+    <div className="space-y-3 sm:space-y-4">
+      <div className="flex items-center justify-between mb-3 sm:mb-4">
+        <p className="text-xs sm:text-sm font-medium">{skillGroups.length} groups</p>
         <button
           onClick={addGroup}
-          className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium transition-all"
+          className="flex items-center gap-1.5 sm:gap-2 rounded-xl px-3 py-2 text-xs sm:text-sm font-medium transition-all active:scale-95"
           style={{ background: 'var(--primary)', color: 'var(--primary-foreground)' }}
         >
           <Plus className="h-3.5 w-3.5" />
-          Add group
+          <span className="hidden sm:inline">Add group</span>
+          <span className="sm:hidden">Add</span>
         </button>
       </div>
 
       {skillGroups.map((group, groupIndex) => (
         <div
           key={groupIndex}
-          className="rounded-xl border p-3 sm:p-4"
+          className="rounded-xl border p-2.5 sm:p-4"
           style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
         >
-          <div className="mb-3 flex items-center gap-2">
+          <div className="mb-2 sm:mb-3 flex items-center gap-1.5 sm:gap-2">
             <input
               type="text"
               value={group.category}
               onChange={e => updateGroupCategory(groupIndex, e.target.value)}
-              className="flex-1 rounded-lg border px-3 py-2 text-sm font-semibold outline-none focus:border-[var(--primary)]"
+              className="flex-1 rounded-lg border px-3 py-2 text-xs sm:text-sm font-semibold outline-none focus:border-[var(--primary)] min-w-0"
               style={inputStyle}
             />
             <button
               onClick={() => removeGroup(groupIndex)}
-              className="rounded-lg p-1.5 transition-colors hover:text-[var(--destructive)]"
+              className="rounded-lg p-1.5 transition-colors hover:text-[var(--destructive)] active:text-[var(--destructive)] shrink-0"
               style={{ color: 'var(--muted-foreground)' }}
+              aria-label="Remove group"
             >
               <Trash2 className="h-3.5 w-3.5" />
             </button>
@@ -1335,18 +1353,19 @@ function SkillsTab({
 
           <div className="space-y-2">
             {group.items.map((item, itemIndex) => (
-              <div key={itemIndex} className="flex items-center gap-2">
+              <div key={itemIndex} className="flex items-center gap-1.5 sm:gap-2">
                 <input
                   type="text"
                   value={item}
                   onChange={e => updateGroupItem(groupIndex, itemIndex, e.target.value)}
-                  className="flex-1 rounded-lg border px-3 py-1.5 text-sm outline-none focus:border-[var(--primary)]"
+                  className="flex-1 rounded-lg border px-3 py-1.5 text-xs sm:text-sm outline-none focus:border-[var(--primary)] min-w-0"
                   style={inputStyle}
                 />
                 <button
                   onClick={() => removeItem(groupIndex, itemIndex)}
-                  className="rounded-lg p-1.5 transition-colors hover:text-[var(--destructive)]"
+                  className="rounded-lg p-1.5 transition-colors hover:text-[var(--destructive)] active:text-[var(--destructive)] shrink-0"
                   style={{ color: 'var(--muted-foreground)' }}
+                  aria-label="Remove skill"
                 >
                   <Trash2 className="h-3 w-3" />
                 </button>
@@ -1354,7 +1373,7 @@ function SkillsTab({
             ))}
             <button
               onClick={() => addItem(groupIndex)}
-              className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium"
+              className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all active:scale-95"
               style={{ background: 'var(--muted)', color: 'var(--muted-foreground)' }}
             >
               <Plus className="h-3 w-3" /> Add skill
@@ -1399,19 +1418,25 @@ function ProjectEditorModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+      {/* Backdrop */}
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
 
+      {/* Modal container - bottom sheet on mobile, centered on desktop */}
       <div
-        className="admin-modal-mobile relative z-10 flex w-full max-w-3xl flex-col rounded-2xl border shadow-2xl"
-        style={{ background: 'var(--card)', borderColor: 'var(--border)', maxHeight: 'calc(100dvh - 1rem)' }}
+        className="admin-modal-mobile relative z-10 flex w-full max-w-3xl flex-col rounded-t-2xl sm:rounded-2xl border shadow-2xl"
+        style={{ 
+          background: 'var(--card)', 
+          borderColor: 'var(--border)', 
+          maxHeight: 'calc(100dvh - 2rem)',
+        }}
       >
         {/* Header */}
         <div
           className="flex shrink-0 items-center gap-3 border-b px-4 sm:px-5 py-3 sm:py-4"
           style={{ borderColor: 'var(--border)' }}
         >
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold truncate">Edit Project</p>
             <p className="text-xs truncate" style={{ color: 'var(--muted-foreground)' }}>
               {draft.number} · {draft.name}
@@ -1419,20 +1444,24 @@ function ProjectEditorModal({
           </div>
           <button
             onClick={onClose}
-            className="ml-auto shrink-0 rounded-lg p-2 transition-colors hover:bg-[var(--muted)]"
+            className="shrink-0 rounded-lg p-2 transition-colors hover:bg-[var(--muted)] active:bg-[var(--muted)]"
             style={{ color: 'var(--muted-foreground)' }}
+            aria-label="Close modal"
           >
-            <X className="h-4 w-4" />
+            <X className="h-4 w-4 sm:h-5 sm:w-5" />
           </button>
         </div>
 
-        {/* Section tabs */}
-        <div className="flex shrink-0 gap-1 border-b px-3 sm:px-4 py-2 overflow-x-auto" style={{ borderColor: 'var(--border)' }}>
+        {/* Section tabs - horizontally scrollable on mobile */}
+        <div 
+          className="flex shrink-0 gap-1 border-b px-3 sm:px-4 py-2 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden" 
+          style={{ borderColor: 'var(--border)' }}
+        >
           {(['basic', 'features', 'stack', 'images'] as const).map(section => (
             <button
               key={section}
               onClick={() => setActiveSection(section)}
-              className="shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium capitalize transition-all"
+              className="shrink-0 rounded-lg px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium capitalize transition-all active:scale-95"
               style={{
                 background: activeSection === section
                   ? 'color-mix(in oklch, var(--primary) 15%, transparent)'
@@ -1450,17 +1479,17 @@ function ProjectEditorModal({
           ))}
         </div>
 
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto px-4 sm:px-5 py-4">
+        {/* Body - scrollable */}
+        <div className="flex-1 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4" style={{ minHeight: 0 }}>
           {activeSection === 'basic' && (
             <div className="space-y-4">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <div className="grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-3">
                 <Field label="Number">
                   <input
                     type="text"
                     value={draft.number}
                     onChange={e => updateField('number', e.target.value)}
-                    className="mt-1.5 w-full rounded-xl border px-3 py-2 text-sm outline-none focus:border-[var(--primary)]"
+                    className="mt-1.5 w-full rounded-xl border px-3 py-2 text-xs sm:text-sm outline-none focus:border-[var(--primary)]"
                     style={inputStyle}
                   />
                 </Field>
@@ -1469,7 +1498,7 @@ function ProjectEditorModal({
                     type="text"
                     value={draft.name}
                     onChange={e => updateField('name', e.target.value)}
-                    className="mt-1.5 w-full rounded-xl border px-3 py-2 text-sm outline-none focus:border-[var(--primary)]"
+                    className="mt-1.5 w-full rounded-xl border px-3 py-2 text-xs sm:text-sm outline-none focus:border-[var(--primary)]"
                     style={inputStyle}
                   />
                 </Field>
@@ -1478,19 +1507,19 @@ function ProjectEditorModal({
                     type="text"
                     value={draft.mark}
                     onChange={e => updateField('mark', e.target.value)}
-                    className="mt-1.5 w-full rounded-xl border px-3 py-2 text-sm outline-none focus:border-[var(--primary)]"
+                    className="mt-1.5 w-full rounded-xl border px-3 py-2 text-xs sm:text-sm outline-none focus:border-[var(--primary)]"
                     style={inputStyle}
                   />
                 </Field>
               </div>
 
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-2">
                 <Field label="Year">
                   <input
                     type="text"
                     value={draft.year}
                     onChange={e => updateField('year', e.target.value)}
-                    className="mt-1.5 w-full rounded-xl border px-3 py-2 text-sm outline-none focus:border-[var(--primary)]"
+                    className="mt-1.5 w-full rounded-xl border px-3 py-2 text-xs sm:text-sm outline-none focus:border-[var(--primary)]"
                     style={inputStyle}
                   />
                 </Field>
@@ -1499,7 +1528,7 @@ function ProjectEditorModal({
                     type="text"
                     value={draft.theme}
                     onChange={e => updateField('theme', e.target.value)}
-                    className="mt-1.5 w-full rounded-xl border px-3 py-2 text-sm outline-none focus:border-[var(--primary)]"
+                    className="mt-1.5 w-full rounded-xl border px-3 py-2 text-xs sm:text-sm outline-none focus:border-[var(--primary)]"
                     style={inputStyle}
                   />
                 </Field>
@@ -1510,7 +1539,7 @@ function ProjectEditorModal({
                   value={draft.short}
                   onChange={e => updateField('short', e.target.value)}
                   rows={3}
-                  className="mt-1.5 w-full resize-none rounded-xl border px-3 py-2 text-sm outline-none focus:border-[var(--primary)]"
+                  className="mt-1.5 w-full resize-none rounded-xl border px-3 py-2 text-xs sm:text-sm outline-none focus:border-[var(--primary)]"
                   style={inputStyle}
                 />
               </Field>
@@ -1520,7 +1549,7 @@ function ProjectEditorModal({
                   value={draft.problem}
                   onChange={e => updateField('problem', e.target.value)}
                   rows={3}
-                  className="mt-1.5 w-full resize-none rounded-xl border px-3 py-2 text-sm outline-none focus:border-[var(--primary)]"
+                  className="mt-1.5 w-full resize-none rounded-xl border px-3 py-2 text-xs sm:text-sm outline-none focus:border-[var(--primary)]"
                   style={inputStyle}
                 />
               </Field>
@@ -1530,7 +1559,7 @@ function ProjectEditorModal({
                   value={draft.challenges}
                   onChange={e => updateField('challenges', e.target.value)}
                   rows={3}
-                  className="mt-1.5 w-full resize-none rounded-xl border px-3 py-2 text-sm outline-none focus:border-[var(--primary)]"
+                  className="mt-1.5 w-full resize-none rounded-xl border px-3 py-2 text-xs sm:text-sm outline-none focus:border-[var(--primary)]"
                   style={inputStyle}
                 />
               </Field>
@@ -1540,12 +1569,12 @@ function ProjectEditorModal({
                   type="text"
                   value={draft.metrics}
                   onChange={e => updateField('metrics', e.target.value)}
-                  className="mt-1.5 w-full rounded-xl border px-3 py-2 text-sm outline-none focus:border-[var(--primary)]"
+                  className="mt-1.5 w-full rounded-xl border px-3 py-2 text-xs sm:text-sm outline-none focus:border-[var(--primary)]"
                   style={inputStyle}
                 />
               </Field>
 
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-2">
                 <Field label="Live URL">
                   <div className="mt-1.5 flex items-center gap-2">
                     <Link2 className="h-4 w-4 shrink-0" style={{ color: 'var(--muted-foreground)' }} />
@@ -1553,7 +1582,7 @@ function ProjectEditorModal({
                       type="url"
                       value={draft.live}
                       onChange={e => updateField('live', e.target.value)}
-                      className="w-full rounded-xl border px-3 py-2 text-sm outline-none focus:border-[var(--primary)]"
+                      className="w-full rounded-xl border px-3 py-2 text-xs sm:text-sm outline-none focus:border-[var(--primary)] min-w-0"
                       style={inputStyle}
                     />
                   </div>
@@ -1565,7 +1594,7 @@ function ProjectEditorModal({
                       type="url"
                       value={draft.github}
                       onChange={e => updateField('github', e.target.value)}
-                      className="w-full rounded-xl border px-3 py-2 text-sm outline-none focus:border-[var(--primary)]"
+                      className="w-full rounded-xl border px-3 py-2 text-xs sm:text-sm outline-none focus:border-[var(--primary)] min-w-0"
                       style={inputStyle}
                     />
                   </div>
@@ -1577,28 +1606,29 @@ function ProjectEditorModal({
           {activeSection === 'features' && (
             <div className="space-y-2">
               <div className="mb-2 flex items-center justify-between">
-                <p className="text-sm font-medium">Features</p>
+                <p className="text-xs sm:text-sm font-medium">Features</p>
                 <button
                   onClick={() => addArrayItem('features')}
-                  className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium"
+                  className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all active:scale-95"
                   style={{ background: 'var(--muted)', color: 'var(--muted-foreground)' }}
                 >
                   <Plus className="h-3 w-3" /> Add
                 </button>
               </div>
               {draft.features.map((feature, index) => (
-                <div key={index} className="flex items-center gap-2">
+                <div key={index} className="flex items-center gap-1.5 sm:gap-2">
                   <input
                     type="text"
                     value={feature}
                     onChange={e => updateArrayItem('features', index, e.target.value)}
-                    className="flex-1 rounded-xl border px-3 py-2 text-sm outline-none focus:border-[var(--primary)]"
+                    className="flex-1 rounded-xl border px-3 py-2 text-xs sm:text-sm outline-none focus:border-[var(--primary)] min-w-0"
                     style={inputStyle}
                   />
                   <button
                     onClick={() => removeArrayItem('features', index)}
-                    className="rounded-lg p-1.5 transition-colors hover:text-[var(--destructive)]"
+                    className="rounded-lg p-1.5 transition-colors hover:text-[var(--destructive)] active:text-[var(--destructive)] shrink-0"
                     style={{ color: 'var(--muted-foreground)' }}
+                    aria-label="Remove feature"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
@@ -1610,28 +1640,29 @@ function ProjectEditorModal({
           {activeSection === 'stack' && (
             <div className="space-y-2">
               <div className="mb-2 flex items-center justify-between">
-                <p className="text-sm font-medium">Stack</p>
+                <p className="text-xs sm:text-sm font-medium">Stack</p>
                 <button
                   onClick={() => addArrayItem('stack')}
-                  className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium"
+                  className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all active:scale-95"
                   style={{ background: 'var(--muted)', color: 'var(--muted-foreground)' }}
                 >
                   <Plus className="h-3 w-3" /> Add
                 </button>
               </div>
               {draft.stack.map((tech, index) => (
-                <div key={index} className="flex items-center gap-2">
+                <div key={index} className="flex items-center gap-1.5 sm:gap-2">
                   <input
                     type="text"
                     value={tech}
                     onChange={e => updateArrayItem('stack', index, e.target.value)}
-                    className="flex-1 rounded-xl border px-3 py-2 text-sm outline-none focus:border-[var(--primary)]"
+                    className="flex-1 rounded-xl border px-3 py-2 text-xs sm:text-sm outline-none focus:border-[var(--primary)] min-w-0"
                     style={inputStyle}
                   />
                   <button
                     onClick={() => removeArrayItem('stack', index)}
-                    className="rounded-lg p-1.5 transition-colors hover:text-[var(--destructive)]"
+                    className="rounded-lg p-1.5 transition-colors hover:text-[var(--destructive)] active:text-[var(--destructive)] shrink-0"
                     style={{ color: 'var(--muted-foreground)' }}
+                    aria-label="Remove stack item"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
@@ -1641,13 +1672,16 @@ function ProjectEditorModal({
           )}
 
           {activeSection === 'images' && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-medium">
+            <div className="space-y-4 pb-2">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-2">
+                <p className="text-xs sm:text-sm font-medium">
                   Project Images ({draft.images.length})
                 </p>
-                <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                <span className="text-[10px] sm:text-xs hidden sm:inline" style={{ color: 'var(--muted-foreground)' }}>
                   Drag to reorder, hover to manage
+                </span>
+                <span className="text-[10px] sm:text-xs sm:hidden" style={{ color: 'var(--muted-foreground)' }}>
+                  Tap image for options
                 </span>
               </div>
 
@@ -1666,25 +1700,26 @@ function ProjectEditorModal({
               />
 
               {/* Manual URL entry for any URL type */}
-              <div className="rounded-xl border p-4" style={{ borderColor: 'var(--border)' }}>
-                <p className="text-xs font-medium mb-2" style={{ color: 'var(--muted-foreground)' }}>
+              <div className="rounded-xl border p-3 sm:p-4" style={{ borderColor: 'var(--border)' }}>
+                <p className="text-[10px] sm:text-xs font-medium mb-2" style={{ color: 'var(--muted-foreground)' }}>
                   Add image URLs manually — supports any URL (Google Drive, external links, local paths)
                 </p>
                 <div className="space-y-2">
                   {draft.images.map((image, index) => (
-                    <div key={index} className="flex items-center gap-2">
+                    <div key={index} className="flex items-center gap-1.5 sm:gap-2">
                       <input
                         type="text"
                         value={image}
                         onChange={(e) => updateArrayItem('images', index, e.target.value)}
-                        placeholder="Any URL or path — https://drive.google.com/..., /path/to/image.png, etc."
-                        className="flex-1 rounded-xl border px-3 py-2 text-sm outline-none focus:border-[var(--primary)]"
+                        placeholder="Any URL or path"
+                        className="flex-1 rounded-xl border px-3 py-2 text-xs sm:text-sm outline-none focus:border-[var(--primary)] min-w-0"
                         style={inputStyle}
                       />
                       <button
                         onClick={() => removeArrayItem('images', index)}
-                        className="rounded-lg p-1.5 transition-colors hover:text-[var(--destructive)]"
+                        className="shrink-0 rounded-lg p-2 transition-colors hover:text-[var(--destructive)] active:text-[var(--destructive)]"
                         style={{ color: 'var(--muted-foreground)' }}
+                        aria-label="Remove image URL"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
@@ -1692,7 +1727,7 @@ function ProjectEditorModal({
                   ))}
                   <button
                     onClick={() => addArrayItem('images')}
-                    className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium"
+                    className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition-all active:scale-95"
                     style={{ background: 'var(--muted)', color: 'var(--muted-foreground)' }}
                   >
                     <Plus className="h-3 w-3" /> Add URL
@@ -1703,21 +1738,24 @@ function ProjectEditorModal({
           )}
         </div>
 
-        {/* Footer */}
+        {/* Footer - sticky with safe-area padding */}
         <div
-          className="flex shrink-0 items-center gap-3 border-t px-4 sm:px-5 py-3 sm:py-4"
-          style={{ borderColor: 'var(--border)' }}
+          className="flex shrink-0 items-center gap-2 sm:gap-3 border-t px-3 sm:px-5 py-3 sm:py-4"
+          style={{ 
+            borderColor: 'var(--border)',
+            paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))',
+          }}
         >
           <button
             onClick={onClose}
-            className="rounded-xl border px-4 py-2 text-sm font-medium transition-all"
+            className="flex-1 sm:flex-none rounded-xl border px-4 py-2.5 text-xs sm:text-sm font-medium transition-all active:scale-95"
             style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
           >
             Cancel
           </button>
           <button
             onClick={() => onSave(draft)}
-            className="flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-all ml-auto"
+            className="flex flex-1 sm:flex-none items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs sm:text-sm font-medium transition-all active:scale-95"
             style={{ background: 'var(--primary)', color: 'var(--primary-foreground)' }}
           >
             <Save className="h-4 w-4" />
