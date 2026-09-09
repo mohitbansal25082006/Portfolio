@@ -5,7 +5,8 @@
  * ─────────────────────────────────────────────────────────────────────────────
  * Part 2.7 — Content Management System
  * Part 2.10 — Added Version History & Backup tabs
- * Updated — Fixed rollback, added rename and delete handlers
+ * Part 3 — Advanced Project Image Management Integration
+ * Updated — Removed max images limit, removed captions, any URL allowed
  * ---------------------------------------------------------------------------
  * Full-featured admin page for editing all portfolio content:
  *   • Projects — edit descriptions, links, stack, add/remove/reorder
@@ -15,11 +16,14 @@
  *   • History — view version history, rollback, rename, delete
  *   • Backup — export/import JSON backup
  *
- * Mobile fix (Part E):
- *   - Changed h-screen to admin-viewport-height for dynamic viewport support
- *   - Added safe-area padding for mobile
- *   - Project editor modal uses admin-modal-mobile for proper display
- *   - Improved responsive grid layouts for mobile
+ * Part 3 Updates:
+ *   • Advanced image manager with drag-and-drop upload
+ *   • Image preview grid with hover actions
+ *   • Orphaned image cleanup
+ *   • Image storage status indicators
+ *   • No maximum image limit
+ *   • Any URL type supported (Google Drive, external links, etc.)
+ *   • Full theme integration for all new components
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
@@ -31,7 +35,8 @@ import {
   BarChart2, AlertTriangle, Check, ShieldCheck, Save, RotateCcw,
   Plus, Trash2, ChevronUp, ChevronDown, Edit3, FolderKanban,
   Clock, User, Wrench, Eye, EyeOff, GripVertical, Link2,
-  History, Database, Download, Upload,
+  History, Database, Download, Upload, Image as ImageIcon,
+  HardDrive, Cloud, FolderOpen,
 } from 'lucide-react'
 import { themes } from '@/lib/content'
 import type {
@@ -39,6 +44,7 @@ import type {
 } from '@/lib/content-store'
 import VersionHistory from './version-history-client'
 import BackupClient from './backup-client'
+import { ProjectImageManager } from '@/components/project-image-manager'
 
 // ─── GitHub icon ────────────────────────────────────────────────────────
 
@@ -69,6 +75,7 @@ interface ContentStore {
   skillGroups: SkillGroup[]
   timeline: TimelineEntry[]
   updatedAt: string
+  imageMetadata?: Record<string, any>
 }
 
 interface ContentVersion {
@@ -78,6 +85,12 @@ interface ContentVersion {
   name: string
   note?: string
   changeCount?: number
+  imageStats?: {
+    totalImages: number
+    blobImages: number
+    localImages: number
+    totalSize: number
+  }
 }
 
 interface NavItem {
@@ -178,6 +191,12 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
   const [content, setContent] = useState<ContentStore | null>(null)
   const [redisConfigured, setRedisConfigured] = useState(true)
 
+  // Image storage status
+  const [imageStorage, setImageStorage] = useState<{
+    blobConfigured: boolean
+    redisConfigured: boolean
+  }>({ blobConfigured: false, redisConfigured: false })
+
   // Version history state
   const [versions, setVersions] = useState<ContentVersion[]>([])
   const [versionCount, setVersionCount] = useState(0)
@@ -197,6 +216,14 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
   const [editingProject, setEditingProject] = useState<ProjectContent | null>(null)
   const [projectIndex, setProjectIndex] = useState<number | null>(null)
   const [showProjectEditor, setShowProjectEditor] = useState(false)
+
+  // Image stats
+  const [imageUsageStats, setImageUsageStats] = useState<{
+    totalImagesTracked: number
+    imagesInCurrentContent: number
+    imagesOnlyInVersions: number
+    orphanedImages: number
+  } | null>(null)
 
   useEffect(() => {
     fetch('/api/admin/messages?filter=all')
@@ -219,7 +246,6 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
       setAbout(data.content.about)
       setSkillGroups(data.content.skillGroups)
       
-      // Load version info if available
       if (data.versions) {
         setVersions(data.versions.recent || [])
         setVersionCount(data.versions.totalCount || 0)
@@ -232,6 +258,41 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
   }, [])
 
   useEffect(() => { loadContent() }, [loadContent])
+
+  // Load image storage status
+  const loadImageStorage = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/project-images', { cache: 'no-store' })
+      if (!res.ok) return
+      const data = await res.json()
+      if (data.storage) {
+        setImageStorage(data.storage)
+      }
+    } catch (err) {
+      console.error('Failed to load image storage:', err)
+    }
+  }, [])
+
+  useEffect(() => { loadImageStorage() }, [loadImageStorage])
+
+  // Load image usage stats
+  const loadImageStats = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/backup', { 
+        method: 'PUT',
+        cache: 'no-store' 
+      })
+      if (!res.ok) return
+      const data = await res.json()
+      if (data.stats) {
+        setImageUsageStats(data.stats)
+      }
+    } catch (err) {
+      console.error('Failed to load image stats:', err)
+    }
+  }, [])
+
+  useEffect(() => { loadImageStats() }, [loadImageStats])
 
   const loadVersions = useCallback(async () => {
     try {
@@ -283,7 +344,6 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
       }
       setContent(data.content)
       
-      // Update version info from response
       if (data.versions) {
         setVersions(data.versions.recent || [])
         setVersionCount(data.versions.totalCount || 0)
@@ -292,8 +352,8 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
       setSaved(true)
       setTimeout(() => setSaved(false), 2500)
       
-      // Reload versions to get the new one
       await loadVersions()
+      await loadImageStats()
     } catch {
       setSaveError('Network error — please try again.')
     } finally {
@@ -311,9 +371,9 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
         throw new Error(data.error || 'Failed to rollback')
       }
       
-      // Reload content after rollback
       await loadContent()
       await loadVersions()
+      await loadImageStats()
       return true
     } catch (err) {
       console.error('Rollback failed:', err)
@@ -352,6 +412,7 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
       }
       
       await loadVersions()
+      await loadImageStats()
       return true
     } catch (err) {
       console.error('Delete failed:', err)
@@ -362,9 +423,29 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
   const handleImportComplete = async () => {
     await loadContent()
     await loadVersions()
+    await loadImageStorage()
+    await loadImageStats()
   }
 
-  // Canonical nav list — Visitors removed in Part 2.7
+  const handleCleanupOrphans = async () => {
+    try {
+      const res = await fetch('/api/admin/project-images/cleanup', {
+        method: 'POST',
+      })
+      const data = await res.json().catch(() => ({}))
+      if (res.ok) {
+        await loadImageStats()
+        alert(data.message || 'Cleanup complete')
+      } else {
+        alert(data.error || 'Cleanup failed')
+      }
+    } catch (err) {
+      console.error('Cleanup failed:', err)
+      alert('Cleanup failed')
+    }
+  }
+
+  // Canonical nav list
   const navItems: NavItem[] = [
     { icon: <LayoutDashboard className="h-4 w-4" />, label: 'Dashboard', href: '/admin/dashboard' },
     { icon: <MessageSquare className="h-4 w-4" />, label: 'Messages', href: '/admin/messages', badge: msgStats?.unread ?? 0 },
@@ -551,6 +632,7 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
             </p>
           </div>
 
+          {/* Storage warnings */}
           {!redisConfigured && (
             <div
               className="mb-6 flex items-start gap-3 rounded-2xl border p-4"
@@ -563,6 +645,45 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
                   No Upstash Redis (Vercel KV) connection was detected, so changes are only saved to a local file and won&apos;t survive a redeploy.
                 </p>
               </div>
+            </div>
+          )}
+
+          {/* Image storage warning */}
+          {!imageStorage.blobConfigured && (
+            <div
+              className="mb-6 flex items-start gap-3 rounded-2xl border p-4"
+              style={{ background: 'color-mix(in oklch, oklch(0.75 0.18 220) 12%, transparent)', borderColor: 'color-mix(in oklch, oklch(0.75 0.18 220) 35%, transparent)' }}
+            >
+              <Cloud className="h-5 w-5 shrink-0" style={{ color: 'oklch(0.75 0.18 220)' }} />
+              <div className="text-sm">
+                <p className="font-medium">Image storage isn&apos;t persistent</p>
+                <p className="mt-0.5 text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                  Vercel Blob isn&apos;t configured — uploaded images will only be saved locally and won&apos;t persist in production.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Orphaned images warning */}
+          {imageUsageStats && imageUsageStats.orphanedImages > 0 && (
+            <div
+              className="mb-6 flex items-start gap-3 rounded-2xl border p-4"
+              style={{ background: 'color-mix(in oklch, oklch(0.75 0.18 150) 12%, transparent)', borderColor: 'color-mix(in oklch, oklch(0.75 0.18 150) 35%, transparent)' }}
+            >
+              <ImageIcon className="h-5 w-5 shrink-0" style={{ color: 'oklch(0.75 0.18 150)' }} />
+              <div className="flex-1 text-sm">
+                <p className="font-medium">{imageUsageStats.orphanedImages} orphaned image(s) found</p>
+                <p className="mt-0.5 text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                  These images are not referenced by any project or version. You can safely clean them up to save storage space.
+                </p>
+              </div>
+              <button
+                onClick={handleCleanupOrphans}
+                className="shrink-0 rounded-xl px-3 py-2 text-xs font-medium transition-all"
+                style={{ background: 'oklch(0.75 0.18 150)', color: 'white' }}
+              >
+                Clean up
+              </button>
             </div>
           )}
 
@@ -607,7 +728,7 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
                 ))}
               </div>
 
-              {/* Save bar - only show for content tabs */}
+              {/* Save bar */}
               {activeTab !== 'history' && activeTab !== 'backup' && (
                 <div className="mb-6 flex flex-wrap items-center gap-3 rounded-2xl border p-4" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
                   <div className="flex-1 min-w-0">
@@ -704,7 +825,7 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
                     <div className="text-sm">
                       <p className="font-medium">Backup & Export</p>
                       <p className="mt-0.5 text-xs" style={{ color: 'var(--muted-foreground)' }}>
-                        Download a complete JSON backup of all site data, or import a previously
+                        Download a complete JSON backup of all site data including image metadata, or import a previously
                         exported backup to restore your content.
                       </p>
                     </div>
@@ -853,10 +974,17 @@ function ProjectsTab({
             {project.number}
           </div>
 
+          {/* Image thumbnail */}
+          {project.images.length > 0 && (
+            <div className="hidden sm:block h-10 w-14 shrink-0 overflow-hidden rounded-lg border" style={{ borderColor: 'var(--border)' }}>
+              <img src={project.images[0]} alt="" className="h-full w-full object-cover" />
+            </div>
+          )}
+
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold">{project.name}</p>
             <p className="truncate text-xs" style={{ color: 'var(--muted-foreground)' }}>
-              {project.year} · {project.categories.join(', ')}
+              {project.year} · {project.categories.join(', ')} · {project.images.length} images
             </p>
           </div>
 
@@ -1313,6 +1441,11 @@ function ProjectEditorModal({
               }}
             >
               {section}
+              {section === 'images' && (
+                <span className="ml-1.5 rounded-full bg-[var(--muted)] px-1.5 py-0.5 text-[10px]">
+                  {draft.images.length}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -1508,36 +1641,64 @@ function ProjectEditorModal({
           )}
 
           {activeSection === 'images' && (
-            <div className="space-y-2">
-              <div className="mb-2 flex items-center justify-between">
-                <p className="text-sm font-medium">Images</p>
-                <button
-                  onClick={() => addArrayItem('images')}
-                  className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium"
-                  style={{ background: 'var(--muted)', color: 'var(--muted-foreground)' }}
-                >
-                  <Plus className="h-3 w-3" /> Add
-                </button>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium">
+                  Project Images ({draft.images.length})
+                </p>
+                <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                  Drag to reorder, hover to manage
+                </span>
               </div>
-              {draft.images.map((image, index) => (
-                <div key={index} className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={image}
-                    onChange={e => updateArrayItem('images', index, e.target.value)}
-                    placeholder="/path/to/image.png"
-                    className="flex-1 rounded-xl border px-3 py-2 text-sm outline-none focus:border-[var(--primary)]"
-                    style={inputStyle}
-                  />
+
+              <ProjectImageManager
+                images={draft.images}
+                onImagesChange={(newImages) => {
+                  setDraft({ ...draft, images: newImages })
+                }}
+                projectNumber={draft.number}
+                onUploadComplete={(results) => {
+                  console.log(`Uploaded ${results.length} images`)
+                }}
+                onUploadError={(error) => {
+                  console.error(error)
+                }}
+              />
+
+              {/* Manual URL entry for any URL type */}
+              <div className="rounded-xl border p-4" style={{ borderColor: 'var(--border)' }}>
+                <p className="text-xs font-medium mb-2" style={{ color: 'var(--muted-foreground)' }}>
+                  Add image URLs manually — supports any URL (Google Drive, external links, local paths)
+                </p>
+                <div className="space-y-2">
+                  {draft.images.map((image, index) => (
+                    <div key={index} className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={image}
+                        onChange={(e) => updateArrayItem('images', index, e.target.value)}
+                        placeholder="Any URL or path — https://drive.google.com/..., /path/to/image.png, etc."
+                        className="flex-1 rounded-xl border px-3 py-2 text-sm outline-none focus:border-[var(--primary)]"
+                        style={inputStyle}
+                      />
+                      <button
+                        onClick={() => removeArrayItem('images', index)}
+                        className="rounded-lg p-1.5 transition-colors hover:text-[var(--destructive)]"
+                        style={{ color: 'var(--muted-foreground)' }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
                   <button
-                    onClick={() => removeArrayItem('images', index)}
-                    className="rounded-lg p-1.5 transition-colors hover:text-[var(--destructive)]"
-                    style={{ color: 'var(--muted-foreground)' }}
+                    onClick={() => addArrayItem('images')}
+                    className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium"
+                    style={{ background: 'var(--muted)', color: 'var(--muted-foreground)' }}
                   >
-                    <Trash2 className="h-3.5 w-3.5" />
+                    <Plus className="h-3 w-3" /> Add URL
                   </button>
                 </div>
-              ))}
+              </div>
             </div>
           )}
         </div>

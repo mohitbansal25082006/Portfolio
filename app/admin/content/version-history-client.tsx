@@ -3,50 +3,35 @@
 /**
  * app/admin/content/version-history-client.tsx
  * ─────────────────────────────────────────────────────────────────────────────
- * Part 2.10 — Version History & Rollback UI Component
- * Updated — Added rename, delete, and fixed rollback functionality
+ * Part 2.10 — Version History Client Component
+ * Part 3 — Enhanced with image statistics display
  * ---------------------------------------------------------------------------
- * Displays version history with full management capabilities:
- *   • List of all versions with timestamps and custom names
- *   • Preview changes (project count, timeline count, etc.)
- *   • One-click rollback with confirmation
- *   • Rename versions with custom names
- *   • Delete unwanted versions
- *   • Visual indicators for current version
+ * Displays version history with rollback, rename, and delete capabilities.
+ * Now includes image statistics for each version.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
 import { useState, useCallback } from 'react'
 import {
-  History,
-  RotateCcw,
-  Loader2,
-  AlertTriangle,
-  Check,
-  Clock,
-  FileText,
-  FolderKanban,
-  User,
-  Wrench,
-  Pencil,
-  Trash2,
-  X,
-  Save,
+  History, RotateCcw, Trash2, Edit3, Check, X, Loader2,
+  Image as ImageIcon, AlertTriangle, Clock,
 } from 'lucide-react'
+
+// ─── Types ────────────────────────────────────────────────────────────────
 
 interface ContentVersion {
   id: string
   timestamp: string
-  content: {
-    projects: any[]
-    about: any
-    skillGroups: any[]
-    timeline: any[]
-    updatedAt: string
-  }
+  content: any
   name: string
   note?: string
   changeCount?: number
+  imageStats?: {
+    totalImages: number
+    blobImages: number
+    localImages: number
+    totalSize: number
+  }
 }
 
 interface VersionHistoryProps {
@@ -55,28 +40,30 @@ interface VersionHistoryProps {
   onRename: (versionId: string, newName: string) => Promise<boolean>
   onDelete: (versionId: string) => Promise<boolean>
   onRefresh: () => Promise<void>
-  onClose?: () => void
 }
 
-function timeAgo(iso: string): string {
-  const diffMs = Date.now() - new Date(iso).getTime()
-  const mins = Math.floor(diffMs / 60000)
-  if (mins < 1) return 'just now'
-  if (mins < 60) return `${mins}m ago`
-  const hrs = Math.floor(mins / 60)
-  if (hrs < 24) return `${hrs}h ago`
-  const days = Math.floor(hrs / 24)
-  if (days < 7) return `${days}d ago`
-  return new Date(iso).toLocaleDateString()
+// ─── Helper functions ─────────────────────────────────────────────────────
+
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  })
 }
 
-function getVersionSummary(version: ContentVersion): string {
-  const parts: string[] = []
-  parts.push(`${version.content.projects?.length ?? 0} projects`)
-  parts.push(`${version.content.timeline?.length ?? 0} timeline entries`)
-  parts.push(`${version.content.skillGroups?.length ?? 0} skill groups`)
-  return parts.join(' · ')
+function formatSize(bytes: number): string {
+  if (!bytes) return '0 KB'
+  const units = ['B', 'KB', 'MB', 'GB']
+  let i = 0
+  let val = bytes
+  while (val >= 1024 && i < units.length - 1) {
+    val /= 1024
+    i++
+  }
+  return `${val.toFixed(val < 10 && i > 0 ? 1 : 0)} ${units[i]}`
 }
+
+// ─── Main Component ───────────────────────────────────────────────────────
 
 export default function VersionHistory({
   versions,
@@ -84,247 +71,178 @@ export default function VersionHistory({
   onRename,
   onDelete,
   onRefresh,
-  onClose,
 }: VersionHistoryProps) {
-  const [selectedVersion, setSelectedVersion] = useState<ContentVersion | null>(null)
-  const [showRollbackConfirm, setShowRollbackConfirm] = useState(false)
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
-  const [rollingBack, setRollingBack] = useState(false)
-  const [deleting, setDeleting] = useState(false)
-  const [rollbackSuccess, setRollbackSuccess] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  
-  // Rename state
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
-  const [renaming, setRenaming] = useState(false)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
+  const [rollingBackId, setRollingBackId] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(null)
 
-  const handleRollbackClick = (version: ContentVersion) => {
-    setSelectedVersion(version)
-    setShowRollbackConfirm(true)
-    setError(null)
-  }
-
-  const handleConfirmRollback = async () => {
-    if (!selectedVersion) return
-
-    setRollingBack(true)
-    setError(null)
-
-    try {
-      const success = await onRollback(selectedVersion.id)
-      if (success) {
-        setRollbackSuccess(true)
-        setShowRollbackConfirm(false)
-        setSelectedVersion(null)
-        setTimeout(() => setRollbackSuccess(false), 3000)
-        await onRefresh()
-      } else {
-        setError('Failed to rollback. Please try again.')
-      }
-    } catch (err) {
-      setError('Failed to rollback. Please try again.')
-      console.error('Rollback error:', err)
-    } finally {
-      setRollingBack(false)
-    }
-  }
-
-  const handleDeleteClick = (version: ContentVersion) => {
-    setSelectedVersion(version)
-    setShowDeleteConfirm(true)
-    setError(null)
-  }
-
-  const handleConfirmDelete = async () => {
-    if (!selectedVersion) return
-
-    setDeleting(true)
-    setError(null)
-
-    try {
-      const success = await onDelete(selectedVersion.id)
-      if (success) {
-        setShowDeleteConfirm(false)
-        setSelectedVersion(null)
-        await onRefresh()
-      } else {
-        setError('Failed to delete version. Please try again.')
-      }
-    } catch (err) {
-      setError('Failed to delete version. Please try again.')
-      console.error('Delete error:', err)
-    } finally {
-      setDeleting(false)
-    }
-  }
-
-  const handleRenameClick = (version: ContentVersion) => {
-    setRenamingId(version.id)
-    setRenameValue(version.name)
-    setError(null)
-  }
-
-  const handleRenameCancel = () => {
-    setRenamingId(null)
-    setRenameValue('')
-  }
-
-  const handleRenameSave = async (versionId: string) => {
+  const handleRename = useCallback(async (versionId: string) => {
     if (!renameValue.trim()) {
       setError('Version name cannot be empty')
       return
     }
 
-    setRenaming(true)
-    setError(null)
-
-    try {
-      const success = await onRename(versionId, renameValue.trim())
-      if (success) {
-        setRenamingId(null)
-        setRenameValue('')
-        await onRefresh()
-      } else {
-        setError('Failed to rename version. Please try again.')
-      }
-    } catch (err) {
-      setError('Failed to rename version. Please try again.')
-      console.error('Rename error:', err)
-    } finally {
-      setRenaming(false)
+    const success = await onRename(versionId, renameValue.trim())
+    if (success) {
+      setRenamingId(null)
+      setRenameValue('')
+      setSuccess('Version renamed successfully')
+      setTimeout(() => setSuccess(null), 3000)
+    } else {
+      setError('Failed to rename version')
     }
+  }, [renameValue, onRename])
+
+  const handleDelete = useCallback(async (versionId: string) => {
+    setDeletingId(versionId)
+    const success = await onDelete(versionId)
+    if (success) {
+      setConfirmDelete(null)
+      setSuccess('Version deleted successfully')
+      setTimeout(() => setSuccess(null), 3000)
+    } else {
+      setError('Failed to delete version')
+    }
+    setDeletingId(null)
+  }, [onDelete])
+
+  const handleRollback = useCallback(async (versionId: string) => {
+    setRollingBackId(versionId)
+    const success = await onRollback(versionId)
+    if (success) {
+      setSuccess('Successfully rolled back to version')
+      setTimeout(() => setSuccess(null), 3000)
+      await onRefresh()
+    } else {
+      setError('Failed to rollback to version')
+    }
+    setRollingBackId(null)
+  }, [onRollback, onRefresh])
+
+  if (versions.length === 0) {
+    return (
+      <div
+        className="flex flex-col items-center justify-center rounded-2xl border p-12 text-center"
+        style={{ borderColor: 'var(--border)', background: 'var(--card)' }}
+      >
+        <History className="h-12 w-12 mb-4" style={{ color: 'var(--muted-foreground)' }} />
+        <p className="text-sm font-medium">No versions yet</p>
+        <p className="mt-1 text-xs" style={{ color: 'var(--muted-foreground)' }}>
+          Versions are created automatically when you save content changes.
+        </p>
+      </div>
+    )
   }
 
   return (
-    <div className="rounded-2xl border p-6" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
-      <div className="mb-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <History className="h-5 w-5" style={{ color: 'var(--primary)' }} />
-          <h2 className="text-sm font-semibold">Version History</h2>
-          <span
-            className="rounded-full px-2 py-0.5 text-xs font-medium"
-            style={{
-              background: 'color-mix(in oklch, var(--primary) 15%, transparent)',
-              color: 'var(--primary)',
-            }}
-          >
-            {versions.length} versions
-          </span>
-        </div>
-        {onClose && (
-          <button
-            onClick={onClose}
-            className="text-xs font-medium"
-            style={{ color: 'var(--muted-foreground)' }}
-          >
-            Close
-          </button>
-        )}
-      </div>
-
-      {rollbackSuccess && (
-        <div
-          className="mb-4 flex items-center gap-2 rounded-xl p-3 text-sm"
-          style={{
-            background: 'color-mix(in oklch, oklch(0.75 0.18 150) 12%, transparent)',
-            color: 'oklch(0.75 0.18 150)',
-          }}
-        >
-          <Check className="h-4 w-4" />
-          Content rolled back successfully!
-        </div>
-      )}
-
+    <div className="space-y-3">
       {error && (
         <div
-          className="mb-4 flex items-center gap-2 rounded-xl p-3 text-sm"
+          className="flex items-center gap-2 rounded-xl border p-3 text-sm"
           style={{
-            background: 'color-mix(in oklch, oklch(0.65 0.22 25) 12%, transparent)',
+            background: 'color-mix(in oklch, var(--destructive) 10%, transparent)',
+            borderColor: 'color-mix(in oklch, var(--destructive) 30%, transparent)',
             color: 'var(--destructive)',
           }}
         >
-          <AlertTriangle className="h-4 w-4" />
-          {error}
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <span>{error}</span>
+          <button
+            onClick={() => setError(null)}
+            className="ml-auto rounded-lg p-1 hover:bg-[var(--muted)]"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
         </div>
       )}
 
-      {versions.length === 0 ? (
+      {success && (
         <div
-          className="rounded-xl p-8 text-center text-sm"
-          style={{ color: 'var(--muted-foreground)' }}
+          className="flex items-center gap-2 rounded-xl border p-3 text-sm"
+          style={{
+            background: 'color-mix(in oklch, oklch(0.75 0.18 150) 10%, transparent)',
+            borderColor: 'color-mix(in oklch, oklch(0.75 0.18 150) 30%, transparent)',
+            color: 'oklch(0.55 0.15 150)',
+          }}
         >
-          No versions yet. Save content changes to create version history.
+          <Check className="h-4 w-4 shrink-0" />
+          <span>{success}</span>
+          <button
+            onClick={() => setSuccess(null)}
+            className="ml-auto rounded-lg p-1 hover:bg-[var(--muted)]"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
         </div>
-      ) : (
-        <div className="space-y-2 max-h-96 overflow-y-auto">
-          {versions.map((version, index) => (
+      )}
+
+      {versions.map((version, index) => (
+        <div
+          key={version.id}
+          className="rounded-xl border p-4 transition-all"
+          style={{
+            background: 'var(--card)',
+            borderColor: index === 0 ? 'var(--primary)' : 'var(--border)',
+          }}
+        >
+          <div className="flex items-start gap-3">
             <div
-              key={version.id}
-              className="group flex items-start gap-3 rounded-xl border p-3 transition-all hover:bg-[var(--muted)]"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
               style={{
-                borderColor: index === 0 ? 'var(--primary)' : 'var(--border)',
                 background: index === 0
-                  ? 'color-mix(in oklch, var(--primary) 5%, transparent)'
-                  : 'transparent',
+                  ? 'color-mix(in oklch, var(--primary) 15%, transparent)'
+                  : 'var(--muted)',
               }}
             >
-              <div
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
-                style={{
-                  background: 'color-mix(in oklch, var(--primary) 15%, transparent)',
-                  color: 'var(--primary)',
-                }}
-              >
-                <Clock className="h-4 w-4" />
-              </div>
+              <Clock className="h-4 w-4" style={{ color: index === 0 ? 'var(--primary)' : 'var(--muted-foreground)' }} />
+            </div>
 
-              <div className="min-w-0 flex-1">
-                {renamingId === version.id ? (
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={renameValue}
-                      onChange={(e) => setRenameValue(e.target.value)}
-                      className="flex-1 rounded-lg border px-3 py-1.5 text-sm font-medium outline-none focus:border-[var(--primary)]"
-                      style={{
-                        background: 'var(--background)',
-                        borderColor: 'var(--border)',
-                        color: 'var(--foreground)',
-                      }}
-                      autoFocus
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') handleRenameSave(version.id)
-                        if (e.key === 'Escape') handleRenameCancel()
-                      }}
-                    />
-                    <button
-                      onClick={() => handleRenameSave(version.id)}
-                      disabled={renaming}
-                      className="rounded-lg p-1.5 transition-colors hover:bg-[var(--muted)]"
-                      style={{ color: 'var(--primary)' }}
-                      title="Save name"
-                    >
-                      {renaming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                    </button>
-                    <button
-                      onClick={handleRenameCancel}
-                      className="rounded-lg p-1.5 transition-colors hover:bg-[var(--muted)]"
-                      style={{ color: 'var(--muted-foreground)' }}
-                      title="Cancel"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                ) : (
-                  <>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  {renamingId === version.id ? (
                     <div className="flex items-center gap-2">
-                      <p className="text-sm font-medium truncate">
-                        {version.name}
-                      </p>
+                      <input
+                        type="text"
+                        value={renameValue}
+                        onChange={(e) => setRenameValue(e.target.value)}
+                        className="rounded-lg border px-2 py-1 text-sm outline-none focus:border-[var(--primary)]"
+                        style={{
+                          background: 'var(--background)',
+                          borderColor: 'var(--border)',
+                          color: 'var(--foreground)',
+                        }}
+                        autoFocus
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleRename(version.id)
+                          if (e.key === 'Escape') setRenamingId(null)
+                        }}
+                      />
+                      <button
+                        onClick={() => handleRename(version.id)}
+                        className="rounded-lg p-1 hover:bg-[var(--muted)]"
+                        style={{ color: 'oklch(0.55 0.15 150)' }}
+                      >
+                        <Check className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        onClick={() => setRenamingId(null)}
+                        className="rounded-lg p-1 hover:bg-[var(--muted)]"
+                        style={{ color: 'var(--muted-foreground)' }}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-semibold truncate">{version.name}</p>
                       {index === 0 && (
                         <span
-                          className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase"
+                          className="rounded-full px-2 py-0.5 text-[10px] font-bold"
                           style={{
                             background: 'var(--primary)',
                             color: 'var(--primary-foreground)',
@@ -334,42 +252,51 @@ export default function VersionHistory({
                         </span>
                       )}
                     </div>
-                    <p className="mt-0.5 text-xs" style={{ color: 'var(--muted-foreground)' }}>
-                      {timeAgo(version.timestamp)} · {version.note || 'Content update'}
-                    </p>
-                    <p className="mt-1 text-xs" style={{ color: 'var(--muted-foreground)' }}>
-                      {getVersionSummary(version)}
-                    </p>
-                  </>
-                )}
-              </div>
-
-              {renamingId !== version.id && (
-                <div className="flex shrink-0 gap-1 opacity-100 sm:opacity-0 transition-opacity sm:group-hover:opacity-100">
-                  {index > 0 && (
-                    <button
-                      onClick={() => handleRollbackClick(version)}
-                      disabled={rollingBack}
-                      className="flex items-center gap-1 rounded-lg border px-2 py-1.5 text-xs font-medium transition-all hover:border-[var(--primary)] hover:text-[var(--primary)] disabled:opacity-50"
-                      style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
-                      title="Rollback to this version"
-                    >
-                      <RotateCcw className="h-3.5 w-3.5" />
-                      <span className="hidden sm:inline">Rollback</span>
-                    </button>
                   )}
+                  <p className="mt-0.5 text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                    {formatDate(version.timestamp)}
+                    {version.note && ` · ${version.note}`}
+                  </p>
+                </div>
+
+                <div className="flex shrink-0 items-center gap-1">
                   <button
-                    onClick={() => handleRenameClick(version)}
+                    onClick={() => {
+                      setRenamingId(version.id)
+                      setRenameValue(version.name)
+                    }}
                     className="rounded-lg p-1.5 transition-colors hover:bg-[var(--muted)]"
                     style={{ color: 'var(--muted-foreground)' }}
                     title="Rename version"
                   >
-                    <Pencil className="h-3.5 w-3.5" />
+                    <Edit3 className="h-3.5 w-3.5" />
                   </button>
-                  {index > 0 && (
+
+                  {confirmDelete === version.id ? (
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => handleDelete(version.id)}
+                        disabled={deletingId === version.id}
+                        className="rounded-lg px-2 py-1 text-xs font-medium"
+                        style={{ background: 'var(--destructive)', color: 'var(--destructive-foreground)' }}
+                      >
+                        {deletingId === version.id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          'Confirm'
+                        )}
+                      </button>
+                      <button
+                        onClick={() => setConfirmDelete(null)}
+                        className="rounded-lg px-2 py-1 text-xs"
+                        style={{ color: 'var(--muted-foreground)' }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
                     <button
-                      onClick={() => handleDeleteClick(version)}
-                      disabled={deleting}
+                      onClick={() => setConfirmDelete(version.id)}
                       className="rounded-lg p-1.5 transition-colors hover:text-[var(--destructive)]"
                       style={{ color: 'var(--muted-foreground)' }}
                       title="Delete version"
@@ -377,157 +304,79 @@ export default function VersionHistory({
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   )}
+
+                  {index !== 0 && (
+                    <button
+                      onClick={() => handleRollback(version.id)}
+                      disabled={rollingBackId === version.id}
+                      className="flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-medium transition-all disabled:opacity-50"
+                      style={{
+                        background: 'color-mix(in oklch, var(--primary) 15%, transparent)',
+                        color: 'var(--primary)',
+                      }}
+                      title="Rollback to this version"
+                    >
+                      {rollingBackId === version.id ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <RotateCcw className="h-3.5 w-3.5" />
+                      )}
+                      Rollback
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Image statistics */}
+              {version.imageStats && (
+                <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg border p-2.5" style={{ borderColor: 'var(--border)' }}>
+                  <ImageIcon className="h-3.5 w-3.5 shrink-0" style={{ color: 'var(--muted-foreground)' }} />
+                  <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                    {version.imageStats.totalImages} images
+                  </span>
+                  {version.imageStats.blobImages > 0 && (
+                    <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                      {version.imageStats.blobImages} blob
+                    </span>
+                  )}
+                  {version.imageStats.localImages > 0 && (
+                    <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                      {version.imageStats.localImages} local
+                    </span>
+                  )}
+                  {version.imageStats.totalSize > 0 && (
+                    <span className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                      {formatSize(version.imageStats.totalSize)}
+                    </span>
+                  )}
                 </div>
               )}
-            </div>
-          ))}
-        </div>
-      )}
 
-      {/* Rollback Confirmation Modal */}
-      {showRollbackConfirm && selectedVersion && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-            onClick={() => setShowRollbackConfirm(false)}
-          />
-          <div
-            className="relative z-10 w-full max-w-md rounded-2xl border p-6 shadow-2xl"
-            style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
-          >
-            <div className="mb-4 flex items-center gap-3">
-              <div
-                className="flex h-10 w-10 items-center justify-center rounded-xl"
-                style={{
-                  background: 'color-mix(in oklch, oklch(0.65 0.22 60) 15%, transparent)',
-                  color: 'oklch(0.65 0.22 60)',
-                }}
-              >
-                <AlertTriangle className="h-5 w-5" />
+              {/* Project count */}
+              <div className="mt-2 flex flex-wrap gap-2">
+                <span
+                  className="rounded-full px-2.5 py-0.5 text-[10px] font-medium"
+                  style={{ background: 'var(--muted)', color: 'var(--muted-foreground)' }}
+                >
+                  {version.content.projects?.length || 0} projects
+                </span>
+                <span
+                  className="rounded-full px-2.5 py-0.5 text-[10px] font-medium"
+                  style={{ background: 'var(--muted)', color: 'var(--muted-foreground)' }}
+                >
+                  {version.content.timeline?.length || 0} timeline entries
+                </span>
+                <span
+                  className="rounded-full px-2.5 py-0.5 text-[10px] font-medium"
+                  style={{ background: 'var(--muted)', color: 'var(--muted-foreground)' }}
+                >
+                  {version.content.skillGroups?.length || 0} skill groups
+                </span>
               </div>
-              <div>
-                <h3 className="text-sm font-semibold">Confirm Rollback</h3>
-                <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
-                  This will restore content to "{selectedVersion.name}"
-                </p>
-              </div>
-            </div>
-
-            <div
-              className="mb-4 rounded-xl p-3 text-xs"
-              style={{
-                background: 'var(--muted)',
-                color: 'var(--muted-foreground)',
-              }}
-            >
-              <p className="mb-1 font-medium">Version details:</p>
-              <p>{getVersionSummary(selectedVersion)}</p>
-              <p className="mt-1">Created {timeAgo(selectedVersion.timestamp)}</p>
-            </div>
-
-            <p className="mb-4 text-xs" style={{ color: 'var(--muted-foreground)' }}>
-              A snapshot of the current state will be created before rolling back,
-              so you can undo this action if needed.
-            </p>
-
-            <div className="flex gap-2">
-              <button
-                onClick={() => setShowRollbackConfirm(false)}
-                disabled={rollingBack}
-                className="flex-1 rounded-xl border px-4 py-2 text-sm font-medium transition-all"
-                style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleConfirmRollback}
-                disabled={rollingBack}
-                className="flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-white transition-all"
-                style={{ background: 'var(--destructive)' }}
-              >
-                {rollingBack ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <RotateCcw className="h-4 w-4" />
-                )}
-                {rollingBack ? 'Rolling back...' : 'Rollback'}
-              </button>
             </div>
           </div>
         </div>
-      )}
-
-      {/* Delete Confirmation Modal */}
-      {showDeleteConfirm && selectedVersion && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-            onClick={() => setShowDeleteConfirm(false)}
-          />
-          <div
-            className="relative z-10 w-full max-w-md rounded-2xl border p-6 shadow-2xl"
-            style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
-          >
-            <div className="mb-4 flex items-center gap-3">
-              <div
-                className="flex h-10 w-10 items-center justify-center rounded-xl"
-                style={{
-                  background: 'color-mix(in oklch, oklch(0.65 0.22 25) 15%, transparent)',
-                  color: 'var(--destructive)',
-                }}
-              >
-                <Trash2 className="h-5 w-5" />
-              </div>
-              <div>
-                <h3 className="text-sm font-semibold">Delete Version</h3>
-                <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
-                  Are you sure you want to delete "{selectedVersion.name}"?
-                </p>
-              </div>
-            </div>
-
-            <div
-              className="mb-4 rounded-xl p-3 text-xs"
-              style={{
-                background: 'var(--muted)',
-                color: 'var(--muted-foreground)',
-              }}
-            >
-              <p className="mb-1 font-medium">Version details:</p>
-              <p>{getVersionSummary(selectedVersion)}</p>
-              <p className="mt-1">Created {timeAgo(selectedVersion.timestamp)}</p>
-            </div>
-
-            <p className="mb-4 text-xs" style={{ color: 'var(--destructive)' }}>
-              This action cannot be undone. The version will be permanently removed.
-            </p>
-
-            <div className="flex gap-2">
-              <button
-                onClick={() => setShowDeleteConfirm(false)}
-                disabled={deleting}
-                className="flex-1 rounded-xl border px-4 py-2 text-sm font-medium transition-all"
-                style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleConfirmDelete}
-                disabled={deleting}
-                className="flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-white transition-all"
-                style={{ background: 'var(--destructive)' }}
-              >
-                {deleting ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Trash2 className="h-4 w-4" />
-                )}
-                {deleting ? 'Deleting...' : 'Delete'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      ))}
     </div>
   )
 }
