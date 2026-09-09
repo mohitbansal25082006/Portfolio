@@ -6,36 +6,50 @@
  * Part 2.7 update:
  *  - Live content (projects, about, skills, timeline) fetched from
  *    GET /api/content on mount, falling back to the static values in
- *    lib/content.ts until that resolves — identical fallback pattern to
- *    the resumeUrl/resumeFileName fetch from Part 2.4 and the
- *    liveSettings fetch from Part 2.5.
- *  - Every place that previously read the static `projects`, `about`,
- *    `skillGroups`, or `timeline` exports now reads from `liveContent`
- *    instead, so admin edits made in the Content Management page are
- *    reflected on the public site without a redeploy.
+ *    lib/content.ts until that resolves.
  *
- * All earlier functionality (intro loader, particle field, theme system,
- * OTP contact form, resume viewer, GitHub section, project gallery, etc.)
- * is unchanged from Parts 1, 2.4, and 2.5.
+ * Part 3.1 update:
+ *  - Live content now covers hero, stats, techStack, projectFilters, navItems,
+ *    and about.pillars in addition to projects, about, skills, timeline.
+ *  - All previously static sections now read from liveContent with static fallback.
+ *
+ * Part 3.2 update:
+ *  - Fixed TechSphere to handle empty/invalid items gracefully
+ *  - Added fallback to static techStack when live data is empty
+ *  - Normalized techStack items before rendering
+ *
+ * Part 3.3 update:
+ *  - Fixed the intro boot sequence restarting/flickering: IntroLoader's
+ *    animation effect was keyed on the `onComplete` prop, which was a new
+ *    inline function on every PortfolioSite re-render (each of the resume/
+ *    settings/content fetches resolving triggered one). That tore the effect
+ *    down and restarted the whole boot sequence from zero mid-animation,
+ *    which is why it visibly "loaded twice". The effect now runs exactly
+ *    once and reads onComplete from a ref, and the progress bar/status text
+ *    are driven by requestAnimationFrame with an eased curve for a smoother
+ *    finish instead of fixed 30ms/2% ticks.
  */
 
-import { useEffect, useMemo, useRef, useState, type ReactNode, type CSSProperties } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type CSSProperties } from 'react'
 import {
-  ArrowDownRight, ArrowUpRight, BookOpen, Calendar, Check, ChevronLeft, ChevronRight, Code2, Copy,
+  ArrowDownRight, ArrowUpRight, Calendar, Check, ChevronLeft, ChevronRight, Code2, Copy,
   Cpu, Database, Download, ExternalLink, Layers, Loader2, Mail,
-  MapPin, Menu, MoveUpRight, Search, Send, Smartphone, Sparkles, Star,
-  Users, Wrench, X, ZoomIn, ShieldCheck, RotateCcw, AlertTriangle,
+  MapPin, Menu, MoveUpRight, Search, Send, Smartphone, Sparkles,
+  Wrench, X, ZoomIn, ShieldCheck, RotateCcw, AlertTriangle,
 } from 'lucide-react'
 import {
-  about as staticAbout, contactInfo, githubConfig, navItems, projectFilters,
+  about as staticAbout, contactInfo, githubConfig, navItems as staticNavItems,
+  projectFilters as staticProjectFilters,
   projects as staticProjects, siteConfig, skillGroups as staticSkillGroups,
-  stats, techStack, themes, timeline as staticTimeline,
+  stats as staticStats, techStack as staticTechStack, themes,
+  timeline as staticTimeline,
 } from '@/lib/content'
 import { GitHubSection } from '@/components/github-section'
 import { PdfViewer } from '@/components/pdf-viewer'
 import { ImageViewer } from '@/components/image-viewer'
 import type {
   ProjectContent, AboutContent, SkillGroup, TimelineEntry,
+  HeroContent, StatItem, NavItem,
 } from '@/lib/content-store'
 
 /* ---------------- Custom Brand Icons (SVG) ---------------- */
@@ -81,41 +95,77 @@ function IntroLoader({ onComplete }: { onComplete: () => void }) {
 
   const fullTitle = '> booting portfolio'
 
+  // `onComplete` is read through a ref so the boot-sequence effect below
+  // never has to depend on it directly. Previously the effect listed
+  // `onComplete` in its dependency array, but PortfolioSite passed a brand
+  // new inline function on every render — and it re-renders as soon as the
+  // resume/settings/content fetches resolve. Each of those re-renders tore
+  // the effect down and restarted the whole animation from zero, which is
+  // why the boot sequence visibly played through more than once.
+  const onCompleteRef = useRef(onComplete)
   useEffect(() => {
+    onCompleteRef.current = onComplete
+  }, [onComplete])
+
+  // Runs exactly once on mount. Progress is driven by elapsed wall-clock
+  // time via requestAnimationFrame rather than fixed-size setInterval ticks,
+  // with an ease-out curve — this keeps it perfectly smooth at any frame
+  // rate and gives it a natural "quick start, gentle finish" feel instead of
+  // a mechanical linear crawl.
+  useEffect(() => {
+    let cancelled = false
+    const TOTAL_DURATION = 2200 // ms — full progress 0 -> 100
+    const HOLD_AFTER_COMPLETE = 350 // ms — brief pause once progress hits 100%
+    const EXIT_TRANSITION = 700 // ms — matches the .is-exiting fade/scale CSS
+
+    const startTime = performance.now()
+
     setDrawPath(true)
-    const fillTimer = setTimeout(() => setFillLogo(true), 1200)
+    const fillTimer = setTimeout(() => {
+      if (!cancelled) setFillLogo(true)
+    }, 900)
 
-    let charIndex = 0
+    let typedChars = 0
     const typeInterval = setInterval(() => {
-      charIndex++
-      setTitleText(fullTitle.slice(0, charIndex))
-      if (charIndex >= fullTitle.length) clearInterval(typeInterval)
-    }, 45)
+      typedChars++
+      setTitleText(fullTitle.slice(0, typedChars))
+      if (typedChars >= fullTitle.length) clearInterval(typeInterval)
+    }, 40)
 
-    let currentProgress = 0
-    const intervalId = setInterval(() => {
-      currentProgress += 2
-      if (currentProgress > 100) currentProgress = 100
-      setProgress(currentProgress)
+    let rafId = 0
+    const tick = (now: number) => {
+      const elapsed = now - startTime
+      const t = Math.min(1, elapsed / TOTAL_DURATION)
+      const eased = 1 - Math.pow(1 - t, 3) // ease-out cubic
+      const pct = Math.round(eased * 100)
 
-      const idx = Math.min(bootMessages.length - 1, Math.floor((currentProgress / 100) * bootMessages.length))
-      setStatusIdx(idx)
+      // Guard against rAF timestamp jitter ever nudging the bar backwards.
+      setProgress((prev) => (pct > prev ? pct : prev))
 
-      if (currentProgress >= 100) {
-        clearInterval(intervalId)
+      const idx = Math.min(bootMessages.length - 1, Math.floor(t * bootMessages.length))
+      setStatusIdx((prev) => (idx > prev ? idx : prev))
+
+      if (t < 1) {
+        rafId = requestAnimationFrame(tick)
+      } else {
         setTimeout(() => {
+          if (cancelled) return
           setExiting(true)
-          setTimeout(onComplete, 900)
-        }, 500)
+          setTimeout(() => onCompleteRef.current(), EXIT_TRANSITION)
+        }, HOLD_AFTER_COMPLETE)
       }
-    }, 30)
+    }
+    rafId = requestAnimationFrame(tick)
 
     return () => {
-      clearInterval(intervalId)
+      cancelled = true
+      cancelAnimationFrame(rafId)
       clearInterval(typeInterval)
       clearTimeout(fillTimer)
     }
-  }, [onComplete, bootMessages])
+    // bootMessages is a stable reference (useMemo with an empty dep array),
+    // so this effect body still only ever runs once per mount.
+  }, [bootMessages])
 
   return (
     <div className={`intro-overlay ${exiting ? 'is-exiting' : ''}`} role="dialog" aria-label="Loading portfolio">
@@ -318,7 +368,7 @@ function MaintenanceBanner({ message }: { message: string }) {
 /* ============================================================================
    SIDE NAV DOTS
    ========================================================================== */
-function SideNavDots({ activeSection }: { activeSection: string }) {
+function SideNavDots({ activeSection, navItems }: { activeSection: string; navItems: NavItem[] }) {
   return (
     <div className="side-nav-dots" aria-hidden="true">
       {navItems.map((item) => {
@@ -502,24 +552,45 @@ function CountUp({ end, suffix = '', duration = 1600 }: { end: number; suffix?: 
   return <span ref={ref}>{value}{suffix}</span>
 }
 
-/* ---------------- 3D Tech Sphere (Interactive & Smooth) ---------------- */
+/* ---------------- 3D Tech Sphere (FIXED: handles empty/invalid items) ---------------- */
 function TechSphere({ items }: { items: string[] }) {
   const sphereRef = useRef<HTMLDivElement>(null)
   const target = useRef({ x: -10, y: 0 })
   const current = useRef({ x: -10, y: 0 })
   const isHovering = useRef(false)
 
-  const N = items.length
-  const positions = useMemo(() => items.map((_, i) => {
-    const phi = Math.acos(1 - (2 * (i + 0.5)) / N)
-    const theta = Math.PI * (1 + Math.sqrt(5)) * (i + 0.5)
-    const x = Math.round((Math.sin(phi) * Math.cos(theta)) * 100) / 100
-    const y = Math.round((Math.sin(phi) * Math.sin(theta)) * 100) / 100
-    const z = Math.round(Math.cos(phi) * 100) / 100
-    return { x, y, z }
-  }), [items])
+  // FIX: Filter out empty/invalid items and deduplicate
+  const validItems = useMemo(() => {
+    const seen = new Set<string>()
+    const filtered: string[] = []
+    for (const item of items) {
+      if (typeof item !== 'string') continue
+      const trimmed = item.trim()
+      if (trimmed.length === 0) continue
+      if (seen.has(trimmed)) continue
+      seen.add(trimmed)
+      filtered.push(trimmed)
+    }
+    return filtered
+  }, [items])
+
+  const N = validItems.length
+
+  const positions = useMemo(() => {
+    if (N === 0) return []
+    return validItems.map((_, i) => {
+      const phi = Math.acos(1 - (2 * (i + 0.5)) / N)
+      const theta = Math.PI * (1 + Math.sqrt(5)) * (i + 0.5)
+      const x = Math.round((Math.sin(phi) * Math.cos(theta)) * 100) / 100
+      const y = Math.round((Math.sin(phi) * Math.sin(theta)) * 100) / 100
+      const z = Math.round(Math.cos(phi) * 100) / 100
+      return { x, y, z }
+    })
+  }, [validItems, N])
 
   useEffect(() => {
+    if (N === 0) return
+
     const animate = () => {
       if (!isHovering.current) {
         target.current.y += 0.15
@@ -539,7 +610,24 @@ function TechSphere({ items }: { items: string[] }) {
     }
     const animId = requestAnimationFrame(animate)
     return () => cancelAnimationFrame(animId)
-  }, [])
+  }, [N])
+
+  // FIX: Return early with empty state if no valid items
+  if (N === 0) {
+    return (
+      <div className="sphere-container flex items-center justify-center">
+        <div className="text-center">
+          <Sparkles className="mx-auto h-8 w-8 mb-3" style={{ color: 'var(--muted-foreground)' }} />
+          <p className="text-xs font-medium" style={{ color: 'var(--muted-foreground)' }}>
+            No technologies added
+          </p>
+          <p className="mt-1 text-[10px]" style={{ color: 'var(--muted-foreground)' }}>
+            Add items in Content Management → Tech Stack
+          </p>
+        </div>
+      </div>
+    )
+  }
 
   const updateRotationFromPoint = (clientX: number, clientY: number, rect: DOMRect) => {
     const centerX = rect.left + rect.width / 2
@@ -592,11 +680,11 @@ function TechSphere({ items }: { items: string[] }) {
         <div className="ring ring-3" />
       </div>
       <div ref={sphereRef} className="sphere">
-        {items.map((item, i) => {
+        {validItems.map((item, i) => {
           const p = positions[i]
           return (
             <span
-              key={item}
+              key={`${item}-${i}`}
               className="sphere-item"
               style={{
                 '--tx': `${p.x * 180}px`,
@@ -818,16 +906,18 @@ function ProjectCard({ project, index }: { project: ProjectContent; index: numbe
 }
 
 /* ============================================================================
-   HERO — animated name reveal
+   HERO — animated name reveal (uses live hero data)
    ========================================================================== */
 function Hero({
   introComplete,
   availabilityStatus,
   socialLinks,
+  hero,
 }: {
   introComplete: boolean
   availabilityStatus: string
   socialLinks: Record<string, string>
+  hero: HeroContent
 }) {
   const glyphs = useMemo(
     () => Array.from({ length: 12 }).map((_, i) => ({
@@ -850,7 +940,7 @@ function Hero({
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-8 stagger-item" data-stagger>
         <p className="max-w-52 font-mono text-[10px] leading-5 tracking-[0.14em] text-muted-foreground uppercase md:max-w-64">
-          {siteConfig.title}<br />Based in {siteConfig.location} / working everywhere
+          {hero.title}<br />Based in {hero.location} / working everywhere
         </p>
         <div className="flex items-center gap-2 font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">
           <span className="size-2 animate-pulse rounded-full bg-primary" /> {availabilityStatus}
@@ -859,21 +949,21 @@ function Hero({
 
       <div className="relative py-8 md:py-12">
         <p className="mb-4 font-mono text-[11px] tracking-[0.16em] text-primary uppercase stagger-item" data-stagger style={{ transitionDelay: '300ms' }}>
-          Hello, I&apos;m {siteConfig.firstName} — I make useful things feel inevitable.
+          Hello, I&apos;m {hero.firstName} — I make useful things feel inevitable.
         </p>
 
         <h1 className="max-w-6xl text-[clamp(2.5rem,12vw,10rem)] font-semibold leading-[0.86] tracking-[-0.075em] text-balance">
-          <SplitText text={siteConfig.firstName} delay={600} stagger={45} trigger={introComplete} />
+          <SplitText text={hero.firstName} delay={600} stagger={45} trigger={introComplete} />
           <br />
           <span className="text-muted-foreground">
-            <SplitText text={siteConfig.lastName} delay={1300} stagger={45} trigger={introComplete} />
+            <SplitText text={hero.lastName} delay={1300} stagger={45} trigger={introComplete} />
             <span className={`char ${introComplete ? 'is-in' : ''}`} style={{ transitionDelay: '2200ms', color: 'var(--primary)' }}>.</span>
           </span>
         </h1>
 
         <div className="mt-8 flex flex-col gap-6 md:absolute md:bottom-2 md:right-0 md:mt-0 md:max-w-80">
           <p className="text-pretty text-sm leading-6 text-muted-foreground">
-            <Typewriter text={siteConfig.oneLiner} start={introComplete} speed={12} />
+            <Typewriter text={hero.oneLiner} start={introComplete} speed={12} />
           </p>
           <div className="flex flex-wrap gap-3 stagger-item" data-stagger style={{ transitionDelay: '2400ms' }}>
             <Magnetic strength={0.25}>
@@ -906,7 +996,7 @@ function Hero({
 
       <div className="flex items-end justify-between border-t border-border pt-4 font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase stagger-item" data-stagger style={{ transitionDelay: '2800ms' }}>
         <span>Scroll to explore</span>
-        <span>Est. {siteConfig.established} — ∞</span>
+        <span>Est. {hero.established} — ∞</span>
       </div>
     </section>
   )
@@ -975,6 +1065,10 @@ export function PortfolioSite() {
   const [query, setQuery] = useState('')
   const [activeSection, setActiveSection] = useState('')
   const [introComplete, setIntroComplete] = useState(false)
+  // Stable identity across re-renders (the resume/settings/content fetches
+  // below each trigger one) so nothing downstream can mistake this for a
+  // "new" prop and restart work that should only happen once.
+  const handleIntroComplete = useCallback(() => setIntroComplete(true), [])
 
   // ---- Live resume metadata (Part 2.4) ----
   const [resumeUrl, setResumeUrl] = useState(siteConfig.resumeUrl)
@@ -987,9 +1081,7 @@ export function PortfolioSite() {
         if (d?.url) setResumeUrl(d.url)
         if (d?.fileName) setResumeFileName(d.fileName)
       })
-      .catch(() => {
-        // Silent fallback — static resumeUrl already covers this case.
-      })
+      .catch(() => {})
   }, [])
 
   // ---- Live site settings (Part 2.5) ----
@@ -1020,25 +1112,40 @@ export function PortfolioSite() {
           socialLinks: d.socialLinks || siteConfig.social,
         })
       })
-      .catch(() => {
-        // Silent fallback — static values already cover this case.
-      })
+      .catch(() => {})
   }, [])
 
-  // ---- Live content (Part 2.7) ----
-  // Falls back to static imports until the fetch resolves, so there's no
-  // flash of missing content. Admin edits made in the Content Management
-  // page are reflected here once saved.
+  // ---- Live content (Part 2.7 + 3.1 + 3.2) ----
   const [liveContent, setLiveContent] = useState<{
     projects: ProjectContent[]
     about: AboutContent
     skillGroups: SkillGroup[]
     timeline: TimelineEntry[]
+    hero: HeroContent
+    stats: StatItem[]
+    techStack: string[]
+    projectFilters: string[]
+    navItems: NavItem[]
   }>({
     projects: staticProjects,
     about: staticAbout,
     skillGroups: staticSkillGroups,
     timeline: staticTimeline,
+    hero: {
+      name: siteConfig.name,
+      firstName: siteConfig.firstName,
+      lastName: siteConfig.lastName,
+      initials: siteConfig.initials,
+      title: siteConfig.title,
+      oneLiner: siteConfig.oneLiner,
+      location: siteConfig.location,
+      availability: siteConfig.availability,
+      established: siteConfig.established,
+    },
+    stats: staticStats,
+    techStack: staticTechStack,
+    projectFilters: staticProjectFilters,
+    navItems: staticNavItems,
   })
 
   useEffect(() => {
@@ -1046,16 +1153,38 @@ export function PortfolioSite() {
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         if (!d?.content) return
+        const c = d.content
+        
+        // Normalize techStack: filter empty/invalid items
+        const normalizedTechStack = Array.isArray(c.techStack)
+          ? c.techStack
+              .filter((t: unknown): t is string => typeof t === 'string' && t.trim().length > 0)
+              .map((t: string) => t.trim())
+          : []
+        
         setLiveContent({
-          projects: d.content.projects || staticProjects,
-          about: d.content.about || staticAbout,
-          skillGroups: d.content.skillGroups || staticSkillGroups,
-          timeline: d.content.timeline || staticTimeline,
+          projects: c.projects || staticProjects,
+          about: c.about || staticAbout,
+          skillGroups: c.skillGroups || staticSkillGroups,
+          timeline: c.timeline || staticTimeline,
+          hero: c.hero || {
+            name: siteConfig.name,
+            firstName: siteConfig.firstName,
+            lastName: siteConfig.lastName,
+            initials: siteConfig.initials,
+            title: siteConfig.title,
+            oneLiner: siteConfig.oneLiner,
+            location: siteConfig.location,
+            availability: siteConfig.availability,
+            established: siteConfig.established,
+          },
+          stats: c.stats || staticStats,
+          techStack: normalizedTechStack.length > 0 ? normalizedTechStack : staticTechStack,
+          projectFilters: c.projectFilters || staticProjectFilters,
+          navItems: c.navItems || staticNavItems,
         })
       })
-      .catch(() => {
-        // Silent fallback — static values already cover this case.
-      })
+      .catch(() => {})
   }, [])
 
   // ---- Contact form state ----
@@ -1086,13 +1215,13 @@ export function PortfolioSite() {
   useEffect(() => {
     if (!introComplete) return
     const items = document.querySelectorAll('[data-stagger]')
-    items.forEach((el, i) => {
+    items.forEach((el) => {
       setTimeout(() => el.classList.add('is-in'), 50)
     })
   }, [introComplete])
 
   useEffect(() => {
-    const ids = navItems.map((n) => n.href.slice(1))
+    const ids = liveContent.navItems.map((n) => n.href.slice(1))
     const sections = ids.map((id) => document.getElementById(id)).filter(Boolean) as HTMLElement[]
     const io = new IntersectionObserver(
       (entries) => entries.forEach((e) => e.isIntersecting && setActiveSection(e.target.id)),
@@ -1100,9 +1229,8 @@ export function PortfolioSite() {
     )
     sections.forEach((s) => io.observe(s))
     return () => io.disconnect()
-  }, [introComplete])
+  }, [introComplete, liveContent.navItems])
 
-  // Resend cooldown ticker
   useEffect(() => {
     if (resendCooldown <= 0) return
     const id = setInterval(() => setResendCooldown((c) => Math.max(0, c - 1)), 1000)
@@ -1235,9 +1363,11 @@ export function PortfolioSite() {
     })
   }, [activeFilter, query, liveContent.projects])
 
+  const { hero, stats, techStack, projectFilters, navItems } = liveContent
+
   return (
     <main className="min-h-screen overflow-hidden bg-background text-foreground">
-      {!introComplete && <IntroLoader onComplete={() => setIntroComplete(true)} />}
+      {!introComplete && <IntroLoader onComplete={handleIntroComplete} />}
 
       {liveSettings.maintenanceMode && (
         <MaintenanceBanner
@@ -1246,7 +1376,7 @@ export function PortfolioSite() {
       )}
 
       <ScrollProgress />
-      <SideNavDots activeSection={activeSection} />
+      <SideNavDots activeSection={activeSection} navItems={navItems} />
       <ParticleField />
 
       <div className="grain pointer-events-none fixed inset-0 z-50" aria-hidden="true" />
@@ -1284,8 +1414,8 @@ export function PortfolioSite() {
       <nav className="sticky top-0 z-40 border-b border-border/70 bg-background/80 backdrop-blur-xl" aria-label="Primary navigation">
         <div className="mx-auto flex max-w-350 items-center justify-between px-5 py-4 md:px-10 lg:px-14">
           <a href="#top" className="group flex items-center gap-3 font-mono text-xs tracking-[0.18em] uppercase">
-            <span className="grid size-8 place-items-center rounded-full bg-primary text-primary-foreground transition-transform group-hover:rotate-12">{siteConfig.initials}</span>
-            <span className="hidden sm:inline">{siteConfig.firstName} {siteConfig.lastName} / Dev</span>
+            <span className="grid size-8 place-items-center rounded-full bg-primary text-primary-foreground transition-transform group-hover:rotate-12">{hero.initials}</span>
+            <span className="hidden sm:inline">{hero.firstName} {hero.lastName} / Dev</span>
           </a>
           <div className="hidden items-center gap-7 lg:flex">
             {navItems.map((item) => (
@@ -1320,6 +1450,7 @@ export function PortfolioSite() {
         introComplete={introComplete}
         availabilityStatus={liveSettings.availabilityStatus}
         socialLinks={liveSettings.socialLinks}
+        hero={hero}
       />
 
       <div className="overflow-hidden border-y border-border bg-secondary py-3">
@@ -1364,7 +1495,7 @@ export function PortfolioSite() {
             <Reveal delay={220}>
               <div className="mt-14 grid gap-10 border-t border-border pt-8 sm:grid-cols-3">
                 {liveContent.about.pillars.map((p) => (
-                  <div key={p.num}>
+                  <div key={`${p.num}-${p.label}`}>
                     <span className="eyebrow">{p.num} / {p.label}</span>
                     <p className="mt-4 max-w-48 text-sm leading-6 text-muted-foreground">{p.text}</p>
                   </div>
@@ -1427,7 +1558,7 @@ export function PortfolioSite() {
             {liveContent.skillGroups.map((group, i) => {
               const Icon = skillIcons[group.category] || Layers
               return (
-                <Reveal key={group.category} delay={i * 60} variant="scale">
+                <Reveal key={`${group.category}-${i}`} delay={i * 60} variant="scale">
                   <div className="group h-full rounded-2xl border border-border bg-background/50 p-5 backdrop-blur-sm transition-colors hover:border-primary/50 md:p-6">
                     <div className="flex items-center gap-2.5 mb-4">
                       <span className="grid size-8 place-items-center rounded-lg bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
@@ -1524,7 +1655,7 @@ export function PortfolioSite() {
               </div>
             </Reveal>
             <Reveal delay={120} variant="scale">
-              <TechSphere items={techStack} />
+              <TechSphere items={techStack.length > 0 ? techStack : staticTechStack} />
             </Reveal>
           </div>
         </div>
@@ -1551,7 +1682,7 @@ export function PortfolioSite() {
             <div className="absolute left-4 top-2 bottom-2 w-px bg-border md:left-1/2 md:-translate-x-1/2" />
             <div className="space-y-8 md:space-y-12">
               {liveContent.timeline.map((item, i) => (
-                <Reveal key={i} delay={i * 40} variant={i % 2 === 0 ? 'left' : 'right'}>
+                <Reveal key={`${item.year}-${item.title}-${i}`} delay={i * 40} variant={i % 2 === 0 ? 'left' : 'right'}>
                   <div className={`relative flex items-start gap-6 md:gap-0 ${i % 2 === 0 ? 'md:flex-row-reverse' : ''}`}>
                     <div className="absolute left-4 top-3 z-10 grid size-4 -translate-x-1/2 place-items-center md:left-1/2">
                       <span className={`size-3 rounded-full border-2 transition-colors ${item.year === 'Future' ? 'border-primary bg-primary' : 'border-border bg-background group-hover:border-primary'}`} />
@@ -1616,8 +1747,8 @@ export function PortfolioSite() {
                     {copied ? 'Email copied' : liveSettings.contactEmail} {copied ? <Check className="size-4" /> : <Copy className="size-4 transition-transform group-hover:rotate-12" />}
                   </button>
                   <div className="flex flex-col gap-2 font-mono text-[10px] tracking-[0.14em] uppercase opacity-80">
-                    <span className="flex items-center gap-2"><MapPin className="size-3.5" /> {contactInfo.location}</span>
-                    <span className="flex items-center gap-2"><Calendar className="size-3.5" /> {contactInfo.availability}</span>
+                    <span className="flex items-center gap-2"><MapPin className="size-3.5" /> {hero.location}</span>
+                    <span className="flex items-center gap-2"><Calendar className="size-3.5" /> {liveSettings.availabilityStatus}</span>
                   </div>
                 </div>
                 <div className="mt-8 flex flex-wrap gap-2">
@@ -1764,8 +1895,8 @@ export function PortfolioSite() {
         <div className="mx-auto max-w-350 px-5 py-10 md:px-10 lg:px-14">
           <div className="flex flex-col justify-between gap-8 md:flex-row md:items-center">
             <a href="#top" className="group flex items-center gap-3 font-mono text-xs tracking-[0.18em] uppercase">
-              <span className="grid size-8 place-items-center rounded-full bg-primary text-primary-foreground transition-transform group-hover:rotate-12">{siteConfig.initials}</span>
-              {siteConfig.name} / Dev
+              <span className="grid size-8 place-items-center rounded-full bg-primary text-primary-foreground transition-transform group-hover:rotate-12">{hero.initials}</span>
+              {hero.name} / Dev
             </a>
             <div className="flex flex-wrap gap-6 font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">
               {navItems.map((item) => (
@@ -1783,8 +1914,8 @@ export function PortfolioSite() {
             </div>
           </div>
           <div className="mt-10 flex flex-col gap-3 border-t border-border pt-5 font-mono text-[10px] tracking-[0.12em] text-muted-foreground uppercase sm:flex-row sm:items-center sm:justify-between">
-            <span>© {new Date().getFullYear()} {siteConfig.name}. All rights reserved.</span>
-            <span>Built with Next.js · Tailwind · {siteConfig.established} — ∞</span>
+            <span>© {new Date().getFullYear()} {hero.name}. All rights reserved.</span>
+            <span>Built with Next.js · Tailwind · {hero.established} — ∞</span>
           </div>
         </div>
       </footer>

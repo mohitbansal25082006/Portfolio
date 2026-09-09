@@ -1,7 +1,11 @@
-// ============================================================================
-//  PORTFOLIO CONTENT — single source of truth
-//  Edit everything here. Part 2 = replace placeholders with real data.
-// ============================================================================
+/**
+ * lib/content.ts
+ * ─────────────────────────────────────────────────────────────────────────────
+ * PORTFOLIO CONTENT — single source of truth for static fallback data.
+ * All values here are used as fallbacks when no admin edits exist.
+ * Admin edits from Content Management override these values via the API.
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
 
 export const siteConfig = {
   name: 'Mohit Bansal',
@@ -40,18 +44,16 @@ export const about = {
 
   paragraphs: [
     "I'm Mohit Bansal, a full-stack and AI developer passionate about creating intelligent software, seamless digital experiences, and products that make a real impact.",
-
     "My interests lie in software engineering, Generative AI, and modern application development. I enjoy building scalable web, mobile, and AI-powered products that solve real-world problems.",
-
-    "My goal is to build innovative software that makes technology more useful and accessible."
+    "My goal is to build innovative software that makes technology more useful and accessible.",
   ],
 
   interests: [
-  'AI Engineering',
-  'Full-Stack Development',
-  'Mobile Development',
-  'Product Development',
-],
+    'AI Engineering',
+    'Full-Stack Development',
+    'Mobile Development',
+    'Product Development',
+  ],
 
   pillars: [
     {
@@ -124,15 +126,11 @@ export const projects = [
     mark: 'D',
     year: '2026',
     categories: ['ai', 'web', 'mobile'],
-
     theme: 'project-deepdive',
-
     short:
       'A full-scale autonomous research platform — a multi-agent AI system that searches, analyzes, fact-checks, and transforms any query into structured reports, podcasts, voice debates, slide decks, and academic papers, wrapped in real-time collaborative workspaces and a production credit/payments system.',
-
     problem:
-      'Deep research is slow and fragmented — search, cross-referencing, fact-checking, writing, and turning findings into shareable formats (documents, slides, audio) are all separate manual steps. DeepDive AI collapses this entire workflow into one pipeline: a coordinated multi-agent system plans the research, searches and scores sources for trust, analyzes and verifies findings, then generates the report — and from that single report can autonomously produce a podcast, a moderated AI debate, a slide deck, or a publication-ready academic paper, all groundable in the same verified source data.',
-
+      'Deep research is slow and fragmented — search, cross-referencing, fact-checking, writing, and turning findings into shareable formats (documents, slides, audio) are all separate manual steps. DeepDive AI collapses this entire workflow into one pipeline.',
     features: [
       'Autonomous Multi-Agent Research Pipeline (Planner → Searcher → Analyst → Fact-Checker → Reporter)',
       'Deep Web Search with Source Trust Scoring (120+ curated domains, credibility & bias tiers)',
@@ -152,58 +150,26 @@ export const projects = [
       'App-Wide Theme Engine — 6 themes × light/dark/system, synced across all three apps',
       'Google & GitHub OAuth, unified push notification system, referral & analytics dashboards',
     ],
-
     stack: [
-      'React Native',
-      'Expo',
-      'TypeScript',
-      'Expo Router',
-      'Supabase (PostgreSQL, Auth, Storage, Realtime, Edge Functions)',
-      'pgvector',
-      'OpenAI (GPT-4.1, Whisper, TTS)',
-      'Tavily Search API',
-      'Pexels API',
-      'Stream Chat',
-      'Next.js',
-      'Razorpay',
-      'GIPHY API',
-      'Firebase Cloud Messaging',
-      'react-native-reanimated',
-      'pptxgenjs',
-      'docx',
+      'React Native', 'Expo', 'TypeScript', 'Expo Router', 'Supabase', 'pgvector',
+      'OpenAI (GPT-4.1, Whisper, TTS)', 'Tavily Search API', 'Pexels API', 'Stream Chat',
+      'Next.js', 'Razorpay', 'GIPHY API', 'Firebase Cloud Messaging',
+      'react-native-reanimated', 'pptxgenjs', 'docx',
     ],
-
     challenges:
-      'Coordinating a large multi-agent AI pipeline that had to support token-by-token streaming, RAG retrieval, and real-time collaboration simultaneously, without the different systems stepping on each other. Keeping generated content (reports, podcasts, debates, slides) reliably exportable and fully usable offline meant building a custom asset-caching and re-hydration layer. Real-time features (chat, presence, shared content, activity feeds) needed to stay in sync across a mobile app, an admin dashboard, and a public web app that all read from the same Supabase backend — while a credit-metered payment system had to fail fast and never silently lose a transaction.',
-
+      'Coordinating a large multi-agent AI pipeline that had to support token-by-token streaming, RAG retrieval, and real-time collaboration simultaneously. Real-time features needed to stay in sync across mobile, admin dashboard, and public web app.',
     metrics:
-      '58+ development parts · 500+ files · 58+ database migrations · 200,000+ lines of code · 3 integrated applications (mobile app, admin dashboard, public web)',
-
+      '58+ development parts · 500+ files · 58+ database migrations · 200,000+ lines of code · 3 integrated applications',
     live: 'https://deepdive.website/',
     github: 'https://github.com/mohitbansal25082006/deepdive-app',
-
     images: [
-      '/deepdive/deepdive1.jpeg',
-      '/deepdive/deepdive2.jpeg',
-      '/deepdive/deepdive3.jpeg',
-      '/deepdive/deepdive4.jpeg',
-      '/deepdive/deepdive5.jpeg',
-      '/deepdive/deepdive6.jpeg',
-      '/deepdive/deepdive7.jpeg',
-      '/deepdive/deepdive8.jpeg',
-      '/deepdive/deepdive9.jpeg',
-      '/deepdive/deepdive10.jpeg',
-      '/deepdive/deepdive11.jpeg',
-      '/deepdive/deepdive12.jpeg',
-      '/deepdive/deepdive13.jpeg',
-      '/deepdive/deepdive14.jpeg',
-      '/deepdive/deepdive15.jpeg',
-      '/deepdive/deepdive16.jpeg',
-      '/deepdive/deepdive17.jpeg',
-      '/deepdive/deepdive18.jpeg',
-      '/deepdive/deepdive19.png',
-      '/deepdive/deepdive20.png',
-      '/deepdive/deepdive21.png',
+      '/deepdive/deepdive1.jpeg', '/deepdive/deepdive2.jpeg', '/deepdive/deepdive3.jpeg',
+      '/deepdive/deepdive4.jpeg', '/deepdive/deepdive5.jpeg', '/deepdive/deepdive6.jpeg',
+      '/deepdive/deepdive7.jpeg', '/deepdive/deepdive8.jpeg', '/deepdive/deepdive9.jpeg',
+      '/deepdive/deepdive10.jpeg', '/deepdive/deepdive11.jpeg', '/deepdive/deepdive12.jpeg',
+      '/deepdive/deepdive13.jpeg', '/deepdive/deepdive14.jpeg', '/deepdive/deepdive15.jpeg',
+      '/deepdive/deepdive16.jpeg', '/deepdive/deepdive17.jpeg', '/deepdive/deepdive18.jpeg',
+      '/deepdive/deepdive19.png', '/deepdive/deepdive20.png', '/deepdive/deepdive21.png',
     ],
   },
   {
@@ -211,10 +177,8 @@ export const projects = [
     theme: 'project-MannSahay',
     short:
       'AI-powered digital mental health companion for Indian students — an empathetic multilingual chatbot, counselor booking, and an anonymous peer-support forum, built for Smart India Hackathon 2025.',
-
     problem:
-      '60%+ of Indian university students report moderate-to-severe anxiety, depression, or burnout, yet fewer than 15% seek help — blocked by stigma, a 1:500 counselor-to-student ratio, and mental-health apps that are English-only and culturally Western. MannSahay closes that gap with a culturally aware, 10-language platform that pairs an empathetic AI chatbot with real counselor access and anonymous peer support, so institutions can offer proactive, data-informed care instead of reactive, stigma-limited access.',
-
+      '60%+ of Indian university students report moderate-to-severe anxiety, depression, or burnout, yet fewer than 15% seek help — blocked by stigma, a 1:500 counselor-to-student ratio, and mental-health apps that are English-only and culturally Western.',
     features: [
       'AI Mental Health Chatbot with Crisis Detection',
       '5 Indian Languages, Culturally Aware',
@@ -227,56 +191,32 @@ export const projects = [
       'Privacy-First, Zero-PII Architecture',
       'GitHub & Google OAuth',
     ],
-
     stack: [
-      'Next.js 14',
-      'React 18',
-      'TypeScript',
-      'Tailwind CSS',
-      'shadcn/ui',
-      'Neon PostgreSQL',
-      'Prisma ORM',
-      'NextAuth.js',
-      'OpenAI GPT-4o',
-      'Anthropic Claude 3 Sonnet',
-      'Cloudflare R2',
-      'Vercel Blob',
-      'Nodemailer / Resend',
-      'Google Calendar API',
+      'Next.js 14', 'React 18', 'TypeScript', 'Tailwind CSS', 'shadcn/ui',
+      'Neon PostgreSQL', 'Prisma ORM', 'NextAuth.js', 'OpenAI GPT-4o',
+      'Anthropic Claude 3 Sonnet', 'Cloudflare R2', 'Vercel Blob',
+      'Nodemailer / Resend', 'Google Calendar API',
     ],
-
     challenges:
-      'Balancing AI autonomy with safety in a mental-health context — the chatbot needed real-time crisis detection and a human-in-the-loop escalation path without becoming a bottleneck or a liability. Supporting 5 Indian languages meant more than translation: responses had to stay culturally and emotionally appropriate, not just linguistically correct. The forum needed anonymous posting robust enough that even the platform couldn\'t link identity to content, while still allowing AI moderation to catch harmful posts before they spread — all on a zero-PII data model built to satisfy GDPR and India\'s DPDP Act.',
-
+      'Balancing AI autonomy with safety in a mental-health context. Supporting 5 Indian languages meant more than translation. The forum needed anonymous posting robust enough that even the platform couldn\'t link identity to content.',
     metrics:
-      'Built for Smart India Hackathon 2025 (Problem Statement SIH25092, Govt. of Jammu & Kashmir) · 5 core modules · 10 languages supported · 6-member team',
-
+      'Built for Smart India Hackathon 2025 · 5 core modules · 10 languages supported · 6-member team',
     live: 'https://mannsahay.vercel.app/',
     github: 'https://github.com/mohitbansal25082006/MannSahay',
     images: [
-        '/mannsahay/mannsahay1.png',
-        '/mannsahay/mannsahay2.png',
-        '/mannsahay/mannsahay3.png',
-        '/mannsahay/mannsahay4.png',
-        '/mannsahay/mannsahay5.png',
-        '/mannsahay/mannsahay6.png',
-        '/mannsahay/mannsahay7.png',
-        '/mannsahay/mannsahay8.png',
-        '/mannsahay/mannsahay9.png',
-        '/mannsahay/mannsahay10.png',
-        '/mannsahay/mannsahay11.png',
+      '/mannsahay/mannsahay1.png', '/mannsahay/mannsahay2.png', '/mannsahay/mannsahay3.png',
+      '/mannsahay/mannsahay4.png', '/mannsahay/mannsahay5.png', '/mannsahay/mannsahay6.png',
+      '/mannsahay/mannsahay7.png', '/mannsahay/mannsahay8.png', '/mannsahay/mannsahay9.png',
+      '/mannsahay/mannsahay10.png', '/mannsahay/mannsahay11.png',
     ],
   },
   {
     number: '03', name: 'NeuraFusion', mark: 'N', year: '2025', categories: ['ai', 'web', 'open-source'],
     theme: 'project-neurafusion',
-
     short:
       'A multimodal AI assistant that understands text, images, and audio in one interface — with 5 switchable personalities and zero-cost infrastructure using free-tier Hugging Face models.',
-
     problem:
-      'Most AI assistants handle only one modality at a time and lock advanced features behind paid APIs, forcing users to juggle separate tools for chat, image understanding, and voice. NeuraFusion fuses text, vision, and audio reasoning into a single Gradio interface, runs entirely on free open-source models by default, and lets users switch the AI\'s personality to match the task — with an optional GPT-4o upgrade path for those who want it.',
-
+      'Most AI assistants handle only one modality at a time and lock advanced features behind paid APIs. NeuraFusion fuses text, vision, and audio reasoning into a single Gradio interface.',
     features: [
       'Multimodal Fusion (Text + Image + Audio)',
       '5 Switchable AI Personalities',
@@ -287,47 +227,28 @@ export const projects = [
       '4-Format Conversation Export',
       'Free-Tier Models with Optional GPT-4o',
     ],
-
     stack: [
-      'Python',
-      'Gradio',
-      'Hugging Face Transformers',
-      'Flan-T5',
-      'BLIP-2',
-      'Whisper',
-      'LangChain',
-      'gTTS',
-      'Matplotlib',
-      'OpenAI GPT-4o (optional)',
+      'Python', 'Gradio', 'Hugging Face Transformers', 'Flan-T5', 'BLIP-2',
+      'Whisper', 'LangChain', 'gTTS', 'Matplotlib', 'OpenAI GPT-4o (optional)',
     ],
-
     challenges:
-      'Getting five different open-source models — a text model, a vision-language model, a speech recognizer, and a fusion layer — to reason together coherently on modest free-tier hardware, without the latency or memory footprint of a single giant multimodal model. Attention heatmaps and color-distribution analysis had to run in near real time to stay useful in an interactive demo rather than becoming a batch process.',
-
+      'Getting five different open-source models to reason together coherently on modest free-tier hardware. Attention heatmaps and color-distribution analysis had to run in near real time.',
     metrics:
-      'Runs entirely on free-tier infrastructure ($0 cost) · 5 personality modes · 4 processing modalities · deployed live on Hugging Face Spaces',
-
+      'Runs entirely on free-tier infrastructure ($0 cost) · 5 personality modes · 4 processing modalities',
     live: 'https://huggingface.co/spaces/mohitbansal25082006/NeuraFusion',
     github: 'https://github.com/mohitbansal25082006/NeuraFusion',
     images: [
-        '/neurafusion/neurafusion1.png',
-        '/neurafusion/neurafusion2.png',
-        '/neurafusion/neurafusion3.png',
-        '/neurafusion/neurafusion4.png',
-        '/neurafusion/neurafusion5.png',
-        '/neurafusion/neurafusion6.png',
+      '/neurafusion/neurafusion1.png', '/neurafusion/neurafusion2.png', '/neurafusion/neurafusion3.png',
+      '/neurafusion/neurafusion4.png', '/neurafusion/neurafusion5.png', '/neurafusion/neurafusion6.png',
     ],
   },
   {
     number: '04', name: 'TeamScript', mark: 'T', year: '2025', categories: ['web', 'open-source'],
     theme: 'project-teamscript',
-
     short:
       'A production-grade Google Docs clone — real-time collaborative rich-text editing with comments, mentions, org workspaces, and multi-format export, built on Next.js 15 and Liveblocks.',
-
     problem:
-      'Teams need a document editor that feels as fluid and shared as Google Docs — live cursors, instant sync, threaded comments — without being locked into Google\'s ecosystem. TeamScript rebuilds that experience from scratch: a TipTap-powered rich text editor with full real-time collaboration, organization-level workspaces, and export to PDF, HTML, TXT, and JSON.',
-
+      'Teams need a document editor that feels as fluid and shared as Google Docs without being locked into Google\'s ecosystem.',
     features: [
       'Real-Time Collaborative Editing (Liveblocks)',
       'Live Cursor Tracking',
@@ -342,43 +263,27 @@ export const projects = [
       'Organization Workspaces & Invites',
       'Clerk Authentication',
     ],
-
     stack: [
-      'Next.js 15',
-      'React 19',
-      'Convex',
-      'Clerk',
-      'Liveblocks',
-      'TipTap',
-      'Tailwind CSS',
-      'Shadcn UI',
-      'Vercel',
+      'Next.js 15', 'React 19', 'Convex', 'Clerk', 'Liveblocks',
+      'TipTap', 'Tailwind CSS', 'Shadcn UI', 'Vercel',
     ],
-
     challenges:
-      'Keeping a rich-text document — tables, images, formatting, checklists — in sync across multiple simultaneous editors without corrupting structure or losing cursor context, while layering comments and mentions on top of content that could shift under a user mid-edit. Running on React 19 RC ahead of ecosystem support meant working around dependency incompatibilities across the whole stack.',
-
+      'Keeping a rich-text document in sync across multiple simultaneous editors without corrupting structure. Running on React 19 RC ahead of ecosystem support.',
     metrics:
       'Full-stack real-time editor with 19+ shipped features across editing, collaboration, and organization management',
-
     live: 'https://teamscript-nine.vercel.app/',
     github: 'https://github.com/mohitbansal25082006/teamscript',
     images: [
-      '/teamscript/teamscript1.png',
-      '/teamscript/teamscript2.png',
-      '/teamscript/teamscript3.png', 
+      '/teamscript/teamscript1.png', '/teamscript/teamscript2.png', '/teamscript/teamscript3.png',
     ],
   },
   {
     number: '05', name: 'FinSight AI', mark: 'F', year: '2025', categories: ['ai', 'web', 'open-source'],
     theme: 'project-finsight-ai',
-
     short:
       'AI-powered financial analytics platform combining real-time market data, AI news sentiment analysis, and a portfolio simulator to help investors make smarter decisions.',
-
     problem:
-      'Retail investors have to piece together market data, news, and portfolio tracking from separate tools — none of which explain *why* a stock is moving or what a decision might do to a portfolio before making it. FinSight AI unifies live market data, AI-summarized news sentiment, and a risk-free "what-if" portfolio simulator into one platform, so users can test decisions before committing real money.',
-
+      'Retail investors have to piece together market data, news, and portfolio tracking from separate tools. FinSight AI unifies live market data, AI-summarized news sentiment, and a risk-free portfolio simulator.',
     features: [
       'Real-Time Stock & Crypto Prices',
       'Interactive Historical Charts',
@@ -389,79 +294,33 @@ export const projects = [
       'Google & GitHub OAuth Authentication',
       'Dark Mode & Responsive Design',
     ],
-
     stack: [
-      'Next.js 15',
-      'TypeScript',
-      'Tailwind CSS',
-      'shadcn/ui',
-      'Framer Motion',
-      'Recharts',
-      'NextAuth.js',
-      'Prisma ORM',
-      'Neon PostgreSQL',
-      'OpenAI API',
-      'Finnhub API',
-      'Yahoo Finance API',
+      'Next.js 15', 'TypeScript', 'Tailwind CSS', 'shadcn/ui', 'Framer Motion',
+      'Recharts', 'NextAuth.js', 'Prisma ORM', 'Neon PostgreSQL',
+      'OpenAI API', 'Finnhub API', 'Yahoo Finance API',
     ],
-
     challenges:
-      'Merging two different market-data sources — Finnhub for live prices and Yahoo Finance for historical charts — into one consistent view without gaps or mismatched timestamps. AI-generated predictions needed honest confidence scoring rather than false certainty, and the portfolio simulator had to recalculate profit/loss in real time as live prices moved, without the UI feeling laggy under frequent updates.',
-
+      'Merging two different market-data sources into one consistent view. AI-generated predictions needed honest confidence scoring. The portfolio simulator had to recalculate in real time.',
     metrics:
-      'Real-time data refresh every minute · AI-scored market predictions · runs on free-tier infrastructure at ~$5–15/month in production',
-
+      'Real-time data refresh every minute · AI-scored market predictions · runs on free-tier infrastructure',
     live: 'https://finsight-ai-phi.vercel.app/',
     github: 'https://github.com/mohitbansal25082006/finsight-ai',
     images: [
-      '/finsight-ai/finsight-ai1.png',
-      '/finsight-ai/finsight-ai2.png',
-      '/finsight-ai/finsight-ai3.png',
-      '/finsight-ai/finsight-ai4.png',
-      '/finsight-ai/finsight-ai5.png',
-      '/finsight-ai/finsight-ai6.png',
-      '/finsight-ai/finsight-ai7.png',
-      '/finsight-ai/finsight-ai8.png',
+      '/finsight-ai/finsight-ai1.png', '/finsight-ai/finsight-ai2.png', '/finsight-ai/finsight-ai3.png',
+      '/finsight-ai/finsight-ai4.png', '/finsight-ai/finsight-ai5.png', '/finsight-ai/finsight-ai6.png',
+      '/finsight-ai/finsight-ai7.png', '/finsight-ai/finsight-ai8.png',
     ],
-  }
+  },
 ]
 
 export const techStack = [
-  'React',
-  'Next.js',
-  'TypeScript',
-  'JavaScript',
-  'React Native',
-  'Expo',
-
-  'Node.js',
-  'Express',
-  'Python',
-
-  'PostgreSQL',
-  'MongoDB',
-  'Prisma',
-  'Supabase',
-
-  'Tailwind CSS',
-  'Shadcn UI',
-  'Framer Motion',
-
-  'OpenAI',
-  'Claude',
-  'Gemini',
-  'LangChain',
-  'AI Agents',
-  'LLM Applications',
-  'RAG',
-  'Prompt Engineering',
-
-  'OAuth',
-  'REST APIs',
-  'Docker',
-  'Git',
-  'GitHub',
-  'Vercel',
+  'React', 'Next.js', 'TypeScript', 'JavaScript', 'React Native', 'Expo',
+  'Node.js', 'Express', 'Python',
+  'PostgreSQL', 'MongoDB', 'Prisma', 'Supabase',
+  'Tailwind CSS', 'Shadcn UI', 'Framer Motion',
+  'OpenAI', 'Claude', 'Gemini', 'LangChain', 'AI Agents', 'LLM Applications',
+  'RAG', 'Prompt Engineering',
+  'OAuth', 'REST APIs', 'Docker', 'Git', 'GitHub', 'Vercel',
 ]
 
 export const timeline = [
@@ -512,14 +371,6 @@ export const timeline = [
   },
 ]
 
-// ============================================================================
-//  GitHub — LIVE DATA CONFIG
-//  The GitHub section (components/github-section.tsx) fetches real-time
-//  profile, contribution, language, pinned-repo, and activity data straight
-//  from the GitHub GraphQL + REST APIs via app/api/github/route.ts and
-//  lib/github.ts. Nothing below is mock data — this is just the username
-//  used to query the API. See GITHUB_INTEGRATION_GUIDE.md for full setup.
-// ============================================================================
 export const githubConfig = {
   username: 'mohitbansal25082006',
 }

@@ -455,3 +455,23 @@ app/admin/content/backup-client.tsx
 - **Content client** — integrated image manager, storage warnings, cleanup button
 - **Version history UI** — shows image stats for each version
 - **Backup UI** — displays image count and size in backup info
+
+
+
+## Part 3.2 Summary
+
+
+### Files Updated:
+- `lib/content-store.ts` — Added category management helpers, tech stack normalization, full content normalization
+- `lib/content-versioning.ts` — Enhanced backup with full content coverage, category counts in summary
+- `app/admin/content/content-client.tsx` — Removed Tech Stack tab, added Categories section in Project Editor, fixed fs import error (moved helpers to client-side)
+- `app/admin/content/backup-client.tsx` — Removed unnecessary info line, added categories count display
+- `app/api/admin/backup/route.ts` — Updated with full backup coverage, info endpoint, import/export validation
+- `components/portfolio-site.tsx` — Fixed TechSphere to handle empty/invalid items, added fallback to static techStack
+
+### Features Added:
+- **Project Categories Management** — Add/remove/update categories directly in Project Editor with quick-add buttons (ai, web, mobile, open-source)
+- **Tech Stack 3D Sphere Fix** — Filters empty/invalid items, deduplicates, shows graceful empty state, falls back to static data
+- **Full Backup Coverage** — Backup now includes ALL content fields (hero, stats, techStack, filters, navItems, pillars, categories)
+- **Backup Info Endpoint** — `GET /api/admin/backup?info=true` returns full data summary with category counts
+- **Category Normalization** — Categories auto-lowercased and trimmed

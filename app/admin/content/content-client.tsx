@@ -6,44 +6,39 @@
  * Part 2.7 — Content Management System
  * Part 2.10 — Added Version History & Backup tabs
  * Part 3 — Advanced Project Image Management Integration
- * Updated — Full mobile compatibility, removed max limit, removed captions
+ * Part 3.1 — Extended to cover FULL portfolio
+ * Part 3.2 — Added Categories section in Project Editor
+ *           Removed Tech Stack management (3D sphere stays static on portfolio)
  * ---------------------------------------------------------------------------
  * Full-featured admin page for editing all portfolio content:
- *   • Projects — edit descriptions, links, stack, add/remove/reorder
+ *   • Hero — name, title, oneLiner, location, availability, established
+ *   • About — college, year, paragraphs, interests, pillars
+ *   • Stats — stat cards (label, value, suffix)
+ *   • Projects — edit descriptions, links, stack, categories, add/remove/reorder
+ *   • Filters — project category filters
  *   • Timeline — edit entries
- *   • About — edit section paragraphs
  *   • Skills — edit skill groups
+ *   • Nav Items — navigation labels & hrefs
  *   • History — view version history, rollback, rename, delete
  *   • Backup — export/import JSON backup
- *
- * Part 3 Updates:
- *   • Advanced image manager with drag-and-drop upload
- *   • Image preview grid with touch-friendly actions
- *   • Orphaned image cleanup
- *   • Image storage status indicators
- *   • No maximum image limit
- *   • Any URL type supported
- *   • Full theme integration
- *   • Mobile responsive with touch support
- *   • Bottom sheet modal on mobile
- *   • Safe-area padding for notched devices
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  LayoutDashboard, LogOut, Mail, Users, FileText, Settings as SettingsIcon,
-  ExternalLink, TrendingUp, MessageSquare, Loader2, Menu, X, Palette,
-  BarChart2, AlertTriangle, Check, ShieldCheck, Save, RotateCcw,
+  LayoutDashboard, LogOut, Mail, FileText, Settings as SettingsIcon,
+  ExternalLink, MessageSquare, Loader2, Menu, X, Palette,
+  BarChart2, AlertTriangle, Check, ShieldCheck, Save,
   Plus, Trash2, ChevronUp, ChevronDown, Edit3, FolderKanban,
-  Clock, User, Wrench, Eye, EyeOff, GripVertical, Link2,
-  History, Database, Download, Upload, Image as ImageIcon,
-  HardDrive, Cloud, FolderOpen,
+  Clock, User, Wrench, Link2, History, Database,
+  Image as ImageIcon, Cloud, Globe, BarChart3, Filter,
+  Navigation, Tag,
 } from 'lucide-react'
 import { themes } from '@/lib/content'
 import type {
   ProjectContent, AboutContent, SkillGroup, TimelineEntry,
+  HeroContent, StatItem, NavItem, AboutPillar,
 } from '@/lib/content-store'
 import VersionHistory from './version-history-client'
 import BackupClient from './backup-client'
@@ -70,6 +65,40 @@ function GithubIcon({ className, style }: { className?: string; style?: React.CS
   )
 }
 
+// ─── LOCAL helper functions (client-safe) ────────────────────────────────
+
+/**
+ * Add a category to a project if not already present.
+ */
+function addCategoryToProject(project: ProjectContent, category: string): ProjectContent {
+  const trimmed = category.trim().toLowerCase()
+  if (!trimmed) return project
+  if (project.categories.includes(trimmed)) return project
+  return {
+    ...project,
+    categories: [...project.categories, trimmed],
+  }
+}
+
+/**
+ * Remove a category from a project by index.
+ */
+function removeCategoryFromProject(project: ProjectContent, index: number): ProjectContent {
+  if (index < 0 || index >= project.categories.length) return project
+  const newCategories = project.categories.filter((_, i) => i !== index)
+  return { ...project, categories: newCategories }
+}
+
+/**
+ * Update a category in a project at the given index.
+ */
+function updateCategoryInProject(project: ProjectContent, index: number, value: string): ProjectContent {
+  if (index < 0 || index >= project.categories.length) return project
+  const newCategories = [...project.categories]
+  newCategories[index] = value.trim().toLowerCase()
+  return { ...project, categories: newCategories }
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────
 
 interface ContentStore {
@@ -77,6 +106,11 @@ interface ContentStore {
   about: AboutContent
   skillGroups: SkillGroup[]
   timeline: TimelineEntry[]
+  hero: HeroContent
+  stats: StatItem[]
+  techStack: string[]
+  projectFilters: string[]
+  navItems: NavItem[]
   updatedAt: string
   imageMetadata?: Record<string, any>
 }
@@ -96,7 +130,7 @@ interface ContentVersion {
   }
 }
 
-interface NavItem {
+interface NavItemProps {
   icon: React.ReactNode
   label: string
   href: string
@@ -121,7 +155,7 @@ function useAdminTheme() {
 
 // ─── Sidebar nav item ────────────────────────────────────────────────────
 
-function SideNavItem({ icon, label, href, active, badge }: NavItem) {
+function SideNavItem({ icon, label, href, active, badge }: NavItemProps) {
   return (
     <a
       href={href}
@@ -176,7 +210,7 @@ function Field({
 
 // ─── Tab type ────────────────────────────────────────────────────────────
 
-type Tab = 'projects' | 'timeline' | 'about' | 'skills' | 'history' | 'backup'
+type Tab = 'hero' | 'about' | 'stats' | 'projects' | 'filters' | 'timeline' | 'skills' | 'navitems' | 'history' | 'backup'
 
 // ─── Main component ──────────────────────────────────────────────────────
 
@@ -188,39 +222,37 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
   const [showThemePicker, setShowThemePicker] = useState(false)
   const [msgStats, setMsgStats] = useState<{ total: number; unread: number } | null>(null)
 
-  const [activeTab, setActiveTab] = useState<Tab>('projects')
+  const [activeTab, setActiveTab] = useState<Tab>('hero')
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [content, setContent] = useState<ContentStore | null>(null)
   const [redisConfigured, setRedisConfigured] = useState(true)
 
-  // Image storage status
   const [imageStorage, setImageStorage] = useState<{
     blobConfigured: boolean
     redisConfigured: boolean
   }>({ blobConfigured: false, redisConfigured: false })
 
-  // Version history state
   const [versions, setVersions] = useState<ContentVersion[]>([])
   const [versionCount, setVersionCount] = useState(0)
 
-  // Per-tab save state
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
-  // Local editable state
-  const [projects, setProjects] = useState<ProjectContent[]>([])
-  const [timeline, setTimeline] = useState<TimelineEntry[]>([])
+  const [hero, setHero] = useState<HeroContent | null>(null)
   const [about, setAbout] = useState<AboutContent | null>(null)
+  const [stats, setStats] = useState<StatItem[]>([])
+  const [projects, setProjects] = useState<ProjectContent[]>([])
+  const [projectFilters, setProjectFilters] = useState<string[]>([])
+  const [timeline, setTimeline] = useState<TimelineEntry[]>([])
   const [skillGroups, setSkillGroups] = useState<SkillGroup[]>([])
+  const [navItems, setNavItems] = useState<NavItem[]>([])
 
-  // Project editing state
   const [editingProject, setEditingProject] = useState<ProjectContent | null>(null)
   const [projectIndex, setProjectIndex] = useState<number | null>(null)
   const [showProjectEditor, setShowProjectEditor] = useState(false)
 
-  // Image stats
   const [imageUsageStats, setImageUsageStats] = useState<{
     totalImagesTracked: number
     imagesInCurrentContent: number
@@ -244,10 +276,14 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
       const data = await res.json()
       setContent(data.content)
       setRedisConfigured(data.storage?.redisConfigured ?? true)
-      setProjects(data.content.projects)
-      setTimeline(data.content.timeline)
+      setHero(data.content.hero)
       setAbout(data.content.about)
+      setStats(data.content.stats || [])
+      setProjects(data.content.projects)
+      setProjectFilters(data.content.projectFilters || [])
+      setTimeline(data.content.timeline)
       setSkillGroups(data.content.skillGroups)
+      setNavItems(data.content.navItems || [])
       
       if (data.versions) {
         setVersions(data.versions.recent || [])
@@ -262,7 +298,6 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
 
   useEffect(() => { loadContent() }, [loadContent])
 
-  // Load image storage status
   const loadImageStorage = useCallback(async () => {
     try {
       const res = await fetch('/api/admin/project-images', { cache: 'no-store' })
@@ -278,12 +313,11 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
 
   useEffect(() => { loadImageStorage() }, [loadImageStorage])
 
-  // Load image usage stats
   const loadImageStats = useCallback(async () => {
     try {
-      const res = await fetch('/api/admin/backup', { 
+      const res = await fetch('/api/admin/backup', {
         method: 'PUT',
-        cache: 'no-store' 
+        cache: 'no-store'
       })
       if (!res.ok) return
       const data = await res.json()
@@ -330,10 +364,14 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
     setSaveError(null)
     try {
       let patch: Partial<ContentStore> = {}
-      if (activeTab === 'projects') patch = { projects }
-      else if (activeTab === 'timeline') patch = { timeline }
+      if (activeTab === 'hero' && hero) patch = { hero }
       else if (activeTab === 'about' && about) patch = { about }
+      else if (activeTab === 'stats') patch = { stats }
+      else if (activeTab === 'projects') patch = { projects }
+      else if (activeTab === 'filters') patch = { projectFilters }
+      else if (activeTab === 'timeline') patch = { timeline }
       else if (activeTab === 'skills') patch = { skillGroups }
+      else if (activeTab === 'navitems') patch = { navItems }
 
       const res = await fetch('/api/admin/content', {
         method: 'PUT',
@@ -346,15 +384,15 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
         return
       }
       setContent(data.content)
-      
+
       if (data.versions) {
         setVersions(data.versions.recent || [])
         setVersionCount(data.versions.totalCount || 0)
       }
-      
+
       setSaved(true)
       setTimeout(() => setSaved(false), 2500)
-      
+
       await loadVersions()
       await loadImageStats()
     } catch {
@@ -373,7 +411,7 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
       if (!res.ok || !data.success) {
         throw new Error(data.error || 'Failed to rollback')
       }
-      
+
       await loadContent()
       await loadVersions()
       await loadImageStats()
@@ -395,7 +433,7 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
       if (!res.ok) {
         throw new Error(data.error || 'Failed to rename version')
       }
-      
+
       await loadVersions()
       return true
     } catch (err) {
@@ -413,7 +451,7 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
       if (!res.ok) {
         throw new Error(data.error || 'Failed to delete version')
       }
-      
+
       await loadVersions()
       await loadImageStats()
       return true
@@ -448,8 +486,7 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
     }
   }
 
-  // Canonical nav list
-  const navItems: NavItem[] = [
+  const sidebarNavItems: NavItemProps[] = [
     { icon: <LayoutDashboard className="h-4 w-4" />, label: 'Dashboard', href: '/admin/dashboard' },
     { icon: <MessageSquare className="h-4 w-4" />, label: 'Messages', href: '/admin/messages', badge: msgStats?.unread ?? 0 },
     { icon: <BarChart2 className="h-4 w-4" />, label: 'Analytics', href: '/admin/analytics' },
@@ -460,10 +497,14 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
   ]
 
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
-    { id: 'projects', label: 'Projects', icon: <FolderKanban className="h-4 w-4" /> },
-    { id: 'timeline', label: 'Timeline', icon: <Clock className="h-4 w-4" /> },
+    { id: 'hero', label: 'Hero', icon: <Globe className="h-4 w-4" /> },
     { id: 'about', label: 'About', icon: <User className="h-4 w-4" /> },
+    { id: 'stats', label: 'Stats', icon: <BarChart3 className="h-4 w-4" /> },
+    { id: 'projects', label: 'Projects', icon: <FolderKanban className="h-4 w-4" /> },
+    { id: 'filters', label: 'Filters', icon: <Filter className="h-4 w-4" /> },
+    { id: 'timeline', label: 'Timeline', icon: <Clock className="h-4 w-4" /> },
     { id: 'skills', label: 'Skills', icon: <Wrench className="h-4 w-4" /> },
+    { id: 'navitems', label: 'Nav Items', icon: <Navigation className="h-4 w-4" /> },
     { id: 'history', label: 'History', icon: <History className="h-4 w-4" /> },
     { id: 'backup', label: 'Backup', icon: <Database className="h-4 w-4" /> },
   ]
@@ -511,7 +552,7 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
         </div>
 
         <nav className="flex-1 min-h-0 overflow-y-auto p-3 space-y-1">
-          {navItems.map(item => (
+          {sidebarNavItems.map(item => (
             <SideNavItem key={item.href} {...item} />
           ))}
         </nav>
@@ -631,7 +672,7 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
             <p className="eyebrow mb-2">Site Content</p>
             <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold">Content Management</h1>
             <p className="mt-1 text-xs sm:text-sm" style={{ color: 'var(--muted-foreground)' }}>
-              Edit projects, timeline, about section, and skills shown on the live portfolio.
+              Edit all portfolio content — hero, about, stats, skills, projects, timeline, and more.
             </p>
           </div>
 
@@ -703,13 +744,16 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
             </div>
           ) : (
             <>
-              {/* Tab bar - scrollable on mobile */}
-              <div className="mb-4 sm:mb-6 flex gap-1 overflow-x-auto rounded-2xl border p-1 -mx-1 px-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden" style={{ borderColor: 'var(--border)' }}>
+              {/* Tab bar */}
+              <div
+                className="mb-4 sm:mb-6 flex gap-1 overflow-x-auto rounded-2xl border p-1 -mx-1 px-1 [scrollbar-width:thin] [scrollbar-color:var(--border)_transparent]"
+                style={{ borderColor: 'var(--border)' }}
+              >
                 {tabs.map(tab => (
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
-                    className="flex shrink-0 items-center gap-1.5 sm:gap-2 rounded-xl px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium transition-all active:scale-95"
+                    className="flex shrink-0 items-center gap-1.5 sm:gap-2 rounded-xl px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium transition-all active:scale-95 whitespace-nowrap"
                     style={{
                       background: activeTab === tab.id
                         ? 'color-mix(in oklch, var(--primary) 15%, transparent)'
@@ -718,8 +762,7 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
                     }}
                   >
                     {tab.icon}
-                    <span className="hidden xs:inline sm:inline">{tab.label}</span>
-                    <span className="xs:hidden sm:hidden">{tab.label.slice(0, 4)}</span>
+                    <span className="whitespace-nowrap">{tab.label}</span>
                     {tab.id === 'history' && versionCount > 0 && (
                       <span
                         className="flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold"
@@ -765,6 +808,18 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
               )}
 
               {/* Content sections */}
+              {activeTab === 'hero' && hero && (
+                <HeroTab hero={hero} setHero={setHero} />
+              )}
+
+              {activeTab === 'about' && about && (
+                <AboutTab about={about} setAbout={setAbout} />
+              )}
+
+              {activeTab === 'stats' && (
+                <StatsTab stats={stats} setStats={setStats} />
+              )}
+
               {activeTab === 'projects' && (
                 <ProjectsTab
                   projects={projects}
@@ -777,16 +832,20 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
                 />
               )}
 
+              {activeTab === 'filters' && (
+                <FiltersTab projectFilters={projectFilters} setProjectFilters={setProjectFilters} />
+              )}
+
               {activeTab === 'timeline' && (
                 <TimelineTab timeline={timeline} setTimeline={setTimeline} />
               )}
 
-              {activeTab === 'about' && about && (
-                <AboutTab about={about} setAbout={setAbout} />
-              )}
-
               {activeTab === 'skills' && (
                 <SkillsTab skillGroups={skillGroups} setSkillGroups={setSkillGroups} />
+              )}
+
+              {activeTab === 'navitems' && (
+                <NavItemsTab navItems={navItems} setNavItems={setNavItems} />
               )}
 
               {activeTab === 'history' && (
@@ -865,6 +924,446 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
           }}
         />
       )}
+    </div>
+  )
+}
+
+// ─── Hero Tab ────────────────────────────────────────────────────────────
+
+function HeroTab({
+  hero,
+  setHero,
+}: {
+  hero: HeroContent
+  setHero: (hero: HeroContent) => void
+}) {
+  const updateField = (field: keyof HeroContent, value: string) => {
+    setHero({ ...hero, [field]: value })
+  }
+
+  return (
+    <div className="space-y-5 sm:space-y-6">
+      <div className="grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-2">
+        <Field label="First Name">
+          <input
+            type="text"
+            value={hero.firstName}
+            onChange={e => updateField('firstName', e.target.value)}
+            className="mt-1.5 w-full rounded-xl border px-3 py-2 text-xs sm:text-sm outline-none focus:border-[var(--primary)]"
+            style={inputStyle}
+          />
+        </Field>
+        <Field label="Last Name">
+          <input
+            type="text"
+            value={hero.lastName}
+            onChange={e => updateField('lastName', e.target.value)}
+            className="mt-1.5 w-full rounded-xl border px-3 py-2 text-xs sm:text-sm outline-none focus:border-[var(--primary)]"
+            style={inputStyle}
+          />
+        </Field>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-2">
+        <Field label="Full Name">
+          <input
+            type="text"
+            value={hero.name}
+            onChange={e => updateField('name', e.target.value)}
+            className="mt-1.5 w-full rounded-xl border px-3 py-2 text-xs sm:text-sm outline-none focus:border-[var(--primary)]"
+            style={inputStyle}
+          />
+        </Field>
+        <Field label="Initials">
+          <input
+            type="text"
+            value={hero.initials}
+            onChange={e => updateField('initials', e.target.value)}
+            maxLength={3}
+            className="mt-1.5 w-full rounded-xl border px-3 py-2 text-xs sm:text-sm outline-none focus:border-[var(--primary)]"
+            style={inputStyle}
+          />
+        </Field>
+      </div>
+
+      <Field label="Title">
+        <input
+          type="text"
+          value={hero.title}
+          onChange={e => updateField('title', e.target.value)}
+          className="mt-1.5 w-full rounded-xl border px-3 py-2 text-xs sm:text-sm outline-none focus:border-[var(--primary)]"
+          style={inputStyle}
+        />
+      </Field>
+
+      <Field label="One-Liner">
+        <textarea
+          value={hero.oneLiner}
+          onChange={e => updateField('oneLiner', e.target.value)}
+          rows={3}
+          className="mt-1.5 w-full resize-none rounded-xl border px-3 py-2 text-xs sm:text-sm outline-none focus:border-[var(--primary)]"
+          style={inputStyle}
+        />
+      </Field>
+
+      <div className="grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-2">
+        <Field label="Location">
+          <input
+            type="text"
+            value={hero.location}
+            onChange={e => updateField('location', e.target.value)}
+            className="mt-1.5 w-full rounded-xl border px-3 py-2 text-xs sm:text-sm outline-none focus:border-[var(--primary)]"
+            style={inputStyle}
+          />
+        </Field>
+        <Field label="Established">
+          <input
+            type="text"
+            value={hero.established}
+            onChange={e => updateField('established', e.target.value)}
+            className="mt-1.5 w-full rounded-xl border px-3 py-2 text-xs sm:text-sm outline-none focus:border-[var(--primary)]"
+            style={inputStyle}
+          />
+        </Field>
+      </div>
+
+      <Field label="Availability (fallback)" hint="This is the fallback. Live availability is managed in Settings.">
+        <input
+          type="text"
+          value={hero.availability}
+          onChange={e => updateField('availability', e.target.value)}
+          className="mt-1.5 w-full rounded-xl border px-3 py-2 text-xs sm:text-sm outline-none focus:border-[var(--primary)]"
+          style={inputStyle}
+        />
+      </Field>
+    </div>
+  )
+}
+
+// ─── About Tab ───────────────────────────────────────────────────────────
+
+function AboutTab({
+  about,
+  setAbout,
+}: {
+  about: AboutContent
+  setAbout: (about: AboutContent) => void
+}) {
+  const updateField = (field: keyof AboutContent, value: string | string[] | AboutPillar[]) => {
+    setAbout({ ...about, [field]: value })
+  }
+
+  const updateParagraph = (index: number, value: string) => {
+    const next = [...about.paragraphs]
+    next[index] = value
+    setAbout({ ...about, paragraphs: next })
+  }
+
+  const addParagraph = () => {
+    setAbout({ ...about, paragraphs: [...about.paragraphs, ''] })
+  }
+
+  const removeParagraph = (index: number) => {
+    setAbout({ ...about, paragraphs: about.paragraphs.filter((_, i) => i !== index) })
+  }
+
+  const updateInterest = (index: number, value: string) => {
+    const next = [...about.interests]
+    next[index] = value
+    setAbout({ ...about, interests: next })
+  }
+
+  const addInterest = () => {
+    setAbout({ ...about, interests: [...about.interests, ''] })
+  }
+
+  const removeInterest = (index: number) => {
+    setAbout({ ...about, interests: about.interests.filter((_, i) => i !== index) })
+  }
+
+  const updatePillar = (index: number, field: keyof AboutPillar, value: string) => {
+    const next = [...about.pillars]
+    next[index] = { ...next[index], [field]: value }
+    setAbout({ ...about, pillars: next })
+  }
+
+  const addPillar = () => {
+    setAbout({
+      ...about,
+      pillars: [...about.pillars, { num: String(about.pillars.length + 1).padStart(2, '0'), label: 'New Pillar', text: '' }],
+    })
+  }
+
+  const removePillar = (index: number) => {
+    setAbout({ ...about, pillars: about.pillars.filter((_, i) => i !== index) })
+  }
+
+  return (
+    <div className="space-y-5 sm:space-y-6">
+      <div className="grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-2">
+        <Field label="College">
+          <input
+            type="text"
+            value={about.college}
+            onChange={e => updateField('college', e.target.value)}
+            className="mt-1.5 w-full rounded-xl border px-3 py-2 text-xs sm:text-sm outline-none focus:border-[var(--primary)]"
+            style={inputStyle}
+          />
+        </Field>
+        <Field label="Current Year">
+          <input
+            type="text"
+            value={about.currentYear}
+            onChange={e => updateField('currentYear', e.target.value)}
+            className="mt-1.5 w-full rounded-xl border px-3 py-2 text-xs sm:text-sm outline-none focus:border-[var(--primary)]"
+            style={inputStyle}
+          />
+        </Field>
+      </div>
+
+      <div>
+        <div className="mb-2 flex items-center justify-between">
+          <p className="text-xs sm:text-sm font-medium">Paragraphs</p>
+          <button
+            onClick={addParagraph}
+            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all active:scale-95"
+            style={{ background: 'var(--muted)', color: 'var(--muted-foreground)' }}
+          >
+            <Plus className="h-3 w-3" /> Add
+          </button>
+        </div>
+        <div className="space-y-2">
+          {about.paragraphs.map((para, index) => (
+            <div key={index} className="flex items-start gap-1.5 sm:gap-2">
+              <textarea
+                value={para}
+                onChange={e => updateParagraph(index, e.target.value)}
+                rows={3}
+                className="flex-1 resize-none rounded-xl border px-3 py-2 text-xs sm:text-sm outline-none focus:border-[var(--primary)]"
+                style={inputStyle}
+              />
+              <button
+                onClick={() => removeParagraph(index)}
+                className="mt-1 rounded-lg p-1.5 transition-colors hover:text-[var(--destructive)] active:text-[var(--destructive)] shrink-0"
+                style={{ color: 'var(--muted-foreground)' }}
+                aria-label="Remove paragraph"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <div className="mb-2 flex items-center justify-between">
+          <p className="text-xs sm:text-sm font-medium">Interests</p>
+          <button
+            onClick={addInterest}
+            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all active:scale-95"
+            style={{ background: 'var(--muted)', color: 'var(--muted-foreground)' }}
+          >
+            <Plus className="h-3 w-3" /> Add
+          </button>
+        </div>
+        <div className="space-y-2">
+          {about.interests.map((interest, index) => (
+            <div key={index} className="flex items-center gap-1.5 sm:gap-2">
+              <input
+                type="text"
+                value={interest}
+                onChange={e => updateInterest(index, e.target.value)}
+                className="flex-1 rounded-xl border px-3 py-2 text-xs sm:text-sm outline-none focus:border-[var(--primary)] min-w-0"
+                style={inputStyle}
+              />
+              <button
+                onClick={() => removeInterest(index)}
+                className="rounded-lg p-1.5 transition-colors hover:text-[var(--destructive)] active:text-[var(--destructive)] shrink-0"
+                style={{ color: 'var(--muted-foreground)' }}
+                aria-label="Remove interest"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <div className="mb-2 flex items-center justify-between">
+          <p className="text-xs sm:text-sm font-medium">Pillars</p>
+          <button
+            onClick={addPillar}
+            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all active:scale-95"
+            style={{ background: 'var(--muted)', color: 'var(--muted-foreground)' }}
+          >
+            <Plus className="h-3 w-3" /> Add pillar
+          </button>
+        </div>
+        <div className="space-y-3">
+          {about.pillars.map((pillar, index) => (
+            <div
+              key={index}
+              className="rounded-xl border p-3 sm:p-4"
+              style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
+            >
+              <div className="mb-2 flex items-center gap-2">
+                <input
+                  type="text"
+                  value={pillar.num}
+                  onChange={e => updatePillar(index, 'num', e.target.value)}
+                  className="w-16 rounded-lg border px-2 py-1.5 text-xs font-medium outline-none focus:border-[var(--primary)]"
+                  style={inputStyle}
+                  placeholder="01"
+                />
+                <input
+                  type="text"
+                  value={pillar.label}
+                  onChange={e => updatePillar(index, 'label', e.target.value)}
+                  className="flex-1 rounded-lg border px-3 py-1.5 text-xs sm:text-sm font-semibold outline-none focus:border-[var(--primary)] min-w-0"
+                  style={inputStyle}
+                  placeholder="Label"
+                />
+                <button
+                  onClick={() => removePillar(index)}
+                  className="rounded-lg p-1.5 transition-colors hover:text-[var(--destructive)] active:text-[var(--destructive)] shrink-0"
+                  style={{ color: 'var(--muted-foreground)' }}
+                  aria-label="Remove pillar"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              <textarea
+                value={pillar.text}
+                onChange={e => updatePillar(index, 'text', e.target.value)}
+                rows={2}
+                className="w-full resize-none rounded-lg border px-3 py-2 text-xs sm:text-sm outline-none focus:border-[var(--primary)]"
+                style={inputStyle}
+                placeholder="Pillar description"
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Stats Tab ───────────────────────────────────────────────────────────
+
+function StatsTab({
+  stats,
+  setStats,
+}: {
+  stats: StatItem[]
+  setStats: (stats: StatItem[]) => void
+}) {
+  const updateStat = (index: number, field: keyof StatItem, value: string | number) => {
+    const next = [...stats]
+    next[index] = { ...next[index], [field]: value }
+    setStats(next)
+  }
+
+  const addStat = () => {
+    setStats([...stats, { label: 'New Stat', value: 0, suffix: '+' }])
+  }
+
+  const removeStat = (index: number) => {
+    setStats(stats.filter((_, i) => i !== index))
+  }
+
+  const moveStat = (from: number, to: number) => {
+    if (to < 0 || to >= stats.length) return
+    const next = [...stats]
+    const [moved] = next.splice(from, 1)
+    next.splice(to, 0, moved)
+    setStats(next)
+  }
+
+  return (
+    <div className="space-y-3 sm:space-y-4">
+      <div className="flex items-center justify-between mb-3 sm:mb-4">
+        <p className="text-xs sm:text-sm font-medium">{stats.length} stat cards</p>
+        <button
+          onClick={addStat}
+          className="flex items-center gap-1.5 sm:gap-2 rounded-xl px-3 py-2 text-xs sm:text-sm font-medium transition-all active:scale-95"
+          style={{ background: 'var(--primary)', color: 'var(--primary-foreground)' }}
+        >
+          <Plus className="h-3.5 w-3.5" />
+          <span className="hidden sm:inline">Add stat</span>
+          <span className="sm:hidden">Add</span>
+        </button>
+      </div>
+
+      {stats.map((stat, index) => (
+        <div
+          key={index}
+          className="rounded-xl border p-3 sm:p-4"
+          style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
+        >
+          <div className="mb-2 flex items-center gap-1.5 sm:gap-2">
+            <div className="flex gap-0.5 sm:gap-1">
+              <button
+                onClick={() => moveStat(index, index - 1)}
+                disabled={index === 0}
+                className="rounded-lg p-1 sm:p-1.5 transition-colors hover:bg-[var(--muted)] active:bg-[var(--muted)] disabled:opacity-30"
+                style={{ color: 'var(--muted-foreground)' }}
+                aria-label="Move up"
+              >
+                <ChevronUp className="h-3.5 w-3.5" />
+              </button>
+              <button
+                onClick={() => moveStat(index, index + 1)}
+                disabled={index === stats.length - 1}
+                className="rounded-lg p-1 sm:p-1.5 transition-colors hover:bg-[var(--muted)] active:bg-[var(--muted)] disabled:opacity-30"
+                style={{ color: 'var(--muted-foreground)' }}
+                aria-label="Move down"
+              >
+                <ChevronDown className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            <input
+              type="text"
+              value={stat.label}
+              onChange={e => updateStat(index, 'label', e.target.value)}
+              placeholder="Label"
+              className="flex-1 rounded-lg border px-3 py-2 text-xs sm:text-sm font-medium outline-none focus:border-[var(--primary)] min-w-0"
+              style={inputStyle}
+            />
+            <button
+              onClick={() => removeStat(index)}
+              className="rounded-lg p-1.5 transition-colors hover:text-[var(--destructive)] active:text-[var(--destructive)] shrink-0"
+              style={{ color: 'var(--muted-foreground)' }}
+              aria-label="Remove stat"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <span className="text-[10px] font-medium" style={{ color: 'var(--muted-foreground)' }}>Value</span>
+              <input
+                type="number"
+                value={stat.value}
+                onChange={e => updateStat(index, 'value', parseInt(e.target.value) || 0)}
+                className="mt-1 w-full rounded-lg border px-3 py-2 text-xs sm:text-sm outline-none focus:border-[var(--primary)]"
+                style={inputStyle}
+              />
+            </div>
+            <div className="w-20">
+              <span className="text-[10px] font-medium" style={{ color: 'var(--muted-foreground)' }}>Suffix</span>
+              <input
+                type="text"
+                value={stat.suffix}
+                onChange={e => updateStat(index, 'suffix', e.target.value)}
+                maxLength={2}
+                className="mt-1 w-full rounded-lg border px-3 py-2 text-xs sm:text-sm outline-none focus:border-[var(--primary)]"
+                style={inputStyle}
+              />
+            </div>
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
@@ -982,7 +1481,6 @@ function ProjectsTab({
             {project.number}
           </div>
 
-          {/* Image thumbnail */}
           {project.images.length > 0 && (
             <div className="hidden sm:block h-10 w-14 shrink-0 overflow-hidden rounded-lg border" style={{ borderColor: 'var(--border)' }}>
               <img src={project.images[0]} alt="" className="h-full w-full object-cover" />
@@ -1018,6 +1516,105 @@ function ProjectsTab({
           </div>
         </div>
       ))}
+    </div>
+  )
+}
+
+// ─── Filters Tab ────────────────────────────────────────────────────────
+
+function FiltersTab({
+  projectFilters,
+  setProjectFilters,
+}: {
+  projectFilters: string[]
+  setProjectFilters: (filters: string[]) => void
+}) {
+  const [newFilter, setNewFilter] = useState('')
+
+  const addFilter = () => {
+    const trimmed = newFilter.trim()
+    if (!trimmed) return
+    if (projectFilters.includes(trimmed)) return
+    setProjectFilters([...projectFilters, trimmed])
+    setNewFilter('')
+  }
+
+  const removeFilter = (index: number) => {
+    setProjectFilters(projectFilters.filter((_, i) => i !== index))
+  }
+
+  const moveFilter = (from: number, to: number) => {
+    if (to < 0 || to >= projectFilters.length) return
+    const next = [...projectFilters]
+    const [moved] = next.splice(from, 1)
+    next.splice(to, 0, moved)
+    setProjectFilters(next)
+  }
+
+  return (
+    <div className="space-y-3 sm:space-y-4">
+      <div className="flex items-center justify-between mb-3 sm:mb-4">
+        <p className="text-xs sm:text-sm font-medium">{projectFilters.length} filters</p>
+      </div>
+
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={newFilter}
+          onChange={e => setNewFilter(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addFilter() } }}
+          placeholder="Add filter..."
+          className="flex-1 rounded-xl border px-3 py-2 text-xs sm:text-sm outline-none focus:border-[var(--primary)] min-w-0"
+          style={inputStyle}
+        />
+        <button
+          onClick={addFilter}
+          className="flex items-center gap-1.5 rounded-xl px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium transition-all active:scale-95"
+          style={{ background: 'var(--primary)', color: 'var(--primary-foreground)' }}
+        >
+          <Plus className="h-3.5 w-3.5" /> Add
+        </button>
+      </div>
+
+      <div className="space-y-1.5">
+        {projectFilters.map((filter, index) => (
+          <div
+            key={`${filter}-${index}`}
+            className="flex items-center gap-1.5 sm:gap-2 rounded-xl border p-2 sm:p-2.5"
+            style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
+          >
+            <div className="flex gap-0.5 sm:gap-1 shrink-0">
+              <button
+                onClick={() => moveFilter(index, index - 1)}
+                disabled={index === 0}
+                className="rounded-lg p-1 transition-colors hover:bg-[var(--muted)] active:bg-[var(--muted)] disabled:opacity-30"
+                style={{ color: 'var(--muted-foreground)' }}
+                aria-label="Move up"
+              >
+                <ChevronUp className="h-3 w-3" />
+              </button>
+              <button
+                onClick={() => moveFilter(index, index + 1)}
+                disabled={index === projectFilters.length - 1}
+                className="rounded-lg p-1 transition-colors hover:bg-[var(--muted)] active:bg-[var(--muted)] disabled:opacity-30"
+                style={{ color: 'var(--muted-foreground)' }}
+                aria-label="Move down"
+              >
+                <ChevronDown className="h-3 w-3" />
+              </button>
+            </div>
+            <span className="flex-1 truncate text-xs sm:text-sm font-medium">{filter}</span>
+            <button
+              onClick={() => removeFilter(index)}
+              className="rounded-lg p-1.5 transition-colors hover:text-[var(--destructive)] active:text-[var(--destructive)] shrink-0"
+              style={{ color: 'var(--muted-foreground)' }}
+              aria-label="Remove filter"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
@@ -1136,141 +1733,6 @@ function TimelineTab({
   )
 }
 
-// ─── About Tab ───────────────────────────────────────────────────────────
-
-function AboutTab({
-  about,
-  setAbout,
-}: {
-  about: AboutContent
-  setAbout: (about: AboutContent) => void
-}) {
-  const updateField = (field: keyof AboutContent, value: string | string[]) => {
-    setAbout({ ...about, [field]: value })
-  }
-
-  const updateParagraph = (index: number, value: string) => {
-    const next = [...about.paragraphs]
-    next[index] = value
-    setAbout({ ...about, paragraphs: next })
-  }
-
-  const addParagraph = () => {
-    setAbout({ ...about, paragraphs: [...about.paragraphs, ''] })
-  }
-
-  const removeParagraph = (index: number) => {
-    setAbout({ ...about, paragraphs: about.paragraphs.filter((_, i) => i !== index) })
-  }
-
-  const updateInterest = (index: number, value: string) => {
-    const next = [...about.interests]
-    next[index] = value
-    setAbout({ ...about, interests: next })
-  }
-
-  const addInterest = () => {
-    setAbout({ ...about, interests: [...about.interests, ''] })
-  }
-
-  const removeInterest = (index: number) => {
-    setAbout({ ...about, interests: about.interests.filter((_, i) => i !== index) })
-  }
-
-  return (
-    <div className="space-y-5 sm:space-y-6">
-      <div className="grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-2">
-        <Field label="College">
-          <input
-            type="text"
-            value={about.college}
-            onChange={e => updateField('college', e.target.value)}
-            className="mt-1.5 w-full rounded-xl border px-3 py-2 text-xs sm:text-sm outline-none focus:border-[var(--primary)]"
-            style={inputStyle}
-          />
-        </Field>
-        <Field label="Current Year">
-          <input
-            type="text"
-            value={about.currentYear}
-            onChange={e => updateField('currentYear', e.target.value)}
-            className="mt-1.5 w-full rounded-xl border px-3 py-2 text-xs sm:text-sm outline-none focus:border-[var(--primary)]"
-            style={inputStyle}
-          />
-        </Field>
-      </div>
-
-      <div>
-        <div className="mb-2 flex items-center justify-between">
-          <p className="text-xs sm:text-sm font-medium">Paragraphs</p>
-          <button
-            onClick={addParagraph}
-            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all active:scale-95"
-            style={{ background: 'var(--muted)', color: 'var(--muted-foreground)' }}
-          >
-            <Plus className="h-3 w-3" /> Add
-          </button>
-        </div>
-        <div className="space-y-2">
-          {about.paragraphs.map((para, index) => (
-            <div key={index} className="flex items-start gap-1.5 sm:gap-2">
-              <textarea
-                value={para}
-                onChange={e => updateParagraph(index, e.target.value)}
-                rows={3}
-                className="flex-1 resize-none rounded-xl border px-3 py-2 text-xs sm:text-sm outline-none focus:border-[var(--primary)]"
-                style={inputStyle}
-              />
-              <button
-                onClick={() => removeParagraph(index)}
-                className="mt-1 rounded-lg p-1.5 transition-colors hover:text-[var(--destructive)] active:text-[var(--destructive)] shrink-0"
-                style={{ color: 'var(--muted-foreground)' }}
-                aria-label="Remove paragraph"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div>
-        <div className="mb-2 flex items-center justify-between">
-          <p className="text-xs sm:text-sm font-medium">Interests</p>
-          <button
-            onClick={addInterest}
-            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all active:scale-95"
-            style={{ background: 'var(--muted)', color: 'var(--muted-foreground)' }}
-          >
-            <Plus className="h-3 w-3" /> Add
-          </button>
-        </div>
-        <div className="space-y-2">
-          {about.interests.map((interest, index) => (
-            <div key={index} className="flex items-center gap-1.5 sm:gap-2">
-              <input
-                type="text"
-                value={interest}
-                onChange={e => updateInterest(index, e.target.value)}
-                className="flex-1 rounded-xl border px-3 py-2 text-xs sm:text-sm outline-none focus:border-[var(--primary)] min-w-0"
-                style={inputStyle}
-              />
-              <button
-                onClick={() => removeInterest(index)}
-                className="rounded-lg p-1.5 transition-colors hover:text-[var(--destructive)] active:text-[var(--destructive)] shrink-0"
-                style={{ color: 'var(--muted-foreground)' }}
-                aria-label="Remove interest"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  )
-}
-
 // ─── Skills Tab ──────────────────────────────────────────────────────────
 
 function SkillsTab({
@@ -1385,7 +1847,119 @@ function SkillsTab({
   )
 }
 
-// ─── Project Editor Modal ────────────────────────────────────────────────
+// ─── Nav Items Tab ──────────────────────────────────────────────────────
+
+function NavItemsTab({
+  navItems,
+  setNavItems,
+}: {
+  navItems: NavItem[]
+  setNavItems: (navItems: NavItem[]) => void
+}) {
+  const updateItem = (index: number, field: keyof NavItem, value: string) => {
+    const next = [...navItems]
+    next[index] = { ...next[index], [field]: value }
+    setNavItems(next)
+  }
+
+  const addItem = () => {
+    setNavItems([...navItems, { label: 'New Section', href: '#section' }])
+  }
+
+  const removeItem = (index: number) => {
+    setNavItems(navItems.filter((_, i) => i !== index))
+  }
+
+  const moveItem = (from: number, to: number) => {
+    if (to < 0 || to >= navItems.length) return
+    const next = [...navItems]
+    const [moved] = next.splice(from, 1)
+    next.splice(to, 0, moved)
+    setNavItems(next)
+  }
+
+  return (
+    <div className="space-y-3 sm:space-y-4">
+      <div className="flex items-center justify-between mb-3 sm:mb-4">
+        <p className="text-xs sm:text-sm font-medium">{navItems.length} nav items</p>
+        <button
+          onClick={addItem}
+          className="flex items-center gap-1.5 sm:gap-2 rounded-xl px-3 py-2 text-xs sm:text-sm font-medium transition-all active:scale-95"
+          style={{ background: 'var(--primary)', color: 'var(--primary-foreground)' }}
+        >
+          <Plus className="h-3.5 w-3.5" />
+          <span className="hidden sm:inline">Add item</span>
+          <span className="sm:hidden">Add</span>
+        </button>
+      </div>
+
+      {navItems.map((item, index) => (
+        <div
+          key={index}
+          className="rounded-xl border p-3 sm:p-4"
+          style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
+        >
+          <div className="mb-2 flex items-center gap-1.5 sm:gap-2">
+            <div className="flex gap-0.5 sm:gap-1 shrink-0">
+              <button
+                onClick={() => moveItem(index, index - 1)}
+                disabled={index === 0}
+                className="rounded-lg p-1 sm:p-1.5 transition-colors hover:bg-[var(--muted)] active:bg-[var(--muted)] disabled:opacity-30"
+                style={{ color: 'var(--muted-foreground)' }}
+                aria-label="Move up"
+              >
+                <ChevronUp className="h-3.5 w-3.5" />
+              </button>
+              <button
+                onClick={() => moveItem(index, index + 1)}
+                disabled={index === navItems.length - 1}
+                className="rounded-lg p-1 sm:p-1.5 transition-colors hover:bg-[var(--muted)] active:bg-[var(--muted)] disabled:opacity-30"
+                style={{ color: 'var(--muted-foreground)' }}
+                aria-label="Move down"
+              >
+                <ChevronDown className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            <span className="flex-1 text-xs sm:text-sm font-medium truncate">{index + 1}. {item.label}</span>
+            <button
+              onClick={() => removeItem(index)}
+              className="rounded-lg p-1.5 transition-colors hover:text-[var(--destructive)] active:text-[var(--destructive)] shrink-0"
+              style={{ color: 'var(--muted-foreground)' }}
+              aria-label="Remove nav item"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <div>
+              <span className="text-[10px] font-medium" style={{ color: 'var(--muted-foreground)' }}>Label</span>
+              <input
+                type="text"
+                value={item.label}
+                onChange={e => updateItem(index, 'label', e.target.value)}
+                className="mt-1 w-full rounded-lg border px-3 py-2 text-xs sm:text-sm outline-none focus:border-[var(--primary)]"
+                style={inputStyle}
+              />
+            </div>
+            <div>
+              <span className="text-[10px] font-medium" style={{ color: 'var(--muted-foreground)' }}>Href</span>
+              <input
+                type="text"
+                value={item.href}
+                onChange={e => updateItem(index, 'href', e.target.value)}
+                placeholder="#section"
+                className="mt-1 w-full rounded-lg border px-3 py-2 text-xs sm:text-sm outline-none focus:border-[var(--primary)]"
+                style={inputStyle}
+              />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ─── Project Editor Modal (Categories section only) ─────────────────────
 
 function ProjectEditorModal({
   project,
@@ -1397,7 +1971,8 @@ function ProjectEditorModal({
   onSave: (project: ProjectContent) => void
 }) {
   const [draft, setDraft] = useState<ProjectContent>({ ...project })
-  const [activeSection, setActiveSection] = useState<'basic' | 'features' | 'stack' | 'images'>('basic')
+  const [activeSection, setActiveSection] = useState<'basic' | 'categories' | 'features' | 'stack' | 'images'>('basic')
+  const [newCategory, setNewCategory] = useState('')
 
   const updateField = (field: keyof ProjectContent, value: string | string[]) => {
     setDraft({ ...draft, [field]: value })
@@ -1417,21 +1992,32 @@ function ProjectEditorModal({
     setDraft({ ...draft, [field]: (draft[field] as string[]).filter((_, i) => i !== index) })
   }
 
+  const addCategory = () => {
+    const updated = addCategoryToProject(draft, newCategory)
+    setDraft(updated)
+    setNewCategory('')
+  }
+
+  const removeCategory = (index: number) => {
+    setDraft(removeCategoryFromProject(draft, index))
+  }
+
+  const updateCategory = (index: number, value: string) => {
+    setDraft(updateCategoryInProject(draft, index, value))
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
-      {/* Backdrop */}
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
 
-      {/* Modal container - bottom sheet on mobile, centered on desktop */}
       <div
         className="admin-modal-mobile relative z-10 flex w-full max-w-3xl flex-col rounded-t-2xl sm:rounded-2xl border shadow-2xl"
-        style={{ 
-          background: 'var(--card)', 
-          borderColor: 'var(--border)', 
+        style={{
+          background: 'var(--card)',
+          borderColor: 'var(--border)',
           maxHeight: 'calc(100dvh - 2rem)',
         }}
       >
-        {/* Header */}
         <div
           className="flex shrink-0 items-center gap-3 border-b px-4 sm:px-5 py-3 sm:py-4"
           style={{ borderColor: 'var(--border)' }}
@@ -1452,16 +2038,15 @@ function ProjectEditorModal({
           </button>
         </div>
 
-        {/* Section tabs - horizontally scrollable on mobile */}
-        <div 
-          className="flex shrink-0 gap-1 border-b px-3 sm:px-4 py-2 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden" 
+        <div
+          className="flex shrink-0 gap-1 border-b px-3 sm:px-4 py-2 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
           style={{ borderColor: 'var(--border)' }}
         >
-          {(['basic', 'features', 'stack', 'images'] as const).map(section => (
+          {(['basic', 'categories', 'features', 'stack', 'images'] as const).map(section => (
             <button
               key={section}
               onClick={() => setActiveSection(section)}
-              className="shrink-0 rounded-lg px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium capitalize transition-all active:scale-95"
+              className="shrink-0 rounded-lg px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium capitalize transition-all active:scale-95 whitespace-nowrap"
               style={{
                 background: activeSection === section
                   ? 'color-mix(in oklch, var(--primary) 15%, transparent)'
@@ -1470,6 +2055,11 @@ function ProjectEditorModal({
               }}
             >
               {section}
+              {section === 'categories' && draft.categories.length > 0 && (
+                <span className="ml-1.5 rounded-full bg-[var(--muted)] px-1.5 py-0.5 text-[10px]">
+                  {draft.categories.length}
+                </span>
+              )}
               {section === 'images' && (
                 <span className="ml-1.5 rounded-full bg-[var(--muted)] px-1.5 py-0.5 text-[10px]">
                   {draft.images.length}
@@ -1479,7 +2069,6 @@ function ProjectEditorModal({
           ))}
         </div>
 
-        {/* Body - scrollable */}
         <div className="flex-1 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4" style={{ minHeight: 0 }}>
           {activeSection === 'basic' && (
             <div className="space-y-4">
@@ -1603,6 +2192,85 @@ function ProjectEditorModal({
             </div>
           )}
 
+          {activeSection === 'categories' && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs sm:text-sm font-medium">
+                  Categories ({draft.categories.length})
+                </p>
+                <span className="text-[10px] sm:text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                  Used for project filtering
+                </span>
+              </div>
+
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newCategory}
+                  onChange={e => setNewCategory(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCategory() } }}
+                  placeholder="Add category (e.g., ai, web, mobile)..."
+                  className="flex-1 rounded-xl border px-3 py-2 text-xs sm:text-sm outline-none focus:border-[var(--primary)] min-w-0"
+                  style={inputStyle}
+                />
+                <button
+                  onClick={addCategory}
+                  className="flex items-center gap-1.5 rounded-xl px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium transition-all active:scale-95"
+                  style={{ background: 'var(--primary)', color: 'var(--primary-foreground)' }}
+                >
+                  <Plus className="h-3.5 w-3.5" /> Add
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                {draft.categories.map((cat, index) => (
+                  <div key={index} className="flex items-center gap-1.5 sm:gap-2 rounded-xl border p-2 sm:p-2.5" style={{ background: 'var(--background)', borderColor: 'var(--border)' }}>
+                    <Tag className="h-3.5 w-3.5 shrink-0" style={{ color: 'var(--muted-foreground)' }} />
+                    <input
+                      type="text"
+                      value={cat}
+                      onChange={e => updateCategory(index, e.target.value)}
+                      className="flex-1 rounded-lg border px-3 py-1.5 text-xs sm:text-sm outline-none focus:border-[var(--primary)] min-w-0"
+                      style={inputStyle}
+                    />
+                    <button
+                      onClick={() => removeCategory(index)}
+                      className="rounded-lg p-1.5 transition-colors hover:text-[var(--destructive)] active:text-[var(--destructive)] shrink-0"
+                      style={{ color: 'var(--muted-foreground)' }}
+                      aria-label="Remove category"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+                {draft.categories.length === 0 && (
+                  <div className="rounded-xl border border-dashed p-4 text-center" style={{ borderColor: 'var(--border)' }}>
+                    <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                      No categories added. Add at least one category for filtering.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-wrap gap-1.5 pt-2 border-t" style={{ borderColor: 'var(--border)' }}>
+                <span className="text-[10px] font-medium" style={{ color: 'var(--muted-foreground)' }}>Quick add:</span>
+                {['ai', 'web', 'mobile', 'open-source'].filter(c => !draft.categories.includes(c)).map(c => (
+                  <button
+                    key={c}
+                    onClick={() => {
+                      const updated = addCategoryToProject(draft, c)
+                      setDraft(updated)
+                    }}
+                    className="rounded-full border px-2.5 py-0.5 text-[10px] font-medium transition-all active:scale-95"
+                    style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
+                  >
+                    {c}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {activeSection === 'features' && (
             <div className="space-y-2">
               <div className="mb-2 flex items-center justify-between">
@@ -1699,10 +2367,9 @@ function ProjectEditorModal({
                 }}
               />
 
-              {/* Manual URL entry for any URL type */}
               <div className="rounded-xl border p-3 sm:p-4" style={{ borderColor: 'var(--border)' }}>
                 <p className="text-[10px] sm:text-xs font-medium mb-2" style={{ color: 'var(--muted-foreground)' }}>
-                  Add image URLs manually — supports any URL (Google Drive, external links, local paths)
+                  Add image URLs manually
                 </p>
                 <div className="space-y-2">
                   {draft.images.map((image, index) => (
@@ -1738,10 +2405,9 @@ function ProjectEditorModal({
           )}
         </div>
 
-        {/* Footer - sticky with safe-area padding */}
         <div
           className="flex shrink-0 items-center gap-2 sm:gap-3 border-t px-3 sm:px-5 py-3 sm:py-4"
-          style={{ 
+          style={{
             borderColor: 'var(--border)',
             paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))',
           }}

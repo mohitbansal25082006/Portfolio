@@ -65,6 +65,11 @@ export function ImageViewer({ images, index, onIndexChange, open, onClose, alt =
   const containerRef = useRef<HTMLDivElement>(null)
   const imageRef = useRef<HTMLImageElement>(null)
 
+  // Thumbnail strip refs — used to auto-scroll the active thumbnail into the center
+  // of the strip whenever the selected index changes (arrow keys, swipe, thumbnail click, etc).
+  const thumbStripRef = useRef<HTMLDivElement>(null)
+  const thumbRefs = useRef<(HTMLButtonElement | null)[]>([])
+
   // Refs to track current values inside non-reactive native event listeners
   const zoomRef = useRef(zoom)
   const panRef = useRef(pan)
@@ -204,14 +209,26 @@ export function ImageViewer({ images, index, onIndexChange, open, onClose, alt =
     }
   }, [open, resetZoom])
 
-  // Keyboard controls
+  // Keyboard controls — includes laptop/desktop left & right arrow keys for prev/next navigation,
+  // plus Escape to close and +/-/0 for zoom.
   useEffect(() => {
     if (!open) return
     const onKeyDown = (e: KeyboardEvent) => {
+      // Don't hijack arrow keys if the user is typing somewhere (defensive — this viewer has
+      // no text inputs of its own, but it can be mounted alongside other UI).
+      const target = e.target as HTMLElement | null
+      const isTypingTarget =
+        target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+      if (isTypingTarget) return
+
       if (e.key === 'Escape') onClose()
-      else if (e.key === 'ArrowLeft') prev()
-      else if (e.key === 'ArrowRight') next()
-      else if (e.key === '0') resetZoom()
+      else if (e.key === 'ArrowLeft') {
+        e.preventDefault()
+        prev()
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault()
+        next()
+      } else if (e.key === '0') resetZoom()
       else if (e.key === '+' || e.key === '=') zoomIn()
       else if (e.key === '-') zoomOut()
     }
@@ -317,6 +334,21 @@ export function ImageViewer({ images, index, onIndexChange, open, onClose, alt =
       container.removeEventListener('wheel', onWheel)
     }
   }, [open, applyTransform, zoomIn, zoomOut, clampPan])
+
+  // Auto-scroll the thumbnail strip so the active thumbnail is centered whenever the
+  // selected index changes — whether that came from arrow keys, swipe, or a thumbnail click.
+  useEffect(() => {
+    if (!open) return
+    const strip = thumbStripRef.current
+    const active = thumbRefs.current[index]
+    if (!strip || !active) return
+
+    const targetLeft = active.offsetLeft + active.offsetWidth / 2 - strip.clientWidth / 2
+    strip.scrollTo({
+      left: Math.max(0, targetLeft),
+      behavior: 'smooth',
+    })
+  }, [open, index, total])
 
   if (!open) return null
 
@@ -579,11 +611,15 @@ export function ImageViewer({ images, index, onIndexChange, open, onClose, alt =
         )}
 
         {total > 1 && (
-          <div className="mx-auto flex max-w-full justify-start gap-2 overflow-x-auto pb-1 sm:justify-center [scrollbar-width:thin]">
+          <div
+            ref={thumbStripRef}
+            className="mx-auto flex max-w-full justify-start gap-2 overflow-x-auto scroll-smooth pb-1 sm:justify-center [scrollbar-width:thin]"
+          >
             {images.map((img, i) => (
               <button
                 key={i}
                 type="button"
+                ref={(el) => { thumbRefs.current[i] = el }}
                 onClick={() => goTo(i)}
                 className={`relative h-10 w-16 shrink-0 overflow-hidden rounded-md border transition-all sm:h-12 sm:w-20 ${
                   i === index ? 'border-primary ring-1 ring-primary' : 'border-border opacity-50 hover:opacity-100'
