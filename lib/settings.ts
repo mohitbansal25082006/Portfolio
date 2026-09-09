@@ -2,9 +2,11 @@
  * lib/settings.ts
  *
  * Part 2.5 — Site Settings
+ * Part 3.2 — Added full site pause/maintenance mode
  * ---------------------------------------------------------------------------
  * Handles storage for site-wide, editable-by-admin settings:
  *   - Maintenance mode (toggle site availability + banner message)
+ *   - Full site pause (complete site takeover with animated maintenance screen)
  *   - Contact email shown on the public site
  *   - Availability status text (the "Open to Internships..." line)
  *   - Social links (github / linkedin / email / twitter / leetcode / custom)
@@ -19,14 +21,6 @@
  * Local dev / fallback (no KV token configured):
  *   - JSON file at `.data/portfolio-settings.json`, same folder Part 2.2/2.4
  *     already gitignores.
- *
- * Detection: identical strategy to lib/messages.ts and lib/resume.ts —
- * presence of `KV_REST_API_URL` + `KV_REST_API_TOKEN` selects the Redis
- * backend, otherwise falls back to the local JSON file.
- *
- * Defaults are seeded from the existing static values in lib/content.ts
- * (siteConfig.email, siteConfig.availability, siteConfig.social) so the
- * site behaves identically before any admin edit is ever made.
  * ---------------------------------------------------------------------------
  */
 
@@ -44,11 +38,17 @@ export interface SocialLinks {
 }
 
 export interface SiteSettings {
-  /** When true, the public site shows a maintenance banner (or blocks access,
-   *  depending on how strict you want it — see app/layout.tsx). */
+  /** When true, the public site shows a maintenance banner at the top. */
   maintenanceMode: boolean
   /** Optional custom message shown in the maintenance banner. */
   maintenanceMessage: string
+  /** Part 3.2 — When true, the ENTIRE site is replaced with a full-screen
+   *  animated maintenance page. Overrides maintenanceMode. */
+  sitePaused: boolean
+  /** Part 3.2 — Title shown on the full-site maintenance screen. */
+  sitePausedTitle: string
+  /** Part 3.2 — Description shown on the full-site maintenance screen. */
+  sitePausedMessage: string
   /** Contact email displayed across the site (hero, contact section, footer copy button). */
   contactEmail: string
   /** The short "Open to Internships & Collaborations" status line in the hero. */
@@ -78,13 +78,14 @@ async function getRedis() {
 }
 
 // ─── Defaults — mirrors current static values in lib/content.ts ─────────────
-// Keeping these in sync with siteConfig means a fresh deploy with no settings
-// saved yet behaves exactly like it did before Part 2.5.
 
 function defaultSettings(): SiteSettings {
   return {
     maintenanceMode: false,
     maintenanceMessage: "We're currently making some improvements. Please check back shortly.",
+    sitePaused: false,
+    sitePausedTitle: 'Site Under Maintenance',
+    sitePausedMessage: 'We are currently performing scheduled maintenance. We will be back shortly. Thank you for your patience!',
     contactEmail: 'mohitbansal25082006@gmail.com',
     availabilityStatus: 'Open to Internships & Collaborations',
     socialLinks: {
@@ -115,9 +116,6 @@ async function writeLocal(settings: SiteSettings) {
 }
 
 // ─── Merge helper — ensures partial/older saved records still validate ──────
-// If a field is missing (e.g. settings were saved before a new field was
-// added), fall back to the default rather than surfacing `undefined` to
-// callers or the admin UI.
 
 function withDefaults(partial: Partial<SiteSettings> | null): SiteSettings {
   const defaults = defaultSettings()
@@ -125,6 +123,9 @@ function withDefaults(partial: Partial<SiteSettings> | null): SiteSettings {
   return {
     maintenanceMode: partial.maintenanceMode ?? defaults.maintenanceMode,
     maintenanceMessage: partial.maintenanceMessage ?? defaults.maintenanceMessage,
+    sitePaused: partial.sitePaused ?? defaults.sitePaused,
+    sitePausedTitle: partial.sitePausedTitle ?? defaults.sitePausedTitle,
+    sitePausedMessage: partial.sitePausedMessage ?? defaults.sitePausedMessage,
     contactEmail: partial.contactEmail ?? defaults.contactEmail,
     availabilityStatus: partial.availabilityStatus ?? defaults.availabilityStatus,
     socialLinks: {
@@ -180,8 +181,7 @@ export async function updateSettings(
   return next
 }
 
-/** Which backend is actually configured — surfaced to the admin UI so it can
- *  warn if settings would only persist locally (no Redis token configured). */
+/** Which backend is actually configured — surfaced to the admin UI. */
 export function getSettingsStorageStatus() {
   return {
     redisConfigured: hasRedis(),

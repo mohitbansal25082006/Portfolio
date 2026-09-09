@@ -2,14 +2,10 @@
  * app/api/settings/route.ts
  *
  * Part 2.5 — Site Settings (public)
+ * Part 3.2 — Added sitePaused field to public API
  * ---------------------------------------------------------------------------
  * Unauthenticated GET so the public portfolio (portfolio-site.tsx) and the
- * root layout (maintenance-mode gate) can always read the live settings —
- * mirrors the public GET /api/resume pattern from Part 2.4.
- *
- * Only exposes the fields the public site actually needs; deliberately does
- * NOT return internal fields that might be added later (nothing sensitive
- * currently, but keeping this route intentionally minimal/explicit).
+ * root layout (maintenance-mode gate) can always read the live settings.
  * ---------------------------------------------------------------------------
  */
 
@@ -22,6 +18,9 @@ export async function GET() {
     return NextResponse.json({
       maintenanceMode: settings.maintenanceMode,
       maintenanceMessage: settings.maintenanceMessage,
+      sitePaused: settings.sitePaused,
+      sitePausedTitle: settings.sitePausedTitle,
+      sitePausedMessage: settings.sitePausedMessage,
       contactEmail: settings.contactEmail,
       availabilityStatus: settings.availabilityStatus,
       socialLinks: settings.socialLinks,
@@ -33,6 +32,9 @@ export async function GET() {
     return NextResponse.json({
       maintenanceMode: false,
       maintenanceMessage: '',
+      sitePaused: false,
+      sitePausedTitle: 'Site Under Maintenance',
+      sitePausedMessage: '',
       contactEmail: null,
       availabilityStatus: null,
       socialLinks: null,

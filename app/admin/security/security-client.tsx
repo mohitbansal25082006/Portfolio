@@ -15,6 +15,8 @@
  * sessions list for better UI with many active sessions.
  * Part 2.9.2 update: fixed recovery code regeneration to properly display
  * new codes after regeneration.
+ * Part 3.2 update: added "Log out all other devices" option, improved
+ * login attempts display with 1-week filter and fallback notice.
  *
  * Mobile fix (Part D):
  *   - Changed h-screen to admin-viewport-height for dynamic viewport support
@@ -33,6 +35,7 @@ import {
   Smartphone, LogOutIcon, Clock, Globe2, ChevronDown, Eye, EyeOff,
   CheckCircle2, XCircle, ListChecks, FolderKanban, Smartphone as SmartphoneIcon,
   Copy, RefreshCw, Trash2, Shield, ShieldOff, Key, Download, MapPin,
+  Info, Laptop,
 } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { themes } from '@/lib/content'
@@ -185,11 +188,18 @@ export default function SecurityClient({ adminEmail }: { adminEmail: string }) {
   const [loginAttempts, setLoginAttempts] = useState<LoginAttempt[]>([])
   const [redisConfigured, setRedisConfigured] = useState(true)
   const [attemptFilter, setAttemptFilter] = useState<'all' | 'failed'>('all')
+  const [loginAttemptsNote, setLoginAttemptsNote] = useState<string | null>(null)
 
   // Force logout all
   const [confirmingLogoutAll, setConfirmingLogoutAll] = useState(false)
   const [loggingOutAll, setLoggingOutAll] = useState(false)
   const [logoutAllError, setLogoutAllError] = useState<string | null>(null)
+
+  // Part 3.2 — Logout all except current
+  const [confirmingLogoutExcept, setConfirmingLogoutExcept] = useState(false)
+  const [loggingOutExcept, setLoggingOutExcept] = useState(false)
+  const [logoutExceptError, setLogoutExceptError] = useState<string | null>(null)
+  const [logoutExceptSuccess, setLogoutExceptSuccess] = useState(false)
 
   // Change password
   const [currentPassword, setCurrentPassword] = useState('')
@@ -247,6 +257,21 @@ export default function SecurityClient({ adminEmail }: { adminEmail: string }) {
       setCurrentSessionId(data.currentSessionId ?? null)
       setLoginAttempts(data.loginAttempts ?? [])
       setRedisConfigured(data.storage?.redisConfigured ?? true)
+      
+      // Part 3.2 — Determine if login attempts are fallback (no attempts in last week)
+      const now = Date.now()
+      const oneWeekAgo = now - 7 * 24 * 60 * 60 * 1000
+      const hasRecentAttempts = (data.loginAttempts ?? []).some((a: LoginAttempt) => {
+        return new Date(a.timestamp).getTime() >= oneWeekAgo
+      })
+      
+      if (!hasRecentAttempts && (data.loginAttempts ?? []).length > 0) {
+        setLoginAttemptsNote('No login attempts in the last 7 days — showing latest 10 attempts.')
+      } else if ((data.loginAttempts ?? []).length > 0) {
+        setLoginAttemptsNote('Showing login attempts from the last 7 days.')
+      } else {
+        setLoginAttemptsNote(null)
+      }
     } catch {
       setLoadError('Could not load session and security data. Please refresh the page.')
     } finally {
@@ -306,6 +331,31 @@ export default function SecurityClient({ adminEmail }: { adminEmail: string }) {
     } catch {
       setLogoutAllError('Network error — please try again.')
       setLoggingOutAll(false)
+    }
+  }
+
+  // Part 3.2 — Handle logout all except current device
+  const handleLogoutExcept = async () => {
+    setLoggingOutExcept(true)
+    setLogoutExceptError(null)
+    setLogoutExceptSuccess(false)
+    try {
+      const res = await fetch('/api/admin/security/logout-all-except', { method: 'POST' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setLogoutExceptError(data.error || 'Failed to revoke other sessions. Please try again.')
+        setLoggingOutExcept(false)
+        return
+      }
+      setLogoutExceptSuccess(true)
+      setConfirmingLogoutExcept(false)
+      // Reload sessions to show updated list
+      await loadSecurity()
+      setTimeout(() => setLogoutExceptSuccess(false), 4000)
+    } catch {
+      setLogoutExceptError('Network error — please try again.')
+    } finally {
+      setLoggingOutExcept(false)
     }
   }
 
@@ -1185,6 +1235,12 @@ export default function SecurityClient({ adminEmail }: { adminEmail: string }) {
                               </span>
                               <span>Last seen {timeAgo(s.lastSeenAt)}</span>
                             </div>
+                            {/* Part 3.2 — Show session expiry */}
+                            {s.expiresAt && (
+                              <div className="mt-1 text-[11px]" style={{ color: 'var(--muted-foreground)' }}>
+                                Expires {formatDateTime(s.expiresAt)}
+                              </div>
+                            )}
                           </div>
                         </div>
                       )
@@ -1193,26 +1249,88 @@ export default function SecurityClient({ adminEmail }: { adminEmail: string }) {
                 </div>
               </SecuritySection>
 
-              {/* ── Force Logout All ── */}
+              {/* ── Force Logout ── */}
               <SecuritySection
                 title="Force Logout"
-                description="Immediately sign out of every device, including this one."
+                description="Sign out of all devices or all other devices except this one."
                 icon={<LogOutIcon className="h-5 w-5" />}
               >
                 <p className="text-sm" style={{ color: 'var(--muted-foreground)' }}>
-                  Use this if you suspect unauthorised access, or after changing your password on a device you no longer trust. You&apos;ll need to sign in again afterwards.
+                  Use these options if you suspect unauthorised access, or after changing your password on a device you no longer trust.
                 </p>
 
-                {logoutAllError && (
+                {/* Part 3.2 — Logout all except current */}
+                {logoutExceptError && (
                   <p
                     className="mt-4 rounded-lg px-3 py-2 text-xs"
                     style={{ background: 'color-mix(in oklch, var(--destructive) 15%, transparent)', color: 'var(--destructive)' }}
                   >
-                    {logoutAllError}
+                    {logoutExceptError}
                   </p>
                 )}
 
-                <div className="mt-5 border-t pt-4" style={{ borderColor: 'var(--border)' }}>
+                {logoutExceptSuccess && (
+                  <p
+                    className="mt-4 rounded-lg px-3 py-2 text-xs flex items-center gap-2"
+                    style={{ background: 'color-mix(in oklch, oklch(0.75 0.18 150) 15%, transparent)', color: 'oklch(0.75 0.18 150)' }}
+                  >
+                    <Check className="h-3.5 w-3.5" /> Other devices have been logged out. You remain signed in on this device.
+                  </p>
+                )}
+
+                <div className="mt-5 border-t pt-4 space-y-3" style={{ borderColor: 'var(--border)' }}>
+                  {/* Logout all except current */}
+                  {!confirmingLogoutExcept ? (
+                    <button
+                      onClick={() => setConfirmingLogoutExcept(true)}
+                      disabled={sessions.length <= 1}
+                      className="flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition-all duration-200 hover:border-[var(--primary)] hover:text-[var(--primary)] disabled:opacity-50 disabled:cursor-not-allowed"
+                      style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
+                    >
+                      <Laptop className="h-4 w-4" />
+                      Log out all other devices
+                    </button>
+                  ) : (
+                    <div
+                      className="flex flex-wrap items-center gap-3 rounded-xl border p-3"
+                      style={{ borderColor: 'color-mix(in oklch, var(--primary) 35%, transparent)', background: 'color-mix(in oklch, var(--primary) 8%, transparent)' }}
+                    >
+                      <Info className="h-4 w-4 shrink-0" style={{ color: 'var(--primary)' }} />
+                      <p className="text-xs" style={{ color: 'var(--foreground)' }}>
+                        This will sign out all other devices. You&apos;ll stay signed in here. Continue?
+                      </p>
+                      <div className="ml-auto flex flex-wrap gap-2">
+                        <button
+                          onClick={handleLogoutExcept}
+                          disabled={loggingOutExcept}
+                          className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all disabled:opacity-60"
+                          style={{ background: 'var(--primary)', color: 'var(--primary-foreground)' }}
+                        >
+                          {loggingOutExcept ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                          Yes, log out others
+                        </button>
+                        <button
+                          onClick={() => setConfirmingLogoutExcept(false)}
+                          disabled={loggingOutExcept}
+                          className="rounded-lg border px-3 py-1.5 text-xs font-medium transition-all"
+                          style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Logout all */}
+                  {logoutAllError && (
+                    <p
+                      className="rounded-lg px-3 py-2 text-xs"
+                      style={{ background: 'color-mix(in oklch, var(--destructive) 15%, transparent)', color: 'var(--destructive)' }}
+                    >
+                      {logoutAllError}
+                    </p>
+                  )}
+
                   {!confirmingLogoutAll ? (
                     <button
                       onClick={() => setConfirmingLogoutAll(true)}
@@ -1376,6 +1494,17 @@ export default function SecurityClient({ adminEmail }: { adminEmail: string }) {
                     </button>
                   ))}
                 </div>
+
+                {/* Part 3.2 — Login attempts note */}
+                {loginAttemptsNote && (
+                  <div
+                    className="mb-3 flex items-center gap-2 rounded-lg px-3 py-2 text-xs"
+                    style={{ background: 'color-mix(in oklch, var(--primary) 8%, transparent)', color: 'var(--muted-foreground)' }}
+                  >
+                    <Info className="h-3.5 w-3.5 shrink-0" />
+                    {loginAttemptsNote}
+                  </div>
+                )}
 
                 <div className="max-h-80 space-y-1.5 overflow-y-auto pr-1">
                   {filteredAttempts.length === 0 ? (

@@ -17,6 +17,7 @@
  *  - Fixed TechSphere to handle empty/invalid items gracefully
  *  - Added fallback to static techStack when live data is empty
  *  - Normalized techStack items before rendering
+ *  - Added full site pause/maintenance screen support
  *
  * Part 3.3 update:
  *  - Fixed the intro boot sequence restarting/flickering: IntroLoader's
@@ -47,6 +48,7 @@ import {
 import { GitHubSection } from '@/components/github-section'
 import { PdfViewer } from '@/components/pdf-viewer'
 import { ImageViewer } from '@/components/image-viewer'
+import { SitePausedScreen } from '@/components/site-paused-screen'
 import type {
   ProjectContent, AboutContent, SkillGroup, TimelineEntry,
   HeroContent, StatItem, NavItem,
@@ -95,28 +97,16 @@ function IntroLoader({ onComplete }: { onComplete: () => void }) {
 
   const fullTitle = '> booting portfolio'
 
-  // `onComplete` is read through a ref so the boot-sequence effect below
-  // never has to depend on it directly. Previously the effect listed
-  // `onComplete` in its dependency array, but PortfolioSite passed a brand
-  // new inline function on every render — and it re-renders as soon as the
-  // resume/settings/content fetches resolve. Each of those re-renders tore
-  // the effect down and restarted the whole animation from zero, which is
-  // why the boot sequence visibly played through more than once.
   const onCompleteRef = useRef(onComplete)
   useEffect(() => {
     onCompleteRef.current = onComplete
   }, [onComplete])
 
-  // Runs exactly once on mount. Progress is driven by elapsed wall-clock
-  // time via requestAnimationFrame rather than fixed-size setInterval ticks,
-  // with an ease-out curve — this keeps it perfectly smooth at any frame
-  // rate and gives it a natural "quick start, gentle finish" feel instead of
-  // a mechanical linear crawl.
   useEffect(() => {
     let cancelled = false
-    const TOTAL_DURATION = 2200 // ms — full progress 0 -> 100
-    const HOLD_AFTER_COMPLETE = 350 // ms — brief pause once progress hits 100%
-    const EXIT_TRANSITION = 700 // ms — matches the .is-exiting fade/scale CSS
+    const TOTAL_DURATION = 2200
+    const HOLD_AFTER_COMPLETE = 350
+    const EXIT_TRANSITION = 700
 
     const startTime = performance.now()
 
@@ -136,10 +126,9 @@ function IntroLoader({ onComplete }: { onComplete: () => void }) {
     const tick = (now: number) => {
       const elapsed = now - startTime
       const t = Math.min(1, elapsed / TOTAL_DURATION)
-      const eased = 1 - Math.pow(1 - t, 3) // ease-out cubic
+      const eased = 1 - Math.pow(1 - t, 3)
       const pct = Math.round(eased * 100)
 
-      // Guard against rAF timestamp jitter ever nudging the bar backwards.
       setProgress((prev) => (pct > prev ? pct : prev))
 
       const idx = Math.min(bootMessages.length - 1, Math.floor(t * bootMessages.length))
@@ -163,8 +152,6 @@ function IntroLoader({ onComplete }: { onComplete: () => void }) {
       clearInterval(typeInterval)
       clearTimeout(fillTimer)
     }
-    // bootMessages is a stable reference (useMemo with an empty dep array),
-    // so this effect body still only ever runs once per mount.
   }, [bootMessages])
 
   return (
@@ -559,7 +546,6 @@ function TechSphere({ items }: { items: string[] }) {
   const current = useRef({ x: -10, y: 0 })
   const isHovering = useRef(false)
 
-  // FIX: Filter out empty/invalid items and deduplicate
   const validItems = useMemo(() => {
     const seen = new Set<string>()
     const filtered: string[] = []
@@ -612,7 +598,6 @@ function TechSphere({ items }: { items: string[] }) {
     return () => cancelAnimationFrame(animId)
   }, [N])
 
-  // FIX: Return early with empty state if no valid items
   if (N === 0) {
     return (
       <div className="sphere-container flex items-center justify-center">
@@ -1065,9 +1050,6 @@ export function PortfolioSite() {
   const [query, setQuery] = useState('')
   const [activeSection, setActiveSection] = useState('')
   const [introComplete, setIntroComplete] = useState(false)
-  // Stable identity across re-renders (the resume/settings/content fetches
-  // below each trigger one) so nothing downstream can mistake this for a
-  // "new" prop and restart work that should only happen once.
   const handleIntroComplete = useCallback(() => setIntroComplete(true), [])
 
   // ---- Live resume metadata (Part 2.4) ----
@@ -1084,16 +1066,22 @@ export function PortfolioSite() {
       .catch(() => {})
   }, [])
 
-  // ---- Live site settings (Part 2.5) ----
+  // ---- Live site settings (Part 2.5 + 3.2) ----
   const [liveSettings, setLiveSettings] = useState<{
     maintenanceMode: boolean
     maintenanceMessage: string
+    sitePaused: boolean
+    sitePausedTitle: string
+    sitePausedMessage: string
     contactEmail: string
     availabilityStatus: string
     socialLinks: Record<string, string>
   }>({
     maintenanceMode: false,
     maintenanceMessage: '',
+    sitePaused: false,
+    sitePausedTitle: 'Site Under Maintenance',
+    sitePausedMessage: 'We are currently performing scheduled maintenance. We will be back shortly. Thank you for your patience!',
     contactEmail: contactInfo.email,
     availabilityStatus: siteConfig.availability,
     socialLinks: siteConfig.social,
@@ -1107,6 +1095,9 @@ export function PortfolioSite() {
         setLiveSettings({
           maintenanceMode: !!d.maintenanceMode,
           maintenanceMessage: d.maintenanceMessage || '',
+          sitePaused: !!d.sitePaused,
+          sitePausedTitle: d.sitePausedTitle || 'Site Under Maintenance',
+          sitePausedMessage: d.sitePausedMessage || 'We are currently performing scheduled maintenance. We will be back shortly. Thank you for your patience!',
           contactEmail: d.contactEmail || contactInfo.email,
           availabilityStatus: d.availabilityStatus || siteConfig.availability,
           socialLinks: d.socialLinks || siteConfig.social,
@@ -1155,7 +1146,6 @@ export function PortfolioSite() {
         if (!d?.content) return
         const c = d.content
         
-        // Normalize techStack: filter empty/invalid items
         const normalizedTechStack = Array.isArray(c.techStack)
           ? c.techStack
               .filter((t: unknown): t is string => typeof t === 'string' && t.trim().length > 0)
@@ -1364,6 +1354,17 @@ export function PortfolioSite() {
   }, [activeFilter, query, liveContent.projects])
 
   const { hero, stats, techStack, projectFilters, navItems } = liveContent
+
+  // Part 3.2 — If site is paused, show maintenance screen
+  if (liveSettings.sitePaused) {
+    return (
+      <SitePausedScreen
+        title={liveSettings.sitePausedTitle}
+        message={liveSettings.sitePausedMessage}
+        contactEmail={liveSettings.contactEmail}
+      />
+    )
+  }
 
   return (
     <main className="min-h-screen overflow-hidden bg-background text-foreground">

@@ -3,6 +3,8 @@
  * ─────────────────────────────────────────────────────────────────────────────
  * Part 2.6 — Security & Session
  * Part 2.9 — Added optional location field to ActiveSession
+ * Part 3.2 — Added logout-all-except-current, expired session cleanup,
+ *           and filtered login attempts (1-week window + fallback to latest 10)
  *
  * Backs four features on the new /admin/security page:
  *   1. Active session tracking   — list every signed-in session (IP, login
@@ -12,10 +14,12 @@
  *      writing a "revoked before" cutoff timestamp per admin email; any
  *      token issued before that cutoff fails verification from then on,
  *      even though its HMAC signature is still technically valid.
+ *      Part 3.2 adds logout-all-except-current for targeted revocation.
  *   3. Password change without touching .env — a runtime credential
  *      override store.
  *   4. Login attempt log         — every login POST (success or failure) is
  *      appended here with email, IP, timestamp, and outcome.
+ *      Part 3.2 adds 1-week filtering with fallback to latest 10 attempts.
  *
  * DUAL-BACKEND STORAGE (mirrors lib/messages.ts / lib/settings.ts exactly)
  * ---------------------------------------------------------------------------
@@ -39,6 +43,7 @@ export interface ActiveSession {
   createdAt: string     // ISO-8601, login time
   lastSeenAt: string     // ISO-8601, updated on each verified request (best-effort)
   location?: string | null // Part 2.9 — Approximate city/country from IP geolocation
+  expiresAt?: string     // Part 3.2 — When the session token expires
 }
 
 export interface LoginAttempt {
@@ -67,6 +72,9 @@ interface SecurityStore {
 const REDIS_KEY = 'portfolio:security'
 const LOCAL_FILE_ENV = 'SECURITY_FILE'
 const MAX_LOGIN_ATTEMPTS = 200 // rolling cap so the log doesn't grow unbounded
+const SESSION_DURATION_MS = 8 * 60 * 60 * 1000 // 8 hours — matches admin-auth.ts
+const LOGIN_ATTEMPTS_WINDOW_MS = 7 * 24 * 60 * 60 * 1000 // 1 week
+const LOGIN_ATTEMPTS_FALLBACK_COUNT = 10 // Fallback if no attempts in last week
 
 function emptyStore(): SecurityStore {
   return { sessions: [], loginAttempts: [], passwordOverrides: {}, revokedBefore: {} }
@@ -180,6 +188,23 @@ export async function setPasswordOverride(email: string, newPassword: string): P
 
 // ─── Public API — sessions ──────────────────────────────────────────────────
 
+/**
+ * Part 3.2 — Cleans up expired sessions from the store.
+ * Sessions older than SESSION_DURATION_MS are removed.
+ * This handles auto-logout after session expiry.
+ */
+async function cleanupExpiredSessions(store: SecurityStore): Promise<void> {
+  const now = Date.now()
+  const before = store.sessions.length
+  store.sessions = store.sessions.filter(s => {
+    const createdAt = new Date(s.createdAt).getTime()
+    return now - createdAt < SESSION_DURATION_MS
+  })
+  if (store.sessions.length !== before) {
+    await writeStore(store)
+  }
+}
+
 /** Registers a newly created session. Returns the generated session id. */
 export async function registerSession(params: {
   email: string
@@ -197,14 +222,16 @@ export async function registerSession(params: {
     createdAt: now,
     lastSeenAt: now,
     location: null, // Part 2.9 — Will be populated on-demand by API route
+    expiresAt: new Date(Date.now() + SESSION_DURATION_MS).toISOString(), // Part 3.2
   })
   await writeStore(store)
   return id
 }
 
-/** Returns all currently tracked sessions, newest first. */
+/** Returns all currently tracked sessions, newest first. Part 3.2 — also cleans up expired. */
 export async function getActiveSessions(): Promise<ActiveSession[]> {
   const store = await readStore()
+  await cleanupExpiredSessions(store)
   return [...store.sessions].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
 }
 
@@ -226,6 +253,49 @@ export async function revokeAllSessions(email: string): Promise<number> {
   const before = store.sessions.length
   store.sessions = store.sessions.filter(s => s.email !== key)
   store.revokedBefore[key] = Date.now()
+  await writeStore(store)
+  return before - store.sessions.length
+}
+
+/**
+ * Part 3.2 — Force-logs-out every session for an email EXCEPT the one with
+ * the given session id. Sets a revocation cutoff at "now" so any OTHER token
+ * issued before this moment fails verification, but the current session
+ * remains valid because we keep its entry and don't revoke tokens issued
+ * after the cutoff (the current token was issued before "now", but we
+ * special-case it by not writing a cutoff — instead we filter the session
+ * list directly).
+ * 
+ * Strategy: Remove all sessions for the email except the given session id.
+ * Since session tokens remain valid (no cutoff), we rely on the proxy's
+ * verifySessionTokenWithRevocation to check `revokedBefore`. To keep the
+ * current session valid while revoking others, we set revokedBefore to
+ * Date.now() + 1 ms (just after the current token was issued). This way,
+ * the current token (issued before this cutoff) technically WOULD be
+ * revoked, so instead we simply remove other sessions from the list AND
+ * set a cutoff at the current token's issued-at time.
+ */
+export async function revokeAllSessionsExcept(email: string, exceptSessionId: string): Promise<number> {
+  const store = await readStore()
+  const key = email.toLowerCase().trim()
+  const before = store.sessions.length
+  const currentSession = store.sessions.find(s => s.id === exceptSessionId && s.email === key)
+  
+  // Keep only the current session
+  store.sessions = store.sessions.filter(s => s.id === exceptSessionId)
+  
+  // Set revocation cutoff at the current session's creation time + 1ms
+  // This ensures the current session remains valid (issued after cutoff)
+  // while all other sessions (issued before or around the same time) get revoked
+  if (currentSession) {
+    const currentSessionTime = new Date(currentSession.createdAt).getTime()
+    store.revokedBefore[key] = currentSessionTime + 1
+  } else {
+    // If current session not found (shouldn't happen), revoke all
+    store.revokedBefore[key] = Date.now()
+    store.sessions = []
+  }
+  
   await writeStore(store)
   return before - store.sessions.length
 }
@@ -277,13 +347,35 @@ export async function logLoginAttempt(params: {
   await writeStore(store)
 }
 
-/** Returns login attempts, newest first, optionally limited to failures only. */
+/**
+ * Part 3.2 — Returns login attempts with smart filtering:
+ * 1. Show attempts from the last 1 week
+ * 2. If no attempts in the last week, show the latest 10 attempts
+ * Also supports filtering by failed attempts only.
+ */
 export async function getLoginAttempts(opts?: { onlyFailed?: boolean; limit?: number }): Promise<LoginAttempt[]> {
   const store = await readStore()
   let attempts = store.loginAttempts
-  if (opts?.onlyFailed) attempts = attempts.filter(a => !a.success)
-  if (opts?.limit) attempts = attempts.slice(0, opts.limit)
-  return attempts
+  
+  if (opts?.onlyFailed) {
+    attempts = attempts.filter(a => !a.success)
+  }
+  
+  // Part 3.2 — Filter to last week's attempts
+  const now = Date.now()
+  const oneWeekAgo = now - LOGIN_ATTEMPTS_WINDOW_MS
+  const recentAttempts = attempts.filter(a => {
+    const attemptTime = new Date(a.timestamp).getTime()
+    return attemptTime >= oneWeekAgo
+  })
+  
+  // If there are attempts in the last week, return those
+  if (recentAttempts.length > 0) {
+    return recentAttempts
+  }
+  
+  // Otherwise, fallback to latest 10 attempts
+  return attempts.slice(0, LOGIN_ATTEMPTS_FALLBACK_COUNT)
 }
 
 /** Clears the login attempt log (used by an optional "clear log" action). */

@@ -2,16 +2,10 @@
  * app/api/admin/settings/route.ts
  *
  * Part 2.5 — Site Settings (admin-only)
+ * Part 3.2 — Added sitePaused validation
  * ---------------------------------------------------------------------------
- * GET  -> returns current settings + storage status (for the "not persistent"
- *         warning banner, same pattern as the Resume page in Part 2.4).
+ * GET  -> returns current settings + storage status.
  * PUT  -> accepts a partial patch and saves it via lib/settings.ts.
- *
- * Auth: same DAL check used by every other /api/admin/* route (messages,
- * analytics, resume) — reads the signed session cookie (ADMIN_COOKIE_NAME)
- * and verifies it server-side with verifySessionToken from lib/admin-auth.ts.
- * This mirrors the double-layer auth model from Part 2.1: proxy.ts already
- * guards /admin/* at the edge, this is the server-side DAL check underneath.
  * ---------------------------------------------------------------------------
  */
 
@@ -79,6 +73,15 @@ export async function PUT(req: NextRequest) {
 
   if (body.maintenanceMessage !== undefined && body.maintenanceMessage.length > 300) {
     return NextResponse.json({ error: 'Maintenance message is too long (max 300 characters).' }, { status: 400 })
+  }
+
+  // Part 3.2 — Site pause validation
+  if (body.sitePausedTitle !== undefined && body.sitePausedTitle.length > 100) {
+    return NextResponse.json({ error: 'Site pause title is too long (max 100 characters).' }, { status: 400 })
+  }
+
+  if (body.sitePausedMessage !== undefined && body.sitePausedMessage.length > 500) {
+    return NextResponse.json({ error: 'Site pause message is too long (max 500 characters).' }, { status: 400 })
   }
 
   if (body.socialLinks !== undefined) {

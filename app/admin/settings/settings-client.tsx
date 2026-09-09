@@ -7,6 +7,8 @@
  * Part 2.7 update: removed "Visitors" nav item, added "Content" with
  * FolderKanban icon. Canonical nav list now spans Dashboard, Messages,
  * Analytics, Resume, Content, Settings, Security.
+ * Part 3.2 update: Added full site pause/maintenance mode with title and
+ * message customization.
  *
  * Mobile fix (Part C):
  *   - Changed h-screen to admin-viewport-height for dynamic viewport support
@@ -21,7 +23,7 @@ import {
   LayoutDashboard, LogOut, Mail, FileText, Settings as SettingsIcon,
   ExternalLink, TrendingUp, MessageSquare, Loader2, Menu, X, Palette,
   BarChart2, AlertTriangle, Check, Power, Code2,
-  Save, RotateCcw, ShieldCheck, FolderKanban,
+  Save, RotateCcw, ShieldCheck, FolderKanban, PauseCircle, PlayCircle,
 } from 'lucide-react'
 import { themes } from '@/lib/content'
 import type { SiteSettings } from '@/lib/settings'
@@ -269,6 +271,10 @@ export default function SettingsClient() {
   // Local form state, split per section so each can save independently.
   const [maintenanceMode, setMaintenanceMode] = useState(false)
   const [maintenanceMessage, setMaintenanceMessage] = useState('')
+  // Part 3.2 — Site pause state
+  const [sitePaused, setSitePaused] = useState(false)
+  const [sitePausedTitle, setSitePausedTitle] = useState('')
+  const [sitePausedMessage, setSitePausedMessage] = useState('')
   const [contactEmail, setContactEmail] = useState('')
   const [availabilityStatus, setAvailabilityStatus] = useState('')
   const [social, setSocial] = useState({ github: '', linkedin: '', email: '', twitter: '', leetcode: '' })
@@ -296,6 +302,9 @@ export default function SettingsClient() {
       setRedisConfigured(data.storage?.redisConfigured ?? true)
       setMaintenanceMode(data.settings.maintenanceMode)
       setMaintenanceMessage(data.settings.maintenanceMessage)
+      setSitePaused(data.settings.sitePaused)
+      setSitePausedTitle(data.settings.sitePausedTitle)
+      setSitePausedMessage(data.settings.sitePausedMessage)
       setContactEmail(data.settings.contactEmail)
       setAvailabilityStatus(data.settings.availabilityStatus)
       setSocial({
@@ -543,43 +552,129 @@ export default function SettingsClient() {
           ) : (
             <div className="grid grid-cols-1 gap-4 sm:gap-6 xl:grid-cols-2">
 
-              {/* ── Maintenance Mode ── */}
+              {/* ── Site Availability (Maintenance + Pause) ── */}
               <SettingsSection
-                title="Maintenance Mode"
-                description="Temporarily show a maintenance banner on the live site."
+                title="Site Availability"
+                description="Control whether your portfolio is visible to visitors."
                 icon={<Power className="h-5 w-5" />}
-                onSave={() => save('maintenance', { maintenanceMode, maintenanceMessage })}
-                saving={!!saving.maintenance}
-                saved={!!saved.maintenance}
-                error={errors.maintenance ?? null}
+                onSave={() => save('availability', {
+                  maintenanceMode,
+                  maintenanceMessage,
+                  sitePaused,
+                  sitePausedTitle,
+                  sitePausedMessage,
+                })}
+                saving={!!saving.availability}
+                saved={!!saved.availability}
+                error={errors.availability ?? null}
               >
+                {/* Part 3.2 — Full Site Pause */}
                 <div
-                  className="flex items-center justify-between rounded-xl border p-3"
-                  style={{ borderColor: 'var(--border)' }}
+                  className="flex items-center justify-between rounded-xl border p-4"
+                  style={{
+                    borderColor: sitePaused
+                      ? 'color-mix(in oklch, var(--destructive) 40%, transparent)'
+                      : 'var(--border)',
+                    background: sitePaused
+                      ? 'color-mix(in oklch, var(--destructive) 8%, transparent)'
+                      : 'transparent',
+                  }}
                 >
-                  <div>
-                    <p className="text-sm font-medium">Site availability</p>
-                    <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
-                      {maintenanceMode ? 'Maintenance banner is visible to visitors' : 'Site is fully available'}
-                    </p>
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
+                      style={{
+                        background: sitePaused
+                          ? 'color-mix(in oklch, var(--destructive) 20%, transparent)'
+                          : 'color-mix(in oklch, var(--primary) 12%, transparent)',
+                        color: sitePaused ? 'var(--destructive)' : 'var(--primary)',
+                      }}
+                    >
+                      {sitePaused ? <PauseCircle className="h-5 w-5" /> : <PlayCircle className="h-5 w-5" />}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium">Full site pause</p>
+                      <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                        {sitePaused
+                          ? 'Site is completely hidden — showing maintenance screen'
+                          : 'Site is live and visible to everyone'}
+                      </p>
+                    </div>
                   </div>
                   <ToggleSwitch
-                    checked={maintenanceMode}
-                    onChange={() => setMaintenanceMode(v => !v)}
-                    ariaLabel="Toggle maintenance mode"
+                    checked={sitePaused}
+                    onChange={() => setSitePaused(v => !v)}
+                    ariaLabel="Toggle full site pause"
                   />
                 </div>
 
-                <Field label="Banner message" hint="Shown to visitors while maintenance mode is on.">
-                  <textarea
-                    value={maintenanceMessage}
-                    onChange={e => setMaintenanceMessage(e.target.value)}
-                    rows={3}
-                    maxLength={300}
-                    className="mt-1.5 w-full rounded-xl border px-3 py-2 text-sm outline-none resize-none focus:border-[var(--primary)]"
-                    style={inputStyle}
-                  />
-                </Field>
+                {/* Part 3.2 — Site pause customization */}
+                {sitePaused && (
+                  <div className="space-y-3 rounded-xl border p-4" style={{ borderColor: 'var(--border)' }}>
+                    <p className="text-xs font-medium" style={{ color: 'var(--muted-foreground)' }}>
+                      Customize the maintenance screen:
+                    </p>
+                    <Field label="Title">
+                      <input
+                        type="text"
+                        value={sitePausedTitle}
+                        onChange={e => setSitePausedTitle(e.target.value.slice(0, 100))}
+                        placeholder="Site Under Maintenance"
+                        className="mt-1.5 w-full rounded-xl border px-3 py-2 text-sm outline-none focus:border-[var(--primary)]"
+                        style={inputStyle}
+                      />
+                    </Field>
+                    <Field label="Message" hint={`${sitePausedMessage.length}/500 characters`}>
+                      <textarea
+                        value={sitePausedMessage}
+                        onChange={e => setSitePausedMessage(e.target.value.slice(0, 500))}
+                        rows={3}
+                        placeholder="We are currently performing scheduled maintenance. We will be back shortly."
+                        className="mt-1.5 w-full rounded-xl border px-3 py-2 text-sm outline-none resize-none focus:border-[var(--primary)]"
+                        style={inputStyle}
+                      />
+                    </Field>
+                  </div>
+                )}
+
+                {/* Divider */}
+                <div className="border-t pt-4" style={{ borderColor: 'var(--border)' }}>
+                  <p className="text-xs font-medium mb-3" style={{ color: 'var(--muted-foreground)' }}>
+                    Maintenance banner (lighter option):
+                  </p>
+
+                  <div
+                    className="flex items-center justify-between rounded-xl border p-3"
+                    style={{ borderColor: 'var(--border)' }}
+                  >
+                    <div>
+                      <p className="text-sm font-medium">Maintenance banner</p>
+                      <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                        {maintenanceMode ? 'Banner is visible at top of site' : 'No banner shown'}
+                      </p>
+                    </div>
+                    <ToggleSwitch
+                      checked={maintenanceMode}
+                      onChange={() => setMaintenanceMode(v => !v)}
+                      ariaLabel="Toggle maintenance banner"
+                    />
+                  </div>
+
+                  {maintenanceMode && (
+                    <div className="mt-3">
+                      <Field label="Banner message" hint="Shown to visitors while maintenance mode is on.">
+                        <textarea
+                          value={maintenanceMessage}
+                          onChange={e => setMaintenanceMessage(e.target.value)}
+                          rows={2}
+                          maxLength={300}
+                          className="mt-1.5 w-full rounded-xl border px-3 py-2 text-sm outline-none resize-none focus:border-[var(--primary)]"
+                          style={inputStyle}
+                        />
+                      </Field>
+                    </div>
+                  )}
+                </div>
               </SettingsSection>
 
               {/* ── Contact Email ── */}
@@ -609,10 +704,10 @@ export default function SettingsClient() {
                 title="Availability Status"
                 description='The short status line shown in the hero (e.g. "Open to Internships").'
                 icon={<TrendingUp className="h-5 w-5" />}
-                onSave={() => save('availability', { availabilityStatus })}
-                saving={!!saving.availability}
-                saved={!!saved.availability}
-                error={errors.availability ?? null}
+                onSave={() => save('availabilityStatus', { availabilityStatus })}
+                saving={!!saving.availabilityStatus}
+                saved={!!saved.availabilityStatus}
+                error={errors.availabilityStatus ?? null}
               >
                 <Field label="Status text" hint={`${availabilityStatus.length}/80 characters`}>
                   <input

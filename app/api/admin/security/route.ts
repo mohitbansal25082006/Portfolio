@@ -3,12 +3,14 @@
  * ─────────────────────────────────────────────────────────────────────────────
  * Part 2.6 — Security & Session
  * Part 2.9 — Added IP geolocation for sessions
+ * Part 3.2 — Added login attempt filtering (1-week window + fallback)
  * ---------------------------------------------------------------------------
  * GET  /api/admin/security
  *   Returns the current admin's active sessions (with geolocation info),
- *   the full login attempt log, and storage status.
+ *   the login attempt log (filtered to last week or latest 10), and
+ *   storage status.
  *
- * POST /api/admin/security/logout-all
+ * POST /api/admin/security
  *   Body: {} — revokes every session for the CURRENTLY authenticated
  *   admin's email (not other admins). Clears the caller's own cookie too,
  *   since their current session is revoked along with the rest.
@@ -19,9 +21,8 @@
  *   .env), then writes a new override so future logins use the new
  *   password — no .env edit or redeploy required.
  *
- * All three actions require a valid, non-revoked session — enforced the
- * same way as every other /api/admin/* route: reading + verifying the
- * ADMIN_COOKIE_NAME cookie server-side via verifySessionTokenWithRevocation.
+ * All actions require a valid, non-revoked session — enforced the same
+ * way as every other /api/admin/* route.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
@@ -57,7 +58,7 @@ export async function GET(req: NextRequest) {
 
   const [allSessions, loginAttempts] = await Promise.all([
     getActiveSessions(),
-    getLoginAttempts({ limit: 100 }),
+    getLoginAttempts(), // Part 3.2 — Filtered to last week or latest 10
   ])
 
   // Only show the current admin's own sessions on the "active sessions"

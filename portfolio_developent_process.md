@@ -475,3 +475,36 @@ app/admin/content/backup-client.tsx
 - **Full Backup Coverage** — Backup now includes ALL content fields (hero, stats, techStack, filters, navItems, pillars, categories)
 - **Backup Info Endpoint** — `GET /api/admin/backup?info=true` returns full data summary with category counts
 - **Category Normalization** — Categories auto-lowercased and trimmed
+
+
+## Part 3.2 Summary
+
+### Files Created:
+- `components/site-paused-screen.tsx` — Full-screen animated maintenance page
+- `app/api/admin/security/logout-all-except/route.ts` — API endpoint for logout all except current device
+
+### Files Updated:
+- `lib/admin-security.ts` — Added logout-all-except function, expired session cleanup, login attempts week filtering
+- `app/api/admin/security/route.ts` — Updated GET with login attempt filtering, removed nested route handling
+- `app/admin/security/security-client.tsx` — Added "Log out all other devices" option, login attempts note, session expiry display
+- `lib/settings.ts` — Added sitePaused, sitePausedTitle, sitePausedMessage fields
+- `app/api/settings/route.ts` — Exposed sitePaused fields publicly
+- `app/api/admin/settings/route.ts` — Added sitePaused validation
+- `app/admin/settings/settings-client.tsx` — Added "Site Availability" section with pause toggle and customization
+- `components/portfolio-site.tsx` — Shows SitePausedScreen when sitePaused enabled, maintenance banner support
+- `app/globals.css` — Added site-paused screen styles, animations, mobile optimizations
+
+### Features Added:
+- **Logout all except current device** — Revokes all other sessions while keeping current device signed in
+- **Auto session cleanup** — Expired sessions (8+ hours) automatically removed from active sessions list
+- **Login attempts smart filter** — Shows last 7 days of attempts, falls back to latest 10 if no recent activity
+- **Full site pause mode** — Completely hides portfolio and shows animated maintenance screen
+- **Customizable pause screen** — Admin can set custom title and message for maintenance screen
+- **Session expiry display** — Active sessions now show expiry time
+
+### Features Updated:
+- **Active Sessions** — Now shows expiry time, auto-removes expired sessions
+- **Force Logout** — Added "Log out all other devices" option alongside "Log out all sessions"
+- **Login Attempts** — Smart filtering with informational note about displayed time range
+- **Settings UI** — Reorganized into "Site Availability" section with pause and banner options
+- **Portfolio Site** — Shows full-screen pause when enabled, banner when maintenance mode on
