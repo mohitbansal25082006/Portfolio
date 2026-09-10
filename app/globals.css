@@ -1141,3 +1141,34 @@ body {
     padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 1rem);
   }
 }
+
+
+/* ============================================================================
+   PART 3.2 DASHBOARD — Skeleton shimmer + dashboard helpers
+   ========================================================================== */
+@keyframes skeleton-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Reduced-motion: kill the shimmer + ping animations inside the dashboard */
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse,
+  .animate-spin,
+  .animate-ping {
+    animation: none !important;
+  }
+}
+
+/* Small helper so the sidebar main region scrolls independently on iOS */
+.admin-main-scroll {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* Dashboard tabs — keep the collapsed sidebar icons centred */
+@media (min-width: 1024px) {
+  aside[class*="lg:w-[68px]"] nav a {
+    justify-content: center;
+  }
+}

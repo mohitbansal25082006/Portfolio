@@ -535,3 +535,45 @@ proxy.ts
 app/api/admin/analytics/route.ts
 app/admin/analytics/analytics-client.tsx
 ```
+
+
+# Part 3.4 (Dashboard Upgrade) — Summary
+
+## Files Created
+```
+lib/dashboard-aggregator.ts
+app/api/admin/dashboard/route.ts
+components/admin/charts.tsx
+components/admin/widgets.tsx
+components/admin/dashboard-shell.tsx
+components/admin/stat-card.tsx
+```
+
+## Files Updated
+```
+app/admin/dashboard/dashboard-client.tsx
+app/admin/dashboard/page.tsx
+app/globals.css
+```
+
+## Features Added
+- **Single aggregated dashboard endpoint** (`/api/admin/dashboard`) — one round-trip returns analytics, messages, resume, content, security, settings, activity feed, and health checks, with per-section error isolation.
+- **Theme-aware SVG chart toolkit** — `Sparkline`, interactive `BarChart` (hover tooltip), `DonutChart` (hover legend), `ProgressRing`, `MiniStackedBar`, `DeltaBadge`. Zero external chart deps, all 6 themes work automatically.
+- **Reusable admin chrome** (`DashboardShell`) — collapsible sidebar (persisted), full mobile drawer with overlay, breadcrumb, theme picker, session chip, refresh control, admin badge, logout.
+- **Rich `StatCard`** — count-up animation, sparkline row, delta badge vs previous period, progress bar / custom stacked segments, badge pill, hover lift + shine, whole-card link.
+- **Layout primitives** — `Panel`, `PanelHeader`, `SkeletonBlock`, `EmptyState`, `HealthDot` (ping animation), `ActivityRow`, `QuickActionButton`, `InlineSpinner`.
+- **Period toggle (7d / 30d)** with live refresh.
+- **Combined activity feed** across messages / content / resume / security / settings with tone tints.
+- **System Health panel** — Redis, Blob, site status, content versioning with green/amber dots.
+- **Site summary strip** — status, availability, contact email, social link count.
+- **Distinct device colors** — `DISTINCT_DEVICE_COLORS` palette (blue/green/amber) guarantees no two slices share a hue across any theme.
+- **Storage-awareness banners** — amber "running on local storage" + degraded-data banner.
+- **Full mobile optimisation** — 1→2→3 col stat grid, 12-col responsive main grid, safe-area insets, dynamic viewport height, hover states degrade to tap.
+
+## Features Updated
+- **Dashboard home fully rewritten** — replaced the Part 2.7 layout with a 12-column responsive grid (trend 8 + devices 4 → activity 5 + referrers 4 + health 3 → messages 7 + quick actions 5 → full-width site strip). No orphan columns on any breakpoint.
+- **"Content" card → "Projects"** — now shows project count with timeline + skill-group sub-line.
+- **"Tech Stack" card → "Site Settings"** — shows Live/Paused/Banner status, social link count, availability.
+- **Image count + size fixed** — aggregator now counts every non-empty URL across `project.images` + `project-images.ts` records, so it can never show 0 when the Content page shows >0.
+- **"0 B" hidden** — Size cell only renders when `images > 0` and byte count is real; image strip gracefully collapses to 2 or 1 column when data is partial.
+- **`app/globals.css`** — appended `skeleton-shimmer` keyframe, reduced-motion overrides, iOS scroll helper, and collapsed-sidebar centering rule.
