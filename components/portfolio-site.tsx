@@ -4,11 +4,11 @@
  * components/portfolio-site.tsx
  *
  * Part 3.6 (Animation & Fluidity Update):
- *  - IntroLoader upgraded with a 2-stage cinematic exit (elements blur/float out,
- *    then the overlay dissolves).
+ *  - IntroLoader upgraded with a 2-stage cinematic exit.
  *  - Added dynamic glowing effects to the boot sequence linked to actual progress.
  *  - Enhanced Magnetic components with smoother return interpolation.
- *  - Particle Field now fades in smoothly to prevent harsh visual "pops" on mount.
+ *  - Particle Field now fades in smoothly.
+ *  - TechSphere optimized with dynamic responsive radius and mobile touch improvements.
  */
 
 import {
@@ -61,7 +61,7 @@ const TwitterIcon = (props: React.SVGProps<SVGSVGElement>) => (
    ========================================================================== */
 function IntroLoader({ onComplete }: { onComplete: () => void }) {
   const [statusIdx, setStatusIdx] = useState(0)
-  const [exitPhase, setExitPhase] = useState<0 | 1 | 2>(0) // 0: loading, 1: elements out, 2: background out
+  const [exitPhase, setExitPhase] = useState<0 | 1 | 2>(0)
   const [drawPath, setDrawPath] = useState(false)
   const [fillLogo, setFillLogo] = useState(false)
   const [titleText, setTitleText] = useState('')
@@ -92,8 +92,8 @@ function IntroLoader({ onComplete }: { onComplete: () => void }) {
     let cancelled = false
     const TOTAL_DURATION = 2400
     const HOLD_AFTER_COMPLETE = 400
-    const STAGE_1_DURATION = 500 // Time for elements to float away
-    const STAGE_2_DURATION = 700 // Time for overlay to fade
+    const STAGE_1_DURATION = 500
+    const STAGE_2_DURATION = 700
 
     const startTime = performance.now()
 
@@ -134,11 +134,11 @@ function IntroLoader({ onComplete }: { onComplete: () => void }) {
       } else {
         setTimeout(() => {
           if (cancelled) return
-          setExitPhase(1) // Stage 1: Elements float away
+          setExitPhase(1)
           
           setTimeout(() => {
             if (cancelled) return
-            setExitPhase(2) // Stage 2: Background dissolves
+            setExitPhase(2)
             
             setTimeout(() => onCompleteRef.current(), STAGE_2_DURATION)
           }, STAGE_1_DURATION)
@@ -161,7 +161,6 @@ function IntroLoader({ onComplete }: { onComplete: () => void }) {
       <div className="intro-grid" />
       <div className="intro-ambient-glow" ref={glowRef} />
 
-      {/* Wrapping content for stage 1 exit animation */}
       <div className={`intro-elements-wrapper ${exitPhase >= 1 ? 'elements-exiting' : ''}`}>
         <div className="relative mb-10 flex flex-col items-center px-4">
           <svg width="110" height="110" viewBox="0 0 120 120" className="mb-6" style={{ willChange: 'transform' }}>
@@ -587,13 +586,16 @@ function CountUp({ end, suffix = '', duration = 1800 }: { end: number; suffix?: 
 }
 
 /* ============================================================================
-   TechSphere (Part 3.5)
+   TechSphere (Fully Mobile Optimized)
    ========================================================================== */
 function TechSphere({ items }: { items: string[] }) {
   const sphereRef = useRef<HTMLDivElement>(null)
   const target = useRef({ x: -10, y: 0 })
   const current = useRef({ x: -10, y: 0 })
   const isHovering = useRef(false)
+
+  // Dynamic radius for responsive mobile sizing
+  const [radius, setRadius] = useState(180)
 
   const validItems = useMemo(() => {
     const seen = new Set<string>()
@@ -611,13 +613,28 @@ function TechSphere({ items }: { items: string[] }) {
 
   const N = validItems.length
 
-  const scale = useMemo(() => {
-    if (N <= 20) return 1
-    if (N >= 60) return 0.62
-    return 1 - ((N - 20) / 40) * 0.38
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const handleResize = () => {
+      const width = window.innerWidth
+      let baseRadius = 180
+      if (width < 480) baseRadius = 125 // Mobile portrait
+      else if (width < 768) baseRadius = 150 // Tablet/Mobile landscape
+      setRadius(baseRadius * (N > 40 ? 1.08 : 1))
+    }
+    handleResize()
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
   }, [N])
 
-  const radius = 180 * (N > 40 ? 1.08 : 1)
+  const scale = useMemo(() => {
+    let base = 1
+    if (N <= 20) base = 1
+    else if (N >= 60) base = 0.62
+    else base = 1 - ((N - 20) / 40) * 0.38
+    // Cap minimum scale so mobile text remains readable
+    return Math.max(base * (radius / 180), 0.75) 
+  }, [N, radius])
 
   const positions = useMemo(() => {
     if (N === 0) return []
@@ -680,15 +697,18 @@ function TechSphere({ items }: { items: string[] }) {
     const centerY = rect.top + rect.height / 2
     const deltaX = clientX - centerX
     const deltaY = clientY - centerY
-    target.current.y = (deltaX / (rect.width / 2)) * 40
-    target.current.x = -(deltaY / (rect.height / 2)) * 40 - 10
+    // Increased sensitivity multiplier mapping to mobile swipes feeling more responsive
+    target.current.y = (deltaX / (rect.width / 2)) * 50 
+    target.current.x = -(deltaY / (rect.height / 2)) * 50 - 10
   }
+  
   const handleMouseMove = (e: React.MouseEvent) => {
     const rect = e.currentTarget.getBoundingClientRect()
     updateRotationFromPoint(e.clientX, e.clientY, rect)
   }
   const handleMouseEnter = () => { isHovering.current = true; target.current.y = current.current.y % 360; target.current.x = current.current.x }
   const handleMouseLeave = () => { isHovering.current = false; target.current.y = current.current.y % 360; target.current.x = -10 }
+  
   const handleTouchStart = (e: React.TouchEvent) => {
     isHovering.current = true
     target.current.y = current.current.y % 360
@@ -742,7 +762,7 @@ function TechSphere({ items }: { items: string[] }) {
           return (
             <span
               key={`${item}-${i}`}
-              className="sphere-item"
+              className="sphere-item cursor-pointer"
               style={{
                 '--tx': `${p.x * radius}px`,
                 '--ty': `${p.y * radius}px`,
