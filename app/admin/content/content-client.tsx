@@ -8,23 +8,15 @@
  * Part 3 — Advanced Project Image Management Integration
  * Part 3.1 — Extended to cover FULL portfolio
  * Part 3.2 — Added Categories section in Project Editor
- *           Removed Tech Stack management (3D sphere stays static on portfolio)
+ * Part 3.5 — Added Tech Stack tab (full CRUD, reorder, dedupe, quick-add)
+ *           Fixed: pure helpers are imported from lib/content-helpers.ts
+ *           (client-safe) instead of lib/content-store.ts (server-only, fs).
  * ---------------------------------------------------------------------------
- * Full-featured admin page for editing all portfolio content:
- *   • Hero — name, title, oneLiner, location, availability, established
- *   • About — college, year, paragraphs, interests, pillars
- *   • Stats — stat cards (label, value, suffix)
- *   • Projects — edit descriptions, links, stack, categories, add/remove/reorder
- *   • Filters — project category filters
- *   • Timeline — edit entries
- *   • Skills — edit skill groups
- *   • Nav Items — navigation labels & hrefs
- *   • History — view version history, rollback, rename, delete
- *   • Backup — export/import JSON backup
+ * Full-featured admin page for editing all portfolio content.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   LayoutDashboard, LogOut, Mail, FileText, Settings as SettingsIcon,
@@ -33,13 +25,20 @@ import {
   Plus, Trash2, ChevronUp, ChevronDown, Edit3, FolderKanban,
   Clock, User, Wrench, Link2, History, Database,
   Image as ImageIcon, Cloud, Globe, BarChart3, Filter,
-  Navigation, Tag,
+  Navigation, Tag, Sparkles, Copy as CopyIcon, Search,
 } from 'lucide-react'
 import { themes } from '@/lib/content'
 import type {
   ProjectContent, AboutContent, SkillGroup, TimelineEntry,
   HeroContent, StatItem, NavItem, AboutPillar,
-} from '@/lib/content-store'
+} from '@/lib/content-helpers'
+import {
+  normalizeTechStack,
+  addTechStackItem,
+  removeTechStackItem,
+  updateTechStackItem,
+  moveTechStackItem,
+} from '@/lib/content-helpers'
 import VersionHistory from './version-history-client'
 import BackupClient from './backup-client'
 import { ProjectImageManager } from '@/components/project-image-manager'
@@ -67,31 +66,19 @@ function GithubIcon({ className, style }: { className?: string; style?: React.CS
 
 // ─── LOCAL helper functions (client-safe) ────────────────────────────────
 
-/**
- * Add a category to a project if not already present.
- */
 function addCategoryToProject(project: ProjectContent, category: string): ProjectContent {
   const trimmed = category.trim().toLowerCase()
   if (!trimmed) return project
   if (project.categories.includes(trimmed)) return project
-  return {
-    ...project,
-    categories: [...project.categories, trimmed],
-  }
+  return { ...project, categories: [...project.categories, trimmed] }
 }
 
-/**
- * Remove a category from a project by index.
- */
 function removeCategoryFromProject(project: ProjectContent, index: number): ProjectContent {
   if (index < 0 || index >= project.categories.length) return project
   const newCategories = project.categories.filter((_, i) => i !== index)
   return { ...project, categories: newCategories }
 }
 
-/**
- * Update a category in a project at the given index.
- */
 function updateCategoryInProject(project: ProjectContent, index: number, value: string): ProjectContent {
   if (index < 0 || index >= project.categories.length) return project
   const newCategories = [...project.categories]
@@ -210,7 +197,18 @@ function Field({
 
 // ─── Tab type ────────────────────────────────────────────────────────────
 
-type Tab = 'hero' | 'about' | 'stats' | 'projects' | 'filters' | 'timeline' | 'skills' | 'navitems' | 'history' | 'backup'
+type Tab =
+  | 'hero'
+  | 'about'
+  | 'stats'
+  | 'projects'
+  | 'filters'
+  | 'timeline'
+  | 'skills'
+  | 'stack'
+  | 'navitems'
+  | 'history'
+  | 'backup'
 
 // ─── Main component ──────────────────────────────────────────────────────
 
@@ -247,6 +245,7 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
   const [projectFilters, setProjectFilters] = useState<string[]>([])
   const [timeline, setTimeline] = useState<TimelineEntry[]>([])
   const [skillGroups, setSkillGroups] = useState<SkillGroup[]>([])
+  const [techStack, setTechStack] = useState<string[]>([])
   const [navItems, setNavItems] = useState<NavItem[]>([])
 
   const [editingProject, setEditingProject] = useState<ProjectContent | null>(null)
@@ -283,8 +282,9 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
       setProjectFilters(data.content.projectFilters || [])
       setTimeline(data.content.timeline)
       setSkillGroups(data.content.skillGroups)
+      setTechStack(normalizeTechStack(data.content.techStack || []))
       setNavItems(data.content.navItems || [])
-      
+
       if (data.versions) {
         setVersions(data.versions.recent || [])
         setVersionCount(data.versions.totalCount || 0)
@@ -317,7 +317,7 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
     try {
       const res = await fetch('/api/admin/backup', {
         method: 'PUT',
-        cache: 'no-store'
+        cache: 'no-store',
       })
       if (!res.ok) return
       const data = await res.json()
@@ -371,6 +371,7 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
       else if (activeTab === 'filters') patch = { projectFilters }
       else if (activeTab === 'timeline') patch = { timeline }
       else if (activeTab === 'skills') patch = { skillGroups }
+      else if (activeTab === 'stack') patch = { techStack }
       else if (activeTab === 'navitems') patch = { navItems }
 
       const res = await fetch('/api/admin/content', {
@@ -388,6 +389,10 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
       if (data.versions) {
         setVersions(data.versions.recent || [])
         setVersionCount(data.versions.totalCount || 0)
+      }
+
+      if (activeTab === 'stack' && Array.isArray(data.content?.techStack)) {
+        setTechStack(normalizeTechStack(data.content.techStack))
       }
 
       setSaved(true)
@@ -504,6 +509,7 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
     { id: 'filters', label: 'Filters', icon: <Filter className="h-4 w-4" /> },
     { id: 'timeline', label: 'Timeline', icon: <Clock className="h-4 w-4" /> },
     { id: 'skills', label: 'Skills', icon: <Wrench className="h-4 w-4" /> },
+    { id: 'stack', label: 'Tech Stack', icon: <Sparkles className="h-4 w-4" /> },
     { id: 'navitems', label: 'Nav Items', icon: <Navigation className="h-4 w-4" /> },
     { id: 'history', label: 'History', icon: <History className="h-4 w-4" /> },
     { id: 'backup', label: 'Backup', icon: <Database className="h-4 w-4" /> },
@@ -672,11 +678,10 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
             <p className="eyebrow mb-2">Site Content</p>
             <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold">Content Management</h1>
             <p className="mt-1 text-xs sm:text-sm" style={{ color: 'var(--muted-foreground)' }}>
-              Edit all portfolio content — hero, about, stats, skills, projects, timeline, and more.
+              Edit all portfolio content — hero, about, stats, skills, tech stack, projects, timeline, and more.
             </p>
           </div>
 
-          {/* Storage warnings */}
           {!redisConfigured && (
             <div
               className="mb-4 sm:mb-6 flex items-start gap-2 sm:gap-3 rounded-2xl border p-3 sm:p-4"
@@ -692,7 +697,6 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
             </div>
           )}
 
-          {/* Image storage warning */}
           {!imageStorage.blobConfigured && (
             <div
               className="mb-4 sm:mb-6 flex items-start gap-2 sm:gap-3 rounded-2xl border p-3 sm:p-4"
@@ -708,7 +712,6 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
             </div>
           )}
 
-          {/* Orphaned images warning */}
           {imageUsageStats && imageUsageStats.orphanedImages > 0 && (
             <div
               className="mb-4 sm:mb-6 flex items-start gap-2 sm:gap-3 rounded-2xl border p-3 sm:p-4"
@@ -744,7 +747,6 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
             </div>
           ) : (
             <>
-              {/* Tab bar */}
               <div
                 className="mb-4 sm:mb-6 flex gap-1 overflow-x-auto rounded-2xl border p-1 -mx-1 px-1 [scrollbar-width:thin] [scrollbar-color:var(--border)_transparent]"
                 style={{ borderColor: 'var(--border)' }}
@@ -763,6 +765,14 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
                   >
                     {tab.icon}
                     <span className="whitespace-nowrap">{tab.label}</span>
+                    {tab.id === 'stack' && techStack.length > 0 && (
+                      <span
+                        className="flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold"
+                        style={{ background: 'var(--muted)', color: 'var(--muted-foreground)' }}
+                      >
+                        {techStack.length}
+                      </span>
+                    )}
                     {tab.id === 'history' && versionCount > 0 && (
                       <span
                         className="flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold"
@@ -775,7 +785,6 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
                 ))}
               </div>
 
-              {/* Save bar */}
               {activeTab !== 'history' && activeTab !== 'backup' && (
                 <div className="mb-4 sm:mb-6 flex flex-wrap items-center gap-2 sm:gap-3 rounded-2xl border p-3 sm:p-4" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
                   <div className="flex-1 min-w-0">
@@ -807,7 +816,6 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
                 </div>
               )}
 
-              {/* Content sections */}
               {activeTab === 'hero' && hero && (
                 <HeroTab hero={hero} setHero={setHero} />
               )}
@@ -842,6 +850,10 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
 
               {activeTab === 'skills' && (
                 <SkillsTab skillGroups={skillGroups} setSkillGroups={setSkillGroups} />
+              )}
+
+              {activeTab === 'stack' && (
+                <TechStackTab techStack={techStack} setTechStack={setTechStack} />
               )}
 
               {activeTab === 'navitems' && (
@@ -905,7 +917,6 @@ export default function ContentClient({ adminEmail }: { adminEmail: string }) {
         </main>
       </div>
 
-      {/* Project editor modal */}
       {showProjectEditor && editingProject && projectIndex !== null && (
         <ProjectEditorModal
           project={editingProject}
@@ -1058,11 +1069,7 @@ function AboutTab({
     next[index] = value
     setAbout({ ...about, paragraphs: next })
   }
-
-  const addParagraph = () => {
-    setAbout({ ...about, paragraphs: [...about.paragraphs, ''] })
-  }
-
+  const addParagraph = () => setAbout({ ...about, paragraphs: [...about.paragraphs, ''] })
   const removeParagraph = (index: number) => {
     setAbout({ ...about, paragraphs: about.paragraphs.filter((_, i) => i !== index) })
   }
@@ -1072,11 +1079,7 @@ function AboutTab({
     next[index] = value
     setAbout({ ...about, interests: next })
   }
-
-  const addInterest = () => {
-    setAbout({ ...about, interests: [...about.interests, ''] })
-  }
-
+  const addInterest = () => setAbout({ ...about, interests: [...about.interests, ''] })
   const removeInterest = (index: number) => {
     setAbout({ ...about, interests: about.interests.filter((_, i) => i !== index) })
   }
@@ -1086,14 +1089,12 @@ function AboutTab({
     next[index] = { ...next[index], [field]: value }
     setAbout({ ...about, pillars: next })
   }
-
   const addPillar = () => {
     setAbout({
       ...about,
       pillars: [...about.pillars, { num: String(about.pillars.length + 1).padStart(2, '0'), label: 'New Pillar', text: '' }],
     })
   }
-
   const removePillar = (index: number) => {
     setAbout({ ...about, pillars: about.pillars.filter((_, i) => i !== index) })
   }
@@ -1263,15 +1264,8 @@ function StatsTab({
     next[index] = { ...next[index], [field]: value }
     setStats(next)
   }
-
-  const addStat = () => {
-    setStats([...stats, { label: 'New Stat', value: 0, suffix: '+' }])
-  }
-
-  const removeStat = (index: number) => {
-    setStats(stats.filter((_, i) => i !== index))
-  }
-
+  const addStat = () => setStats([...stats, { label: 'New Stat', value: 0, suffix: '+' }])
+  const removeStat = (index: number) => setStats(stats.filter((_, i) => i !== index))
   const moveStat = (from: number, to: number) => {
     if (to < 0 || to >= stats.length) return
     const next = [...stats]
@@ -1388,12 +1382,7 @@ function ProjectsTab({
     next.splice(to, 0, moved)
     setProjects(next)
   }
-
-  const removeProject = (index: number) => {
-    const next = projects.filter((_, i) => i !== index)
-    setProjects(next)
-  }
-
+  const removeProject = (index: number) => setProjects(projects.filter((_, i) => i !== index))
   const addProject = () => {
     const newProject: ProjectContent = {
       number: String(projects.length + 1).padStart(2, '0'),
@@ -1538,11 +1527,7 @@ function FiltersTab({
     setProjectFilters([...projectFilters, trimmed])
     setNewFilter('')
   }
-
-  const removeFilter = (index: number) => {
-    setProjectFilters(projectFilters.filter((_, i) => i !== index))
-  }
-
+  const removeFilter = (index: number) => setProjectFilters(projectFilters.filter((_, i) => i !== index))
   const moveFilter = (from: number, to: number) => {
     if (to < 0 || to >= projectFilters.length) return
     const next = [...projectFilters]
@@ -1635,17 +1620,12 @@ function TimelineTab({
     next.splice(to, 0, moved)
     setTimeline(next)
   }
-
   const updateEntry = (index: number, field: keyof TimelineEntry, value: string) => {
     const next = [...timeline]
     next[index] = { ...next[index], [field]: value }
     setTimeline(next)
   }
-
-  const removeEntry = (index: number) => {
-    setTimeline(timeline.filter((_, i) => i !== index))
-  }
-
+  const removeEntry = (index: number) => setTimeline(timeline.filter((_, i) => i !== index))
   const addEntry = () => {
     setTimeline([
       ...timeline,
@@ -1747,27 +1727,20 @@ function SkillsTab({
     next[index] = { ...next[index], category: value }
     setSkillGroups(next)
   }
-
   const updateGroupItem = (groupIndex: number, itemIndex: number, value: string) => {
     const next = [...skillGroups]
     next[groupIndex].items[itemIndex] = value
     setSkillGroups(next)
   }
-
   const addGroup = () => {
     setSkillGroups([...skillGroups, { category: 'New Category', items: ['Skill 1'] }])
   }
-
-  const removeGroup = (index: number) => {
-    setSkillGroups(skillGroups.filter((_, i) => i !== index))
-  }
-
+  const removeGroup = (index: number) => setSkillGroups(skillGroups.filter((_, i) => i !== index))
   const addItem = (groupIndex: number) => {
     const next = [...skillGroups]
     next[groupIndex].items.push('')
     setSkillGroups(next)
   }
-
   const removeItem = (groupIndex: number, itemIndex: number) => {
     const next = [...skillGroups]
     next[groupIndex].items = next[groupIndex].items.filter((_, i) => i !== itemIndex)
@@ -1847,6 +1820,335 @@ function SkillsTab({
   )
 }
 
+// ─── Tech Stack Tab (Part 3.5) ───────────────────────────────────────────
+
+const TECH_STACK_SUGGESTIONS = [
+  'React', 'Next.js', 'TypeScript', 'JavaScript', 'React Native', 'Expo',
+  'Node.js', 'Express', 'Python',
+  'PostgreSQL', 'MongoDB', 'Prisma', 'Supabase',
+  'Tailwind CSS', 'Shadcn UI', 'Framer Motion',
+  'OpenAI', 'Claude', 'Gemini', 'LangChain', 'AI Agents', 'LLM Applications',
+  'RAG', 'Prompt Engineering',
+  'OAuth', 'REST APIs', 'Docker', 'Git', 'GitHub', 'Vercel',
+]
+
+function TechStackTab({
+  techStack,
+  setTechStack,
+}: {
+  techStack: string[]
+  setTechStack: (techStack: string[]) => void
+}) {
+  const [newItem, setNewItem] = useState('')
+  const [search, setSearch] = useState('')
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const trimmedItems = techStack.map(t => t.trim())
+  const nonEmptyTrimmed = trimmedItems.filter(Boolean)
+  const uniqueSet = new Set(nonEmptyTrimmed)
+  const emptyCount = trimmedItems.filter(t => !t).length
+  const duplicateCount = Math.max(0, nonEmptyTrimmed.length - uniqueSet.size)
+
+  const lowerStackSet = new Set(nonEmptyTrimmed.map(s => s.toLowerCase()))
+
+  const filteredSuggestions = TECH_STACK_SUGGESTIONS.filter(
+    s => !lowerStackSet.has(s.toLowerCase()),
+  )
+
+  const filteredItems = search.trim()
+    ? techStack
+        .map((item, idx) => ({ item, idx }))
+        .filter(({ item }) => item.toLowerCase().includes(search.trim().toLowerCase()))
+    : techStack.map((item, idx) => ({ item, idx }))
+
+  const addItem = (value?: string) => {
+    const raw = (value ?? newItem).trim()
+    if (!raw) return
+    const next = addTechStackItem(techStack, raw)
+    if (next !== techStack) setTechStack(next)
+    setNewItem('')
+    inputRef.current?.focus()
+  }
+
+  const removeItem = (index: number) => setTechStack(removeTechStackItem(techStack, index))
+  const updateItem = (index: number, value: string) =>
+    setTechStack(updateTechStackItem(techStack, index, value))
+  const moveItem = (from: number, to: number) => {
+    const next = moveTechStackItem(techStack, from, to)
+    if (next !== techStack) setTechStack(next)
+  }
+
+  const clearAll = () => {
+    if (techStack.length === 0) return
+    if (typeof window !== 'undefined' && !window.confirm('Remove all tech stack items? This cannot be undone (except via version history).')) return
+    setTechStack([])
+  }
+
+  const dedupeAll = () => {
+    const next = normalizeTechStack(techStack)
+    if (next.length !== techStack.length || next.some((v, i) => v !== techStack[i])) {
+      setTechStack(next)
+    }
+  }
+
+  return (
+    <div className="space-y-4 sm:space-y-5">
+      <div
+        className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 rounded-2xl border p-3 sm:p-4"
+        style={{
+          background: 'color-mix(in oklch, var(--primary) 6%, transparent)',
+          borderColor: 'color-mix(in oklch, var(--primary) 18%, transparent)',
+        }}
+      >
+        <div className="flex items-start gap-2.5 min-w-0">
+          <Sparkles className="h-4 w-4 sm:h-5 sm:w-5 shrink-0 mt-0.5" style={{ color: 'var(--primary)' }} />
+          <div className="text-xs sm:text-sm min-w-0">
+            <p className="font-medium">Rotating 3D Tech Sphere</p>
+            <p className="mt-0.5 text-[10px] sm:text-xs" style={{ color: 'var(--muted-foreground)' }}>
+              These items render as tags on the interactive sphere in the &ldquo;In rotation&rdquo; section of your portfolio.
+              Duplicates and empty entries are removed automatically on save.
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-1.5 shrink-0">
+          <StackPill label="total" value={techStack.length} />
+          <StackPill label="unique" value={uniqueSet.size} />
+          {duplicateCount > 0 && (
+            <StackPill label="dup" value={duplicateCount} tone="warn" />
+          )}
+          {emptyCount > 0 && (
+            <StackPill label="empty" value={emptyCount} tone="warn" />
+          )}
+        </div>
+      </div>
+
+      <div className="flex flex-col sm:flex-row gap-2">
+        <div className="flex flex-1 gap-2 min-w-0">
+          <input
+            ref={inputRef}
+            type="text"
+            value={newItem}
+            onChange={e => setNewItem(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                addItem()
+              }
+            }}
+            placeholder="Add a technology (e.g., Next.js)"
+            className="flex-1 rounded-xl border px-3 py-2 text-xs sm:text-sm outline-none focus:border-[var(--primary)] min-w-0"
+            style={inputStyle}
+          />
+          <button
+            onClick={() => addItem()}
+            disabled={!newItem.trim()}
+            className="flex items-center gap-1.5 rounded-xl px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium transition-all active:scale-95 disabled:opacity-50 shrink-0"
+            style={{ background: 'var(--primary)', color: 'var(--primary-foreground)' }}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Add</span>
+          </button>
+        </div>
+        <div className="flex items-center gap-2 rounded-xl border px-3 py-2 min-w-0" style={{ borderColor: 'var(--border)', background: 'var(--card)' }}>
+          <Search className="h-3.5 w-3.5 shrink-0" style={{ color: 'var(--muted-foreground)' }} />
+          <input
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Filter items..."
+            className="w-full min-w-0 bg-transparent text-xs sm:text-sm outline-none"
+            style={{ color: 'var(--foreground)' }}
+          />
+          {search && (
+            <button
+              onClick={() => setSearch('')}
+              className="shrink-0 rounded p-0.5 hover:bg-[var(--muted)]"
+              style={{ color: 'var(--muted-foreground)' }}
+              aria-label="Clear search"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <button
+          onClick={dedupeAll}
+          disabled={duplicateCount === 0 && emptyCount === 0}
+          className="flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[10px] sm:text-xs font-medium transition-all active:scale-95 disabled:opacity-40"
+          style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
+        >
+          <ShieldCheck className="h-3 w-3" /> Clean duplicates
+        </button>
+        <button
+          onClick={clearAll}
+          disabled={techStack.length === 0}
+          className="flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[10px] sm:text-xs font-medium transition-all active:scale-95 disabled:opacity-40 hover:text-[var(--destructive)] hover:border-[var(--destructive)]"
+          style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
+        >
+          <Trash2 className="h-3 w-3" /> Clear all
+        </button>
+      </div>
+
+      <div className="space-y-1.5">
+        {filteredItems.length === 0 ? (
+          <div
+            className="rounded-xl border border-dashed p-6 text-center"
+            style={{ borderColor: 'var(--border)' }}
+          >
+            <Sparkles className="mx-auto h-6 w-6 mb-2" style={{ color: 'var(--muted-foreground)' }} />
+            <p className="text-xs sm:text-sm font-medium">
+              {search ? 'No items match your filter' : 'No tech stack items yet'}
+            </p>
+            <p className="mt-1 text-[10px] sm:text-xs" style={{ color: 'var(--muted-foreground)' }}>
+              {search ? 'Try a different search term.' : 'Add items above or pick from suggestions below.'}
+            </p>
+          </div>
+        ) : (
+          filteredItems.map(({ item, idx }) => (
+            <div
+              key={`${item}-${idx}`}
+              className="group flex items-center gap-2 rounded-xl border p-2 sm:p-2.5 transition-all"
+              style={{
+                background: 'var(--card)',
+                borderColor: draggedIndex === idx ? 'var(--primary)' : 'var(--border)',
+                opacity: draggedIndex === idx ? 0.5 : 1,
+              }}
+              draggable
+              onDragStart={() => setDraggedIndex(idx)}
+              onDragEnd={() => setDraggedIndex(null)}
+              onDragOver={(e) => {
+                e.preventDefault()
+                if (draggedIndex !== null && draggedIndex !== idx) {
+                  moveItem(draggedIndex, idx)
+                  setDraggedIndex(idx)
+                }
+              }}
+            >
+              <div className="flex gap-0.5 shrink-0">
+                <button
+                  onClick={() => moveItem(idx, idx - 1)}
+                  disabled={idx === 0}
+                  className="rounded-lg p-1 transition-colors hover:bg-[var(--muted)] active:bg-[var(--muted)] disabled:opacity-30"
+                  style={{ color: 'var(--muted-foreground)' }}
+                  aria-label="Move up"
+                >
+                  <ChevronUp className="h-3 w-3" />
+                </button>
+                <button
+                  onClick={() => moveItem(idx, idx + 1)}
+                  disabled={idx === techStack.length - 1}
+                  className="rounded-lg p-1 transition-colors hover:bg-[var(--muted)] active:bg-[var(--muted)] disabled:opacity-30"
+                  style={{ color: 'var(--muted-foreground)' }}
+                  aria-label="Move down"
+                >
+                  <ChevronDown className="h-3 w-3" />
+                </button>
+              </div>
+
+              <span
+                className="hidden sm:flex h-6 min-w-[24px] shrink-0 items-center justify-center rounded-md px-1.5 text-[10px] font-mono font-bold"
+                style={{ background: 'var(--muted)', color: 'var(--muted-foreground)' }}
+              >
+                {idx + 1}
+              </span>
+
+              <input
+                type="text"
+                value={item}
+                onChange={e => updateItem(idx, e.target.value)}
+                className="flex-1 rounded-lg border px-2.5 sm:px-3 py-1.5 text-xs sm:text-sm outline-none focus:border-[var(--primary)] min-w-0"
+                style={inputStyle}
+              />
+
+              <button
+                onClick={() => {
+                  if (typeof navigator !== 'undefined' && navigator.clipboard) {
+                    navigator.clipboard.writeText(item).catch(() => {})
+                  }
+                }}
+                className="hidden sm:block shrink-0 rounded-lg p-1.5 transition-colors hover:bg-[var(--muted)] active:bg-[var(--muted)]"
+                style={{ color: 'var(--muted-foreground)' }}
+                title="Copy item"
+                aria-label="Copy item"
+              >
+                <CopyIcon className="h-3.5 w-3.5" />
+              </button>
+
+              <button
+                onClick={() => removeItem(idx)}
+                className="shrink-0 rounded-lg p-1.5 transition-colors hover:text-[var(--destructive)] active:text-[var(--destructive)]"
+                style={{ color: 'var(--muted-foreground)' }}
+                title="Remove item"
+                aria-label="Remove item"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+
+      {filteredSuggestions.length > 0 && (
+        <div
+          className="rounded-xl border p-3 sm:p-4"
+          style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
+        >
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <p className="text-[10px] sm:text-xs font-medium" style={{ color: 'var(--muted-foreground)' }}>
+              Quick add
+            </p>
+            <span className="text-[10px]" style={{ color: 'var(--muted-foreground)' }}>
+              {filteredSuggestions.length} suggestion{filteredSuggestions.length === 1 ? '' : 's'}
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {filteredSuggestions.map(s => (
+              <button
+                key={s}
+                onClick={() => addItem(s)}
+                className="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] sm:text-xs font-medium transition-all active:scale-95 hover:border-[var(--primary)] hover:text-[var(--primary)]"
+                style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
+              >
+                <Plus className="h-2.5 w-2.5" /> {s}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function StackPill({
+  label,
+  value,
+  tone = 'neutral',
+}: {
+  label: string
+  value: number
+  tone?: 'neutral' | 'warn'
+}) {
+  const bg =
+    tone === 'warn'
+      ? 'color-mix(in oklch, oklch(0.75 0.18 60) 15%, transparent)'
+      : 'var(--muted)'
+  const fg =
+    tone === 'warn'
+      ? 'oklch(0.60 0.15 60)'
+      : 'var(--muted-foreground)'
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-medium"
+      style={{ background: bg, color: fg }}
+    >
+      <b className="font-mono">{value}</b> {label}
+    </span>
+  )
+}
+
 // ─── Nav Items Tab ──────────────────────────────────────────────────────
 
 function NavItemsTab({
@@ -1861,15 +2163,8 @@ function NavItemsTab({
     next[index] = { ...next[index], [field]: value }
     setNavItems(next)
   }
-
-  const addItem = () => {
-    setNavItems([...navItems, { label: 'New Section', href: '#section' }])
-  }
-
-  const removeItem = (index: number) => {
-    setNavItems(navItems.filter((_, i) => i !== index))
-  }
-
+  const addItem = () => setNavItems([...navItems, { label: 'New Section', href: '#section' }])
+  const removeItem = (index: number) => setNavItems(navItems.filter((_, i) => i !== index))
   const moveItem = (from: number, to: number) => {
     if (to < 0 || to >= navItems.length) return
     const next = [...navItems]
@@ -1959,7 +2254,7 @@ function NavItemsTab({
   )
 }
 
-// ─── Project Editor Modal (Categories section only) ─────────────────────
+// ─── Project Editor Modal ───────────────────────────────────────────────
 
 function ProjectEditorModal({
   project,
@@ -1977,34 +2272,24 @@ function ProjectEditorModal({
   const updateField = (field: keyof ProjectContent, value: string | string[]) => {
     setDraft({ ...draft, [field]: value })
   }
-
   const updateArrayItem = (field: 'features' | 'stack' | 'categories' | 'images', index: number, value: string) => {
     const next = [...(draft[field] as string[])]
     next[index] = value
     setDraft({ ...draft, [field]: next })
   }
-
   const addArrayItem = (field: 'features' | 'stack' | 'categories' | 'images') => {
     setDraft({ ...draft, [field]: [...(draft[field] as string[]), ''] })
   }
-
   const removeArrayItem = (field: 'features' | 'stack' | 'categories' | 'images', index: number) => {
     setDraft({ ...draft, [field]: (draft[field] as string[]).filter((_, i) => i !== index) })
   }
-
   const addCategory = () => {
-    const updated = addCategoryToProject(draft, newCategory)
-    setDraft(updated)
+    setDraft(addCategoryToProject(draft, newCategory))
     setNewCategory('')
   }
-
-  const removeCategory = (index: number) => {
-    setDraft(removeCategoryFromProject(draft, index))
-  }
-
-  const updateCategory = (index: number, value: string) => {
+  const removeCategory = (index: number) => setDraft(removeCategoryFromProject(draft, index))
+  const updateCategory = (index: number, value: string) =>
     setDraft(updateCategoryInProject(draft, index, value))
-  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
@@ -2257,10 +2542,7 @@ function ProjectEditorModal({
                 {['ai', 'web', 'mobile', 'open-source'].filter(c => !draft.categories.includes(c)).map(c => (
                   <button
                     key={c}
-                    onClick={() => {
-                      const updated = addCategoryToProject(draft, c)
-                      setDraft(updated)
-                    }}
+                    onClick={() => setDraft(addCategoryToProject(draft, c))}
                     className="rounded-full border px-2.5 py-0.5 text-[10px] font-medium transition-all active:scale-95"
                     style={{ borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
                   >

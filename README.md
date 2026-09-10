@@ -10,7 +10,7 @@
   <a href="https://www.mohitbansal.online/" target="_blank">
     <img src="https://img.shields.io/badge/LIVE_DEMO-Visit_Website-00F5A0?style=for-the-badge&logo=vercel&logoColor=white" alt="Live Demo" />
   </a>
-  <a href="https://github.com/mohitbansal/portfolio-website" target="_blank">
+  <a href="https://github.com/mohitbansal25082006/Portfolio" target="_blank">
     <img src="https://img.shields.io/badge/SOURCE_CODE-GitHub-181717?style=for-the-badge&logo=github&logoColor=white" alt="Source Code" />
   </a>
 </p>
@@ -360,7 +360,7 @@ Open [http://localhost:3000](http://localhost:3000) to view the public site, and
 ## 🤝 Connect With Me
 
 <p align="center">
-  <a href="https://mohitbansal-kohl.vercel.app/"><img src="https://img.shields.io/badge/Portfolio-000000?style=for-the-badge&logo=About.me&logoColor=white" alt="Portfolio"/></a>
+  <a href="https://mohitbansal.online/"><img src="https://img.shields.io/badge/Portfolio-000000?style=for-the-badge&logo=About.me&logoColor=white" alt="Portfolio"/></a>
   <a href="https://github.com/mohitbansal25082006"><img src="https://img.shields.io/badge/GitHub-181717?style=for-the-badge&logo=github&logoColor=white" alt="GitHub"/></a>
   <a href="https://www.linkedin.com/in/mohit-bansal-383440315"><img src="https://img.shields.io/badge/LinkedIn-0077B5?style=for-the-badge&logo=linkedin&logoColor=white" alt="LinkedIn"/></a>
   <a href="mailto:mohitbansal2508@gmail.com"><img src="https://img.shields.io/badge/Email-D14836?style=for-the-badge&logo=gmail&logoColor=white" alt="Email"/></a>

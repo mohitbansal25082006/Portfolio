@@ -5,10 +5,16 @@
  * Part 2.10 — Added version history integration with single version creation
  * Part 3 — Updated with image metadata tracking and flexible URL validation
  * Part 3.1 — Extended to cover FULL portfolio
- * Part 3.2 — Added category management helpers, fixed techStack normalization
+ * Part 3.2 — Added category management helpers, tech stack normalization
+ * Part 3.5 — Full Tech Stack CRUD helpers + always-on normalization
+ *           Pure helpers are now re-exported from lib/content-helpers.ts so
+ *           client components can import them without pulling in `fs`.
  * ---------------------------------------------------------------------------
+ * SERVER-ONLY FILE — must NOT be imported from client components.
+ * Client-safe helpers live in lib/content-helpers.ts.
+ *
  * Dual-backend storage for dynamic content that the admin can edit.
- * Now covers: projects, timeline, about, skills, hero, stats, techStack, filters
+ * Covers: projects, timeline, about, skills, hero, stats, techStack, filters
  *
  * Storage backends:
  *   • Production: Upstash Redis (KV_REST_API_URL + KV_REST_API_TOKEN)
@@ -19,94 +25,61 @@
 import { promises as fs } from 'fs'
 import path from 'path'
 
-// ─── Types ────────────────────────────────────────────────────────────────
+// Re-export the pure helpers so server-side callers keep a single import path.
+// Client components MUST import from '@/lib/content-helpers' directly.
+export {
+  normalizeTechStack,
+  addTechStackItem,
+  removeTechStackItem,
+  updateTechStackItem,
+  moveTechStackItem,
+  getTechStackStats,
+  getAllCategories,
+  addCategoryToProject,
+  removeCategoryFromProject,
+  updateCategoryInProject,
+  getAllImageUrls,
+  isValidImageUrl,
+  sanitizeProjectImages,
+  sanitizeAllProjectImages,
+  addImageToProject,
+  removeImageFromProject,
+  moveImageInProject,
+  getImageStats,
+  getExternalImageUrls,
+  getLocalImagePaths,
+  getImagesForProject,
+  projectHasImages,
+} from '@/lib/content-helpers'
 
-export interface ProjectImage {
-  url: string
-  caption?: string
-  fileName?: string
-  uploadedAt?: string
-}
+// Re-export the types too, so existing imports of these types from
+// '@/lib/content-store' keep working. (Types are erased at build time and
+// cause no runtime dependency on this server-only module.)
+export type {
+  ProjectImage,
+  ProjectContent,
+  AboutPillar,
+  AboutContent,
+  SkillGroup,
+  TimelineEntry,
+  HeroContent,
+  StatItem,
+  NavItem,
+  ContentStore,
+} from '@/lib/content-helpers'
 
-export interface ProjectContent {
-  number: string
-  name: string
-  mark: string
-  year: string
-  categories: string[]
-  theme: string
-  short: string
-  problem: string
-  features: string[]
-  stack: string[]
-  challenges: string
-  metrics: string
-  live: string
-  github: string
-  images: string[]
-}
-
-export interface AboutPillar {
-  num: string
-  label: string
-  text: string
-}
-
-export interface AboutContent {
-  college: string
-  currentYear: string
-  paragraphs: string[]
-  interests: string[]
-  pillars: AboutPillar[]
-}
-
-export interface SkillGroup {
-  category: string
-  items: string[]
-}
-
-export interface TimelineEntry {
-  year: string
-  title: string
-  subtitle: string
-}
-
-export interface HeroContent {
-  name: string
-  firstName: string
-  lastName: string
-  initials: string
-  title: string
-  oneLiner: string
-  location: string
-  availability: string
-  established: string
-}
-
-export interface StatItem {
-  label: string
-  value: number
-  suffix: string
-}
-
-export interface NavItem {
-  label: string
-  href: string
-}
-
-export interface ContentStore {
-  projects: ProjectContent[]
-  about: AboutContent
-  skillGroups: SkillGroup[]
-  timeline: TimelineEntry[]
-  hero: HeroContent
-  stats: StatItem[]
-  techStack: string[]
-  projectFilters: string[]
-  navItems: NavItem[]
-  updatedAt: string
-  imageMetadata?: Record<string, ProjectImage>
-}
+// Internal imports used by the code below.
+import {
+  normalizeTechStack,
+  type ContentStore,
+  type ProjectContent,
+  type AboutContent,
+  type SkillGroup,
+  type TimelineEntry,
+  type HeroContent,
+  type StatItem,
+  type NavItem,
+} from '@/lib/content-helpers'
 
 const LOCAL_DIR = path.join(process.cwd(), '.data')
 const LOCAL_FILE = path.join(LOCAL_DIR, 'portfolio-content.json')
@@ -175,7 +148,7 @@ async function getDefaultContent(): Promise<ContentStore> {
       established: siteConfig.established,
     },
     stats: JSON.parse(JSON.stringify(stats)),
-    techStack: JSON.parse(JSON.stringify(techStack)),
+    techStack: normalizeTechStack(JSON.parse(JSON.stringify(techStack))),
     projectFilters: JSON.parse(JSON.stringify(projectFilters)),
     navItems: JSON.parse(JSON.stringify(navItems)),
     updatedAt: new Date(0).toISOString(),
@@ -185,7 +158,6 @@ async function getDefaultContent(): Promise<ContentStore> {
 /**
  * Normalize a content store to ensure all fields exist.
  * Handles migration from older stored versions.
- * Also normalizes techStack to ensure it's always a valid array of strings.
  */
 function normalizeContentStore(store: ContentStore): ContentStore {
   const defaults = {
@@ -195,7 +167,8 @@ function normalizeContentStore(store: ContentStore): ContentStore {
       lastName: 'Bansal',
       initials: 'MB',
       title: 'Full-Stack Developer · AI Engineer · Mobile Developer',
-      oneLiner: 'I build scalable full-stack applications, AI-powered products, and intelligent mobile experiences.',
+      oneLiner:
+        'I build scalable full-stack applications, AI-powered products, and intelligent mobile experiences.',
       location: 'Jaipur, India',
       availability: 'Open to Internships & Collaborations',
       established: '2023',
@@ -208,7 +181,15 @@ function normalizeContentStore(store: ContentStore): ContentStore {
       { label: 'Technologies', value: 10, suffix: '+' },
       { label: 'Year Coding', value: 1, suffix: '' },
     ],
-    techStack: ['React', 'Next.js', 'TypeScript', 'Node.js'],
+    techStack: [
+      'React', 'Next.js', 'TypeScript', 'JavaScript', 'React Native', 'Expo',
+      'Node.js', 'Express', 'Python',
+      'PostgreSQL', 'MongoDB', 'Prisma', 'Supabase',
+      'Tailwind CSS', 'Shadcn UI', 'Framer Motion',
+      'OpenAI', 'Claude', 'Gemini', 'LangChain', 'AI Agents', 'LLM Applications',
+      'RAG', 'Prompt Engineering',
+      'OAuth', 'REST APIs', 'Docker', 'Git', 'GitHub', 'Vercel',
+    ],
     projectFilters: ['All', 'AI', 'Web', 'Mobile', 'Open Source'],
     navItems: [
       { label: 'Work', href: '#work' },
@@ -221,22 +202,13 @@ function normalizeContentStore(store: ContentStore): ContentStore {
     ],
   }
 
-  // Normalize techStack: ensure it's an array of non-empty strings
-  let normalizedTechStack = store.techStack
-  if (!Array.isArray(normalizedTechStack)) {
-    normalizedTechStack = defaults.techStack
-  } else {
-    // Filter out empty/invalid entries and trim
-    normalizedTechStack = normalizedTechStack
-      .filter((t): t is string => typeof t === 'string' && t.trim().length > 0)
-      .map(t => t.trim())
-    // If empty after filtering, use defaults
-    if (normalizedTechStack.length === 0) {
-      normalizedTechStack = defaults.techStack
-    }
-  }
+  // techStack: respect an intentionally-emptied array.
+  const techStackSource = Array.isArray(store.techStack)
+    ? store.techStack
+    : defaults.techStack
+  const normalizedTechStack = normalizeTechStack(techStackSource)
 
-  // Normalize projectFilters
+  // projectFilters
   let normalizedFilters = store.projectFilters
   if (!Array.isArray(normalizedFilters)) {
     normalizedFilters = defaults.projectFilters
@@ -249,7 +221,7 @@ function normalizeContentStore(store: ContentStore): ContentStore {
     }
   }
 
-  // Normalize projects categories
+  // projects categories
   const normalizedProjects = Array.isArray(store.projects)
     ? store.projects.map(project => ({
         ...project,
@@ -274,10 +246,16 @@ function normalizeContentStore(store: ContentStore): ContentStore {
       pillars: Array.isArray(store.about?.pillars) ? store.about.pillars : [],
     },
     hero: store.hero || defaults.hero,
-    stats: Array.isArray(store.stats) && store.stats.length > 0 ? store.stats : defaults.stats,
+    stats:
+      Array.isArray(store.stats) && store.stats.length > 0
+        ? store.stats
+        : defaults.stats,
     techStack: normalizedTechStack,
     projectFilters: normalizedFilters,
-    navItems: Array.isArray(store.navItems) && store.navItems.length > 0 ? store.navItems : defaults.navItems,
+    navItems:
+      Array.isArray(store.navItems) && store.navItems.length > 0
+        ? store.navItems
+        : defaults.navItems,
   }
 }
 
@@ -360,10 +338,7 @@ export async function updateStats(stats: StatItem[]): Promise<ContentStore> {
 }
 
 export async function updateTechStack(techStack: string[]): Promise<ContentStore> {
-  const normalized = techStack
-    .filter(t => typeof t === 'string' && t.trim().length > 0)
-    .map(t => t.trim())
-  return saveContent({ techStack: normalized })
+  return saveContent({ techStack: normalizeTechStack(techStack) })
 }
 
 export async function updateProjectFilters(projectFilters: string[]): Promise<ContentStore> {
@@ -375,225 +350,4 @@ export async function updateProjectFilters(projectFilters: string[]): Promise<Co
 
 export async function updateNavItems(navItems: NavItem[]): Promise<ContentStore> {
   return saveContent({ navItems })
-}
-
-// ─── Category Management Helpers (Part 3.2) ──────────────────────────────
-
-/**
- * Get all unique categories used across all projects.
- * Returns a sorted array of category strings (lowercase).
- */
-export function getAllCategories(content: ContentStore): string[] {
-  const categories = new Set<string>()
-  for (const project of content.projects) {
-    for (const cat of project.categories) {
-      if (cat && cat.trim().length > 0) {
-        categories.add(cat.trim().toLowerCase())
-      }
-    }
-  }
-  return Array.from(categories).sort()
-}
-
-/**
- * Add a category to a project if not already present.
- * Returns the updated project.
- */
-export function addCategoryToProject(
-  project: ProjectContent,
-  category: string,
-): ProjectContent {
-  const trimmed = category.trim().toLowerCase()
-  if (!trimmed) return project
-  if (project.categories.includes(trimmed)) return project
-  return {
-    ...project,
-    categories: [...project.categories, trimmed],
-  }
-}
-
-/**
- * Remove a category from a project by index.
- * Returns the updated project.
- */
-export function removeCategoryFromProject(
-  project: ProjectContent,
-  index: number,
-): ProjectContent {
-  if (index < 0 || index >= project.categories.length) return project
-  const newCategories = project.categories.filter((_, i) => i !== index)
-  return { ...project, categories: newCategories }
-}
-
-/**
- * Update a category in a project at the given index.
- * Returns the updated project.
- */
-export function updateCategoryInProject(
-  project: ProjectContent,
-  index: number,
-  value: string,
-): ProjectContent {
-  if (index < 0 || index >= project.categories.length) return project
-  const newCategories = [...project.categories]
-  newCategories[index] = value.trim().toLowerCase()
-  return { ...project, categories: newCategories }
-}
-
-// ─── Tech Stack Helpers (Part 3.2) ───────────────────────────────────────
-
-/**
- * Validate and normalize a tech stack array.
- * Ensures all items are non-empty strings, trimmed, and deduplicated.
- */
-export function normalizeTechStack(techStack: string[]): string[] {
-  const seen = new Set<string>()
-  const normalized: string[] = []
-  
-  for (const tech of techStack) {
-    if (typeof tech !== 'string') continue
-    const trimmed = tech.trim()
-    if (trimmed.length === 0) continue
-    if (seen.has(trimmed)) continue
-    seen.add(trimmed)
-    normalized.push(trimmed)
-  }
-  
-  return normalized
-}
-
-/**
- * Get tech stack stats for display.
- */
-export function getTechStackStats(content: ContentStore): {
-  total: number
-  unique: number
-  duplicates: number
-  empty: number
-} {
-  const total = content.techStack.length
-  const unique = new Set(content.techStack.map(t => t.trim())).size
-  const empty = content.techStack.filter(t => !t || t.trim().length === 0).length
-  return {
-    total,
-    unique,
-    duplicates: total - unique - empty,
-    empty,
-  }
-}
-
-// ─── Image helper functions ───────────────────────────────────────────────
-
-export function getAllImageUrls(content: ContentStore): string[] {
-  const urls = new Set<string>()
-  for (const project of content.projects) {
-    for (const image of project.images) {
-      if (image && image.trim().length > 0) {
-        urls.add(image.trim())
-      }
-    }
-  }
-  return Array.from(urls)
-}
-
-export function isValidImageUrl(url: string): boolean {
-  if (!url || typeof url !== 'string') return false
-  return url.trim().length > 0
-}
-
-export function sanitizeProjectImages(project: ProjectContent): ProjectContent {
-  const validImages = project.images
-    .map(img => img.trim())
-    .filter(img => img.length > 0)
-  return { ...project, images: validImages }
-}
-
-export function sanitizeAllProjectImages(content: ContentStore): ContentStore {
-  const sanitizedProjects = content.projects.map(sanitizeProjectImages)
-  return { ...content, projects: sanitizedProjects }
-}
-
-export function addImageToProject(
-  project: ProjectContent,
-  imageUrl: string,
-): ProjectContent {
-  const trimmedUrl = imageUrl.trim()
-  if (!trimmedUrl) return project
-  if (project.images.includes(trimmedUrl)) return project
-  return { ...project, images: [...project.images, trimmedUrl] }
-}
-
-export function removeImageFromProject(
-  project: ProjectContent,
-  index: number,
-): ProjectContent {
-  if (index < 0 || index >= project.images.length) return project
-  const newImages = project.images.filter((_, i) => i !== index)
-  return { ...project, images: newImages }
-}
-
-export function moveImageInProject(
-  project: ProjectContent,
-  fromIndex: number,
-  toIndex: number,
-): ProjectContent {
-  if (
-    fromIndex < 0 || fromIndex >= project.images.length ||
-    toIndex < 0 || toIndex >= project.images.length ||
-    fromIndex === toIndex
-  ) return project
-
-  const newImages = [...project.images]
-  const [moved] = newImages.splice(fromIndex, 1)
-  newImages.splice(toIndex, 0, moved)
-  return { ...project, images: newImages }
-}
-
-export function getImageStats(content: ContentStore): {
-  totalProjects: number
-  projectsWithImages: number
-  projectsWithoutImages: number
-  totalImages: number
-  averageImagesPerProject: number
-} {
-  const totalProjects = content.projects.length
-  const projectsWithImages = content.projects.filter(p => p.images.length > 0).length
-  const projectsWithoutImages = totalProjects - projectsWithImages
-  const totalImages = content.projects.reduce((sum, p) => sum + p.images.length, 0)
-  const averageImagesPerProject = totalProjects > 0 ? totalImages / totalProjects : 0
-
-  return { totalProjects, projectsWithImages, projectsWithoutImages, totalImages, averageImagesPerProject }
-}
-
-export function getExternalImageUrls(content: ContentStore): string[] {
-  const urls = new Set<string>()
-  for (const project of content.projects) {
-    for (const image of project.images) {
-      const trimmed = image.trim()
-      if (trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('data:')) {
-        urls.add(trimmed)
-      }
-    }
-  }
-  return Array.from(urls)
-}
-
-export function getLocalImagePaths(content: ContentStore): string[] {
-  const paths = new Set<string>()
-  for (const project of content.projects) {
-    for (const image of project.images) {
-      const trimmed = image.trim()
-      if (trimmed.startsWith('/')) paths.add(trimmed)
-    }
-  }
-  return Array.from(paths)
-}
-
-export function getImagesForProject(content: ContentStore, projectNumber: string): string[] {
-  const project = content.projects.find(p => p.number === projectNumber)
-  return project ? project.images : []
-}
-
-export function projectHasImages(content: ContentStore, projectNumber: string): boolean {
-  return getImagesForProject(content, projectNumber).length > 0
 }

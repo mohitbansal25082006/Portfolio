@@ -577,3 +577,36 @@ app/globals.css
 - **Image count + size fixed** — aggregator now counts every non-empty URL across `project.images` + `project-images.ts` records, so it can never show 0 when the Content page shows >0.
 - **"0 B" hidden** — Size cell only renders when `images > 0` and byte count is real; image strip gracefully collapses to 2 or 1 column when data is partial.
 - **`app/globals.css`** — appended `skeleton-shimmer` keyframe, reduced-motion overrides, iOS scroll helper, and collapsed-sidebar centering rule.
+
+
+# Part 3.5 — Summary
+
+## Features Added
+- **Tech Stack tab** in Content Management (`/admin/content` → Tech Stack) with full CRUD: add, rename inline, remove, reorder (up/down buttons + drag-and-drop)
+- **Duplicate & empty detection** with live stat pills (`total / unique / dup / empty`) and a one-click "Clean duplicates" action
+- **Search/filter** within the tech stack list
+- **Quick-add suggestion chips** (30 curated techs), filtered to hide already-added items
+- **Copy item** per row (hidden on mobile)
+- **Clear all** with confirm guard
+- **3D TechSphere upgrade** on the portfolio — scales font/radius for large stacks (up to 60+ items), respects `prefers-reduced-motion`, isolates layout with `contain`, exposes a screen-reader-friendly list
+- **Fallback semantics fix** — an intentionally-emptied tech stack now stays empty on the portfolio (no more resurrecting static items); static fallback only applies before the API resolves
+- **Refresh-on-focus** — admin saves in another tab propagate to the portfolio without a hard reload
+- **Intro loader one-shot fix** — `IntroLoader` effect now runs exactly once per mount (no more double-boot flicker on re-render)
+- **Empty gallery state** — projects with no images now render a friendly placeholder instead of crashing
+- **Fully theme-integrated** across all 6 admin themes via `var(--*)` tokens + `color-mix()`
+- **Fully mobile-optimized** — stacked layouts, ≥32px tap targets, wrapped chips, scrollable tab strip, safe-area padding
+- **Version history & backup coverage for free** — since tech stack flows through the existing `saveContent` / `createBackupBundle` pipeline, both features pick it up automatically (no changes needed in their files)
+
+## Files Created
+```
+lib/content-helpers.ts
+```
+
+## Files Updated
+```
+lib/content-store.ts
+app/api/admin/content/route.ts
+app/api/content/route.ts
+app/admin/content/content-client.tsx
+components/portfolio-site.tsx
+```

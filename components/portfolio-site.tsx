@@ -3,35 +3,18 @@
 /**
  * components/portfolio-site.tsx
  *
- * Part 2.7 update:
- *  - Live content (projects, about, skills, timeline) fetched from
- *    GET /api/content on mount, falling back to the static values in
- *    lib/content.ts until that resolves.
- *
- * Part 3.1 update:
- *  - Live content now covers hero, stats, techStack, projectFilters, navItems,
- *    and about.pillars in addition to projects, about, skills, timeline.
- *  - All previously static sections now read from liveContent with static fallback.
- *
- * Part 3.2 update:
- *  - Fixed TechSphere to handle empty/invalid items gracefully
- *  - Added fallback to static techStack when live data is empty
- *  - Normalized techStack items before rendering
- *  - Added full site pause/maintenance screen support
- *
- * Part 3.3 update:
- *  - Fixed the intro boot sequence restarting/flickering: IntroLoader's
- *    animation effect was keyed on the `onComplete` prop, which was a new
- *    inline function on every PortfolioSite re-render (each of the resume/
- *    settings/content fetches resolving triggered one). That tore the effect
- *    down and restarted the whole boot sequence from zero mid-animation,
- *    which is why it visibly "loaded twice". The effect now runs exactly
- *    once and reads onComplete from a ref, and the progress bar/status text
- *    are driven by requestAnimationFrame with an eased curve for a smoother
- *    finish instead of fixed 30ms/2% ticks.
+ * Part 3.6 (Animation & Fluidity Update):
+ *  - IntroLoader upgraded with a 2-stage cinematic exit (elements blur/float out,
+ *    then the overlay dissolves).
+ *  - Added dynamic glowing effects to the boot sequence linked to actual progress.
+ *  - Enhanced Magnetic components with smoother return interpolation.
+ *  - Particle Field now fades in smoothly to prevent harsh visual "pops" on mount.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type CSSProperties } from 'react'
+import {
+  useCallback, useEffect, useMemo, useRef, useState,
+  type ReactNode, type CSSProperties,
+} from 'react'
 import {
   ArrowDownRight, ArrowUpRight, Calendar, Check, ChevronLeft, ChevronRight, Code2, Copy,
   Cpu, Database, Download, ExternalLink, Layers, Loader2, Mail,
@@ -74,15 +57,18 @@ const TwitterIcon = (props: React.SVGProps<SVGSVGElement>) => (
 )
 
 /* ============================================================================
-   INTRO LOADER — Gamified boot sequence
+   INTRO LOADER — Cinematic 2-stage boot sequence
    ========================================================================== */
 function IntroLoader({ onComplete }: { onComplete: () => void }) {
-  const [progress, setProgress] = useState(0)
   const [statusIdx, setStatusIdx] = useState(0)
-  const [exiting, setExiting] = useState(false)
+  const [exitPhase, setExitPhase] = useState<0 | 1 | 2>(0) // 0: loading, 1: elements out, 2: background out
   const [drawPath, setDrawPath] = useState(false)
   const [fillLogo, setFillLogo] = useState(false)
   const [titleText, setTitleText] = useState('')
+  
+  const fillRef = useRef<HTMLDivElement>(null)
+  const pctRef = useRef<HTMLSpanElement>(null)
+  const glowRef = useRef<HTMLDivElement>(null)
 
   const bootMessages = useMemo(() => [
     '> initializing portfolio',
@@ -104,9 +90,10 @@ function IntroLoader({ onComplete }: { onComplete: () => void }) {
 
   useEffect(() => {
     let cancelled = false
-    const TOTAL_DURATION = 2200
-    const HOLD_AFTER_COMPLETE = 350
-    const EXIT_TRANSITION = 700
+    const TOTAL_DURATION = 2400
+    const HOLD_AFTER_COMPLETE = 400
+    const STAGE_1_DURATION = 500 // Time for elements to float away
+    const STAGE_2_DURATION = 700 // Time for overlay to fade
 
     const startTime = performance.now()
 
@@ -120,16 +107,24 @@ function IntroLoader({ onComplete }: { onComplete: () => void }) {
       typedChars++
       setTitleText(fullTitle.slice(0, typedChars))
       if (typedChars >= fullTitle.length) clearInterval(typeInterval)
-    }, 40)
+    }, 35)
 
     let rafId = 0
     const tick = (now: number) => {
       const elapsed = now - startTime
       const t = Math.min(1, elapsed / TOTAL_DURATION)
-      const eased = 1 - Math.pow(1 - t, 3)
-      const pct = Math.round(eased * 100)
+      
+      const eased = t === 1 ? 1 : 1 - Math.pow(2, -10 * t)
 
-      setProgress((prev) => (pct > prev ? pct : prev))
+      if (fillRef.current) fillRef.current.style.transform = `scaleX(${eased})`
+      if (glowRef.current) glowRef.current.style.opacity = `${eased * 0.4}`
+      
+      if (pctRef.current) {
+        const pctText = Math.round(eased * 100).toString().padStart(3, '0') + '%'
+        if (pctRef.current.textContent !== pctText) {
+          pctRef.current.textContent = pctText
+        }
+      }
 
       const idx = Math.min(bootMessages.length - 1, Math.floor(t * bootMessages.length))
       setStatusIdx((prev) => (idx > prev ? idx : prev))
@@ -139,8 +134,14 @@ function IntroLoader({ onComplete }: { onComplete: () => void }) {
       } else {
         setTimeout(() => {
           if (cancelled) return
-          setExiting(true)
-          setTimeout(() => onCompleteRef.current(), EXIT_TRANSITION)
+          setExitPhase(1) // Stage 1: Elements float away
+          
+          setTimeout(() => {
+            if (cancelled) return
+            setExitPhase(2) // Stage 2: Background dissolves
+            
+            setTimeout(() => onCompleteRef.current(), STAGE_2_DURATION)
+          }, STAGE_1_DURATION)
         }, HOLD_AFTER_COMPLETE)
       }
     }
@@ -152,47 +153,52 @@ function IntroLoader({ onComplete }: { onComplete: () => void }) {
       clearInterval(typeInterval)
       clearTimeout(fillTimer)
     }
-  }, [bootMessages])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return (
-    <div className={`intro-overlay ${exiting ? 'is-exiting' : ''}`} role="dialog" aria-label="Loading portfolio">
+    <div className={`intro-overlay ${exitPhase === 2 ? 'is-exiting' : ''}`} role="dialog" aria-label="Loading portfolio">
       <div className="intro-grid" />
+      <div className="intro-ambient-glow" ref={glowRef} />
 
-      <div className="relative mb-10 flex flex-col items-center px-4">
-        <svg width="110" height="110" viewBox="0 0 120 120" className="mb-6">
-          <polygon
-            points="60,8 108,34 108,86 60,112 12,86 12,34"
-            className={`intro-logo-path ${drawPath ? 'is-drawing' : ''}`}
-            pathLength={1}
-          />
-          <text
-            x="60"
-            y="75"
-            textAnchor="middle"
-            fontSize="40"
-            fontFamily="var(--font-mono)"
-            fontWeight="700"
-            className={`intro-logo-fill ${fillLogo ? 'is-filled' : ''}`}
-          >
-            MB
-          </text>
-        </svg>
+      {/* Wrapping content for stage 1 exit animation */}
+      <div className={`intro-elements-wrapper ${exitPhase >= 1 ? 'elements-exiting' : ''}`}>
+        <div className="relative mb-10 flex flex-col items-center px-4">
+          <svg width="110" height="110" viewBox="0 0 120 120" className="mb-6" style={{ willChange: 'transform' }}>
+            <polygon
+              points="60,8 108,34 108,86 60,112 12,86 12,34"
+              className={`intro-logo-path ${drawPath ? 'is-drawing' : ''}`}
+              pathLength={1}
+            />
+            <text
+              x="60"
+              y="75"
+              textAnchor="middle"
+              fontSize="40"
+              fontFamily="var(--font-mono)"
+              fontWeight="700"
+              className={`intro-logo-fill ${fillLogo ? 'is-filled' : ''}`}
+            >
+              MB
+            </text>
+          </svg>
 
-        <p className="intro-title" aria-label={fullTitle}>
-          <span aria-hidden="true">{titleText}</span>
-          <span className="intro-caret" aria-hidden="true" />
-        </p>
-      </div>
-
-      <div className="flex flex-col items-center gap-3 w-full max-w-sm">
-        <div className="intro-progress-track w-full">
-          <div className="intro-progress-fill" style={{ width: `${progress}%` }} />
+          <p className="intro-title" aria-label={fullTitle}>
+            <span aria-hidden="true">{titleText}</span>
+            <span className="intro-caret" aria-hidden="true" />
+          </p>
         </div>
-        <div className="flex w-full items-center justify-between">
-          <span className="intro-status is-visible" key={statusIdx}>
-            {bootMessages[statusIdx]}
-          </span>
-          <span className="intro-progress-pct">{progress.toString().padStart(3, '0')}%</span>
+
+        <div className="flex flex-col items-center gap-3 w-full max-w-sm">
+          <div className="intro-progress-track w-full">
+            <div className="intro-progress-fill" ref={fillRef} />
+          </div>
+          <div className="flex w-full items-center justify-between">
+            <span className="intro-status is-visible" key={statusIdx}>
+              {bootMessages[statusIdx]}
+            </span>
+            <span className="intro-progress-pct" ref={pctRef}>000%</span>
+          </div>
         </div>
       </div>
     </div>
@@ -200,11 +206,12 @@ function IntroLoader({ onComplete }: { onComplete: () => void }) {
 }
 
 /* ============================================================================
-   PARTICLE FIELD — constellation canvas (Mobile optimized)
+   PARTICLE FIELD — constellation canvas (Mobile optimized with fade in)
    ========================================================================== */
 function ParticleField() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const mouseRef = useRef({ x: -1000, y: -1000 })
+  const [ready, setReady] = useState(false)
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -244,7 +251,7 @@ function ParticleField() {
         const mdx = p.x - mouseRef.current.x
         const mdy = p.y - mouseRef.current.y
         const md = Math.hypot(mdx, mdy)
-        if (md < 140) {
+        if (md < 140 && md > 0.01) {
           const force = (140 - md) / 140
           p.vx += (mdx / md) * force * 0.4
           p.vy += (mdy / md) * force * 0.4
@@ -291,6 +298,9 @@ function ParticleField() {
       raf = requestAnimationFrame(render)
     }
     render()
+    
+    // Smooth fade in once initialized
+    setTimeout(() => setReady(true), 100)
 
     const onResize = () => {
       width = canvas.width = window.innerWidth
@@ -316,7 +326,13 @@ function ParticleField() {
     }
   }, [])
 
-  return <canvas ref={canvasRef} className="particle-canvas" aria-hidden="true" />
+  return (
+    <canvas 
+      ref={canvasRef} 
+      className={`particle-canvas transition-opacity duration-1000 ${ready ? 'opacity-55' : 'opacity-0'}`} 
+      aria-hidden="true" 
+    />
+  )
 }
 
 /* ============================================================================
@@ -337,7 +353,7 @@ function ScrollProgress() {
 }
 
 /* ============================================================================
-   MAINTENANCE BANNER (Part 2.5)
+   MAINTENANCE BANNER
    ========================================================================== */
 function MaintenanceBanner({ message }: { message: string }) {
   return (
@@ -433,31 +449,62 @@ function Typewriter({ text, start, speed = 18, className = '' }: { text: string;
 }
 
 /* ============================================================================
-   Magnetic — wraps an element to make it magnetic toward the cursor
+   Magnetic — upgraded with fluid lerp physics
    ========================================================================== */
 function Magnetic({ children, strength = 0.3 }: { children: ReactNode; strength?: number }) {
   const ref = useRef<HTMLDivElement>(null)
+  
   useEffect(() => {
     const isTouch = window.matchMedia('(pointer: coarse)').matches
     if (isTouch) return
     const el = ref.current
     if (!el) return
+    
+    let rafId = 0
+    let targetX = 0
+    let targetY = 0
+    let currentX = 0
+    let currentY = 0
+    let hovering = false
+
     const onMove = (e: MouseEvent) => {
+      hovering = true
       const rect = el.getBoundingClientRect()
       const cx = rect.left + rect.width / 2
       const cy = rect.top + rect.height / 2
-      const dx = (e.clientX - cx) * strength
-      const dy = (e.clientY - cy) * strength
-      el.style.transform = `translate(${dx}px, ${dy}px)`
+      targetX = (e.clientX - cx) * strength
+      targetY = (e.clientY - cy) * strength
     }
-    const onLeave = () => { el.style.transform = 'translate(0,0)' }
+    const onLeave = () => { 
+      hovering = false
+      targetX = 0
+      targetY = 0
+    }
+    
+    const animate = () => {
+      // Smooth interpolation (lerp)
+      currentX += (targetX - currentX) * 0.15
+      currentY += (targetY - currentY) * 0.15
+      
+      if (Math.abs(currentX) > 0.01 || Math.abs(currentY) > 0.01 || hovering) {
+        el.style.transform = `translate3d(${currentX}px, ${currentY}px, 0)`
+      } else {
+        el.style.transform = 'translate3d(0, 0, 0)'
+      }
+      rafId = requestAnimationFrame(animate)
+    }
+
     el.addEventListener('mousemove', onMove)
     el.addEventListener('mouseleave', onLeave)
+    rafId = requestAnimationFrame(animate)
+    
     return () => {
       el.removeEventListener('mousemove', onMove)
       el.removeEventListener('mouseleave', onLeave)
+      cancelAnimationFrame(rafId)
     }
   }, [strength])
+  
   return <div ref={ref} className="magnetic inline-flex">{children}</div>
 }
 
@@ -512,7 +559,7 @@ function Reveal({
 }
 
 /* ---------------- CountUp (animated stats) ---------------- */
-function CountUp({ end, suffix = '', duration = 1600 }: { end: number; suffix?: string; duration?: number }) {
+function CountUp({ end, suffix = '', duration = 1800 }: { end: number; suffix?: string; duration?: number }) {
   const ref = useRef<HTMLSpanElement>(null)
   const [value, setValue] = useState(0)
   const started = useRef(false)
@@ -525,7 +572,7 @@ function CountUp({ end, suffix = '', duration = 1600 }: { end: number; suffix?: 
         const start = performance.now()
         const tick = (now: number) => {
           const t = Math.min(1, (now - start) / duration)
-          const eased = 1 - Math.pow(1 - t, 3)
+          const eased = 1 - Math.pow(1 - t, 4) // Quaternary ease-out for smoother stat counter
           setValue(Math.round(end * eased))
           if (t < 1) requestAnimationFrame(tick)
         }
@@ -539,7 +586,9 @@ function CountUp({ end, suffix = '', duration = 1600 }: { end: number; suffix?: 
   return <span ref={ref}>{value}{suffix}</span>
 }
 
-/* ---------------- 3D Tech Sphere (FIXED: handles empty/invalid items) ---------------- */
+/* ============================================================================
+   TechSphere (Part 3.5)
+   ========================================================================== */
 function TechSphere({ items }: { items: string[] }) {
   const sphereRef = useRef<HTMLDivElement>(null)
   const target = useRef({ x: -10, y: 0 })
@@ -562,6 +611,14 @@ function TechSphere({ items }: { items: string[] }) {
 
   const N = validItems.length
 
+  const scale = useMemo(() => {
+    if (N <= 20) return 1
+    if (N >= 60) return 0.62
+    return 1 - ((N - 20) / 40) * 0.38
+  }, [N])
+
+  const radius = 180 * (N > 40 ? 1.08 : 1)
+
   const positions = useMemo(() => {
     if (N === 0) return []
     return validItems.map((_, i) => {
@@ -576,9 +633,13 @@ function TechSphere({ items }: { items: string[] }) {
 
   useEffect(() => {
     if (N === 0) return
+    const prefersReduced =
+      typeof window !== 'undefined' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
+    let rafId = 0
     const animate = () => {
-      if (!isHovering.current) {
+      if (!isHovering.current && !prefersReduced) {
         target.current.y += 0.15
         target.current.y = target.current.y % 360
         target.current.x = -10 + Math.sin(target.current.y * Math.PI / 180) * 5
@@ -592,19 +653,19 @@ function TechSphere({ items }: { items: string[] }) {
       if (sphereRef.current) {
         sphereRef.current.style.transform = `rotateX(${current.current.x}deg) rotateY(${current.current.y}deg)`
       }
-      requestAnimationFrame(animate)
+      rafId = requestAnimationFrame(animate)
     }
-    const animId = requestAnimationFrame(animate)
-    return () => cancelAnimationFrame(animId)
+    rafId = requestAnimationFrame(animate)
+    return () => cancelAnimationFrame(rafId)
   }, [N])
 
   if (N === 0) {
     return (
       <div className="sphere-container flex items-center justify-center">
-        <div className="text-center">
+        <div className="text-center px-4">
           <Sparkles className="mx-auto h-8 w-8 mb-3" style={{ color: 'var(--muted-foreground)' }} />
           <p className="text-xs font-medium" style={{ color: 'var(--muted-foreground)' }}>
-            No technologies added
+            No technologies added yet
           </p>
           <p className="mt-1 text-[10px]" style={{ color: 'var(--muted-foreground)' }}>
             Add items in Content Management → Tech Stack
@@ -656,15 +717,26 @@ function TechSphere({ items }: { items: string[] }) {
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
       onTouchCancel={handleTouchEnd}
-      style={{ touchAction: 'none' }}
+      style={{ touchAction: 'none', contain: 'layout paint style' }}
     >
+      <ul className="sr-only">
+        {validItems.map((item, i) => (
+          <li key={`${item}-${i}`}>{item}</li>
+        ))}
+      </ul>
+
       <div className="sphere-glow" />
       <div className="sphere-rings">
         <div className="ring ring-1" />
         <div className="ring ring-2" />
         <div className="ring ring-3" />
       </div>
-      <div ref={sphereRef} className="sphere">
+      <div
+        ref={sphereRef}
+        className="sphere"
+        style={{ willChange: 'transform' }}
+        aria-hidden="true"
+      >
         {validItems.map((item, i) => {
           const p = positions[i]
           return (
@@ -672,9 +744,10 @@ function TechSphere({ items }: { items: string[] }) {
               key={`${item}-${i}`}
               className="sphere-item"
               style={{
-                '--tx': `${p.x * 180}px`,
-                '--ty': `${p.y * 180}px`,
-                '--tz': `${p.z * 180}px`
+                '--tx': `${p.x * radius}px`,
+                '--ty': `${p.y * radius}px`,
+                '--tz': `${p.z * radius}px`,
+                fontSize: `calc(var(--sphere-item-size, 11px) * ${scale})`,
               } as CSSProperties}
             >
               {item}
@@ -703,7 +776,6 @@ const skillIcons: Record<string, typeof Code2> = {
   'AI / ML': Cpu, Mobile: Smartphone, Tools: Wrench,
 }
 
-/* ---------------- Category label mapper ---------------- */
 const categoryLabels: Record<string, string> = {
   ai: 'AI',
   web: 'Web',
@@ -735,6 +807,33 @@ function ProjectGallery({ project }: { project: ProjectContent }) {
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowLeft') { e.preventDefault(); prev() }
     if (e.key === 'ArrowRight') { e.preventDefault(); next() }
+  }
+
+  if (total === 0) {
+    return (
+      <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
+        <div className="flex items-center justify-between border-b border-border px-3.5 py-2.5 sm:px-4">
+          <div className="flex shrink-0 gap-1.5">
+            <span className="size-2.5 rounded-full bg-destructive/50" />
+            <span className="size-2.5 rounded-full bg-primary/50" />
+            <span className="size-2.5 rounded-full bg-accent/50" />
+          </div>
+          <div className="mx-3 min-w-0 flex-1 sm:mx-4">
+            <div className="mx-auto w-fit max-w-full truncate rounded-md bg-secondary px-3 py-0.5 font-mono text-[9px] text-muted-foreground uppercase sm:text-[10px]">
+              {project.name}.app
+            </div>
+          </div>
+          <a href={project.live} target="_blank" rel="noreferrer" className="grid size-6 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground" aria-label={`Open ${project.name} live site`}>
+            <MoveUpRight className="size-3.5" />
+          </a>
+        </div>
+        <div className="flex aspect-[16/10] w-full items-center justify-center bg-secondary text-center p-6">
+          <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+            No screenshots yet
+          </p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -938,11 +1037,11 @@ function Hero({
         </p>
 
         <h1 className="max-w-6xl text-[clamp(2.5rem,12vw,10rem)] font-semibold leading-[0.86] tracking-[-0.075em] text-balance">
-          <SplitText text={hero.firstName} delay={600} stagger={45} trigger={introComplete} />
+          <SplitText text={hero.firstName} delay={500} stagger={30} trigger={introComplete} />
           <br />
           <span className="text-muted-foreground">
-            <SplitText text={hero.lastName} delay={1300} stagger={45} trigger={introComplete} />
-            <span className={`char ${introComplete ? 'is-in' : ''}`} style={{ transitionDelay: '2200ms', color: 'var(--primary)' }}>.</span>
+            <SplitText text={hero.lastName} delay={900} stagger={30} trigger={introComplete} />
+            <span className={`char ${introComplete ? 'is-in' : ''}`} style={{ transitionDelay: '1400ms', color: 'var(--primary)' }}>.</span>
           </span>
         </h1>
 
@@ -950,7 +1049,7 @@ function Hero({
           <p className="text-pretty text-sm leading-6 text-muted-foreground">
             <Typewriter text={hero.oneLiner} start={introComplete} speed={12} />
           </p>
-          <div className="flex flex-wrap gap-3 stagger-item" data-stagger style={{ transitionDelay: '2400ms' }}>
+          <div className="flex flex-wrap gap-3 stagger-item" data-stagger style={{ transitionDelay: '1800ms' }}>
             <Magnetic strength={0.25}>
               <a href="/api/resume/download" className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 font-mono text-[11px] tracking-[0.12em] text-primary-foreground uppercase transition-transform hover:-translate-y-0.5">
                 Download Resume <Download className="size-3.5" />
@@ -967,7 +1066,7 @@ function Hero({
               </a>
             </Magnetic>
           </div>
-          <div className="flex items-center gap-2 stagger-item" data-stagger style={{ transitionDelay: '2600ms' }}>
+          <div className="flex items-center gap-2 stagger-item" data-stagger style={{ transitionDelay: '2000ms' }}>
             {Object.entries(socialLinks).map(([key, href]) => (
               href ? (
                 <a key={key} href={href} target={key === 'email' ? undefined : '_blank'} rel="noreferrer" className="grid size-9 place-items-center rounded-full border border-border transition-colors hover:border-primary hover:bg-primary hover:text-primary-foreground" aria-label={key}>
@@ -979,7 +1078,7 @@ function Hero({
         </div>
       </div>
 
-      <div className="flex items-end justify-between border-t border-border pt-4 font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase stagger-item" data-stagger style={{ transitionDelay: '2800ms' }}>
+      <div className="flex items-end justify-between border-t border-border pt-4 font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase stagger-item" data-stagger style={{ transitionDelay: '2200ms' }}>
         <span>Scroll to explore</span>
         <span>Est. {hero.established} — ∞</span>
       </div>
@@ -1106,7 +1205,7 @@ export function PortfolioSite() {
       .catch(() => {})
   }, [])
 
-  // ---- Live content (Part 2.7 + 3.1 + 3.2) ----
+  // ---- Live content (Part 2.7 + 3.1 + 3.2 + 3.5) ----
   const [liveContent, setLiveContent] = useState<{
     projects: ProjectContent[]
     about: AboutContent
@@ -1114,7 +1213,7 @@ export function PortfolioSite() {
     timeline: TimelineEntry[]
     hero: HeroContent
     stats: StatItem[]
-    techStack: string[]
+    techStack: string[] | null
     projectFilters: string[]
     navItems: NavItem[]
   }>({
@@ -1134,47 +1233,75 @@ export function PortfolioSite() {
       established: siteConfig.established,
     },
     stats: staticStats,
-    techStack: staticTechStack,
+    techStack: null,
     projectFilters: staticProjectFilters,
     navItems: staticNavItems,
   })
 
+  const applyLiveContent = useCallback((c: any) => {
+    if (!c) return
+    const normalizedTechStack = Array.isArray(c.techStack)
+      ? c.techStack
+          .filter((t: unknown): t is string => typeof t === 'string' && t.trim().length > 0)
+          .map((t: string) => t.trim())
+      : null
+
+    setLiveContent({
+      projects: c.projects || staticProjects,
+      about: c.about || staticAbout,
+      skillGroups: c.skillGroups || staticSkillGroups,
+      timeline: c.timeline || staticTimeline,
+      hero: c.hero || {
+        name: siteConfig.name,
+        firstName: siteConfig.firstName,
+        lastName: siteConfig.lastName,
+        initials: siteConfig.initials,
+        title: siteConfig.title,
+        oneLiner: siteConfig.oneLiner,
+        location: siteConfig.location,
+        availability: siteConfig.availability,
+        established: siteConfig.established,
+      },
+      stats: c.stats || staticStats,
+      techStack: normalizedTechStack,
+      projectFilters: c.projectFilters || staticProjectFilters,
+      navItems: c.navItems || staticNavItems,
+    })
+  }, [])
+
   useEffect(() => {
-    fetch('/api/content')
+    fetch('/api/content', { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         if (!d?.content) return
-        const c = d.content
-        
-        const normalizedTechStack = Array.isArray(c.techStack)
-          ? c.techStack
-              .filter((t: unknown): t is string => typeof t === 'string' && t.trim().length > 0)
-              .map((t: string) => t.trim())
-          : []
-        
-        setLiveContent({
-          projects: c.projects || staticProjects,
-          about: c.about || staticAbout,
-          skillGroups: c.skillGroups || staticSkillGroups,
-          timeline: c.timeline || staticTimeline,
-          hero: c.hero || {
-            name: siteConfig.name,
-            firstName: siteConfig.firstName,
-            lastName: siteConfig.lastName,
-            initials: siteConfig.initials,
-            title: siteConfig.title,
-            oneLiner: siteConfig.oneLiner,
-            location: siteConfig.location,
-            availability: siteConfig.availability,
-            established: siteConfig.established,
-          },
-          stats: c.stats || staticStats,
-          techStack: normalizedTechStack.length > 0 ? normalizedTechStack : staticTechStack,
-          projectFilters: c.projectFilters || staticProjectFilters,
-          navItems: c.navItems || staticNavItems,
-        })
+        applyLiveContent(d.content)
       })
       .catch(() => {})
+  }, [applyLiveContent])
+
+  useEffect(() => {
+    const onFocus = () => {
+      fetch('/api/content', { cache: 'no-store' })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          if (!d?.content) return
+          const c = d.content
+          setLiveContent((prev) => ({
+            ...prev,
+            techStack: Array.isArray(c.techStack)
+              ? c.techStack
+                  .filter((t: unknown): t is string => typeof t === 'string' && t.trim().length > 0)
+                  .map((t: string) => t.trim())
+              : prev.techStack,
+            stats: c.stats || prev.stats,
+            navItems: c.navItems || prev.navItems,
+            projectFilters: c.projectFilters || prev.projectFilters,
+          }))
+        })
+        .catch(() => {})
+    }
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
   }, [])
 
   // ---- Contact form state ----
@@ -1355,7 +1482,6 @@ export function PortfolioSite() {
 
   const { hero, stats, techStack, projectFilters, navItems } = liveContent
 
-  // Part 3.2 — If site is paused, show maintenance screen
   if (liveSettings.sitePaused) {
     return (
       <SitePausedScreen
@@ -1656,7 +1782,13 @@ export function PortfolioSite() {
               </div>
             </Reveal>
             <Reveal delay={120} variant="scale">
-              <TechSphere items={techStack.length > 0 ? techStack : staticTechStack} />
+              <TechSphere
+                items={
+                  Array.isArray(techStack)
+                    ? techStack
+                    : staticTechStack
+                }
+              />
             </Reveal>
           </div>
         </div>
