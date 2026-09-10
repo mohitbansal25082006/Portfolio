@@ -508,3 +508,30 @@ app/admin/content/backup-client.tsx
 - **Login Attempts** — Smart filtering with informational note about displayed time range
 - **Settings UI** — Reorganized into "Site Availability" section with pause and banner options
 - **Portfolio Site** — Shows full-screen pause when enabled, banner when maintenance mode on
+
+
+## Part 3.3 — Analytics: Own-Site Page Views, IP-Based Unique Visitors, Device Breakdown & Top Referrers
+
+### Features Updated
+- Total Page Views now counts only the deployed portfolio site (excludes `/admin/*` and API routes)
+- Unique Visitors now deduped by hashed IP address instead of Vercel's cookieless fingerprint
+- Visit Trend chart now shows exactly 7 or 30 days (fixed off-by-one/boundary-day bug), and is now interactive — hover a bar to see exact date + views, animated highlight
+- Device Breakdown now sourced from our own site-only tracking (desktop/mobile/tablet classified from User-Agent), consistent with Total Page Views
+- Top Referrers now sourced from our own site-only tracking (referrer hostname per visit, "Direct" for no referrer or same-site navigation), consistent with Total Page Views
+- Removed "Top Referrers" stat card from the top Key Metrics grid (now 3 cards instead of 4); bottom Top Referrers panel unchanged
+- All five metrics (views, visitors, trend, devices, referrers) now derived from one self-hosted, site-scoped source instead of Vercel Analytics — guaranteed internally consistent
+- Fixed 404 on `/admin/analytics` caused by overlapping Proxy matcher entries
+- Fixed all-zero/empty data caused by a broken Proxy matcher regex that stopped visit recording on public pages
+- Hardened read/write paths so a single failing Redis call can no longer zero out unrelated metrics
+
+### Files Created
+```
+lib/site-analytics.ts
+```
+
+### Files Updated
+```
+proxy.ts
+app/api/admin/analytics/route.ts
+app/admin/analytics/analytics-client.tsx
+```

@@ -8,6 +8,24 @@
  *   - Added safe-area padding for mobile
  *   - Improved responsive grid layouts for mobile
  *   - Chart containers now properly scroll on mobile
+ *
+ * Part 3.3:
+ *   - Removed the "Top Referrers" stat card from the top Key Metrics grid
+ *     (grid is now 3 columns instead of 4). The bottom Top Referrers panel
+ *     (table) is unchanged in layout.
+ *   - Removed computeTotalReferredViews() and totalReferredViews, which
+ *     only fed the removed stat card.
+ *   - Total Page Views / Unique Visitors / Visit Trend / Device Breakdown /
+ *     Top Referrers now all come from the SAME self-hosted, site-only,
+ *     IP-based source (lib/site-analytics.ts via the API route) instead of
+ *     Vercel Analytics — so all five numbers are internally consistent and
+ *     the Visit Trend always shows exactly 7 or 30 bars (fixes the
+ *     "shows 9 days instead of 7" bug, which was Vercel's since/until
+ *     rounding). The API route no longer depends on Vercel credentials at
+ *     all, so the "configure Vercel credentials" placeholder banner and its
+ *     _reason messaging are removed — a failure now just means the site-
+ *     analytics store itself is unreachable, which is what the generic
+ *     per-section error banner below already covers.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
@@ -140,7 +158,7 @@ function StatCard({
         <p className="text-xl sm:text-2xl font-bold tabular-nums">
           {value === null ? (
             <span style={{ color: 'var(--muted-foreground)', fontSize: '0.85rem' }}>
-              {error ? '—' : 'Not configured'}
+              {error ? '—' : 'No data yet'}
             </span>
           ) : (
             formatNumber(Number(value))
@@ -160,9 +178,11 @@ function StatCard({
   )
 }
 
-// ─── Bar Trend Chart (pure SVG, zero deps) ────────────────────────────────────
+// ─── Bar Trend Chart (pure SVG, zero deps, interactive) ───────────────────────
 
 function TrendChart({ data }: { data: { date: string; views: number }[] }) {
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null)
+
   if (data.length === 0) {
     return (
       <div className="flex h-40 items-center justify-center text-sm" style={{ color: 'var(--muted-foreground)' }}>
@@ -173,59 +193,122 @@ function TrendChart({ data }: { data: { date: string; views: number }[] }) {
 
   const max = Math.max(...data.map((d) => d.views), 1)
   const W = 600
-  const H = 160
+  const H = 180
   const padL = 36
   const padR = 8
-  const padT = 12
+  const padT = 20
   const padB = 28
   const chartW = W - padL - padR
   const chartH = H - padT - padB
-  const barW = Math.max(4, (chartW / data.length) * 0.6)
+  const barW = Math.max(6, (chartW / data.length) * 0.55)
   const gap = chartW / data.length
 
   const ticks = [0, Math.round(max / 2), max]
+  const active = hoverIdx !== null ? data[hoverIdx] : null
 
   return (
-    <svg
-      viewBox={`0 0 ${W} ${H}`}
-      className="w-full min-w-[320px]"
-      style={{ height: H, overflow: 'visible' }}
-      role="img"
-      aria-label="Visit trend chart"
-    >
-      {ticks.map((tick) => {
-        const y = padT + chartH - (tick / max) * chartH
-        return (
-          <g key={tick}>
-            <line x1={padL} y1={y} x2={W - padR} y2={y} stroke="var(--border)" strokeWidth={1} strokeDasharray="4 4" />
-            <text x={padL - 4} y={y + 4} textAnchor="end" fontSize={10} fill="var(--muted-foreground)">
-              {tick >= 1000 ? `${(tick / 1000).toFixed(1)}k` : tick}
-            </text>
-          </g>
-        )
-      })}
+    <div className="relative">
+      {/* Hover readout — shows the exact date + views for the bar under the cursor */}
+      <div
+        className="mb-2 flex h-5 items-center text-xs font-medium transition-opacity duration-150"
+        style={{ color: 'var(--foreground)', opacity: active ? 1 : 0 }}
+      >
+        {active && (
+          <>
+            <span style={{ color: 'var(--muted-foreground)' }}>
+              {new Date(active.date).toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short' })}
+            </span>
+            <span className="mx-1.5" style={{ color: 'var(--border)' }}>·</span>
+            <span>{formatNumber(active.views)} views</span>
+          </>
+        )}
+      </div>
 
-      {data.map((d, i) => {
-        const x = padL + i * gap + gap / 2 - barW / 2
-        const barH = Math.max(2, (d.views / max) * chartH)
-        const y = padT + chartH - barH
-        const showLabel = i === 0 || i === data.length - 1 || i % Math.max(1, Math.floor(data.length / 6)) === 0
-        const labelDate = new Date(d.date)
-        const labelStr = labelDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })
-
-        return (
-          <g key={d.date}>
-            <rect x={x} y={y} width={barW} height={barH} rx={3} fill="var(--primary)" opacity={0.85} />
-            {showLabel && (
-              <text x={x + barW / 2} y={H - 4} textAnchor="middle" fontSize={9} fill="var(--muted-foreground)">
-                {labelStr}
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        className="w-full min-w-[320px]"
+        style={{ height: H, overflow: 'visible' }}
+        role="img"
+        aria-label="Visit trend chart"
+        onMouseLeave={() => setHoverIdx(null)}
+      >
+        {ticks.map((tick) => {
+          const y = padT + chartH - (tick / max) * chartH
+          return (
+            <g key={tick}>
+              <line x1={padL} y1={y} x2={W - padR} y2={y} stroke="var(--border)" strokeWidth={1} strokeDasharray="4 4" />
+              <text x={padL - 4} y={y + 4} textAnchor="end" fontSize={10} fill="var(--muted-foreground)">
+                {tick >= 1000 ? `${(tick / 1000).toFixed(1)}k` : tick}
               </text>
-            )}
-            <title>{`${d.date}: ${d.views} views`}</title>
-          </g>
-        )
-      })}
-    </svg>
+            </g>
+          )
+        })}
+
+        {data.map((d, i) => {
+          const x = padL + i * gap + gap / 2 - barW / 2
+          const barH = Math.max(2, (d.views / max) * chartH)
+          const y = padT + chartH - barH
+          const showLabel = i === 0 || i === data.length - 1 || i % Math.max(1, Math.floor(data.length / 6)) === 0
+          const labelDate = new Date(d.date)
+          const labelStr = labelDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })
+          const isHovered = hoverIdx === i
+
+          return (
+            <g
+              key={d.date}
+              onMouseEnter={() => setHoverIdx(i)}
+              onFocus={() => setHoverIdx(i)}
+              tabIndex={0}
+              style={{ cursor: 'pointer', outline: 'none' }}
+            >
+              {/* Full-height invisible hit area so hovering near a short bar still registers */}
+              <rect x={padL + i * gap} y={padT} width={gap} height={chartH} fill="transparent" />
+
+              {isHovered && (
+                <rect
+                  x={padL + i * gap}
+                  y={padT}
+                  width={gap}
+                  height={chartH}
+                  fill="color-mix(in oklch, var(--primary) 8%, transparent)"
+                  rx={2}
+                />
+              )}
+
+              <rect
+                x={x}
+                y={y}
+                width={barW}
+                height={barH}
+                rx={3}
+                fill="var(--primary)"
+                opacity={isHovered ? 1 : 0.8}
+                style={{ transition: 'opacity 150ms ease, height 300ms ease' }}
+              />
+
+              {isHovered && (
+                <circle cx={x + barW / 2} cy={y} r={3} fill="var(--primary)" stroke="var(--card)" strokeWidth={1.5} />
+              )}
+
+              {showLabel && (
+                <text
+                  x={x + barW / 2}
+                  y={H - 4}
+                  textAnchor="middle"
+                  fontSize={9}
+                  fill={isHovered ? 'var(--foreground)' : 'var(--muted-foreground)'}
+                  fontWeight={isHovered ? 600 : 400}
+                >
+                  {labelStr}
+                </text>
+              )}
+
+              <title>{`${d.date}: ${d.views} views`}</title>
+            </g>
+          )
+        })}
+      </svg>
+    </div>
   )
 }
 
@@ -236,7 +319,7 @@ function DeviceDonut({ mobile, desktop, tablet }: { mobile: number; desktop: num
   if (total === 0) {
     return (
       <div className="flex h-full items-center justify-center text-sm" style={{ color: 'var(--muted-foreground)' }}>
-        No device data
+        No device data yet
       </div>
     )
   }
@@ -265,9 +348,9 @@ function DeviceDonut({ mobile, desktop, tablet }: { mobile: number; desktop: num
   }
 
   const slices = [
-    { label: 'Desktop', pct: dPct, color: 'var(--primary)', icon: <Monitor className="h-3.5 w-3.5" /> },
-    { label: 'Mobile', pct: mPct, color: 'oklch(0.75 0.18 220)', icon: <Smartphone className="h-3.5 w-3.5" /> },
-    { label: 'Tablet', pct: tPct, color: 'oklch(0.75 0.18 150)', icon: <Tablet className="h-3.5 w-3.5" /> },
+    { label: 'Desktop', value: desktop, pct: dPct, color: 'var(--primary)', icon: <Monitor className="h-3.5 w-3.5" /> },
+    { label: 'Mobile', value: mobile, pct: mPct, color: 'oklch(0.75 0.18 220)', icon: <Smartphone className="h-3.5 w-3.5" /> },
+    { label: 'Tablet', value: tablet, pct: tPct, color: 'oklch(0.75 0.18 150)', icon: <Tablet className="h-3.5 w-3.5" /> },
   ]
 
   let accumulated = 0
@@ -282,7 +365,7 @@ function DeviceDonut({ mobile, desktop, tablet }: { mobile: number; desktop: num
           accumulated = end
           return (
             <path key={s.label} d={slicePath(start, end)} fill={s.color} opacity={0.9}>
-              <title>{`${s.label}: ${s.pct}%`}</title>
+              <title>{`${s.label}: ${s.pct}% (${s.value} views)`}</title>
             </path>
           )
         })}
@@ -337,7 +420,11 @@ function ReferrersTable({
   }
 
   const max = Math.max(...referrers.map((r) => r.views), 1)
-  const total = totalViews || max
+  // Use the sum of tracked referrer views (not overall totalViews) as the
+  // percentage base — this keeps percentages summing sensibly to ~100%
+  // across the listed sources, including "Direct".
+  const sumOfReferrerViews = referrers.reduce((acc, r) => acc + r.views, 0)
+  const total = sumOfReferrerViews || totalViews || max
 
   return (
     <div className="space-y-2">
@@ -380,10 +467,6 @@ function computeAvgDailyViews(trend: { date: string; views: number }[]): number 
   if (trend.length === 0) return null
   const sum = trend.reduce((acc, d) => acc + d.views, 0)
   return Math.round(sum / trend.length)
-}
-
-function computeTotalReferredViews(referrers: { source: string; views: number }[]): number {
-  return referrers.reduce((acc, r) => acc + r.views, 0)
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -454,7 +537,6 @@ export default function AnalyticsClient({ adminEmail }: { adminEmail: string }) 
   // ── Derived stats ────────────────────────────────────────────────────────────
 
   const avgDailyViews = data ? computeAvgDailyViews(data.trend) : null
-  const totalReferredViews = data ? computeTotalReferredViews(data.referrers) : null
   const errors = data?._errors ?? {}
 
   // ─── Render ──────────────────────────────────────────────────────────────────
@@ -607,9 +689,7 @@ export default function AnalyticsClient({ adminEmail }: { adminEmail: string }) 
             <div>
               <h1 className="text-xl font-bold">Analytics Overview</h1>
               <p className="mt-0.5 text-xs" style={{ color: 'var(--muted-foreground)' }}>
-                {data?._placeholder
-                  ? 'Configure Vercel credentials to see real data'
-                  : `Showing data for the last ${period === '7d' ? '7' : '30'} days`}
+                Showing data for the last {period === '7d' ? '7' : '30'} days · portfolio site only
               </p>
             </div>
 
@@ -642,32 +722,7 @@ export default function AnalyticsClient({ adminEmail }: { adminEmail: string }) 
             </div>
           </div>
 
-          {data?._placeholder && (
-            <div
-              className="mb-4 flex items-start gap-3 rounded-2xl border p-4"
-              style={{
-                background: 'color-mix(in oklch, oklch(0.7 0.2 25) 10%, transparent)',
-                borderColor: 'color-mix(in oklch, oklch(0.7 0.2 25) 30%, transparent)',
-              }}
-            >
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" style={{ color: 'oklch(0.7 0.2 25)' }} />
-              <div>
-                <p className="text-sm font-medium" style={{ color: 'oklch(0.7 0.2 25)' }}>
-                  Vercel Analytics credentials not configured
-                </p>
-                <p className="mt-0.5 text-xs" style={{ color: 'var(--muted-foreground)' }}>
-                  Add{' '}
-                  <code className="rounded px-1 py-0.5" style={{ background: 'var(--muted)' }}>VERCEL_API_TOKEN</code>{' '}
-                  and{' '}
-                  <code className="rounded px-1 py-0.5" style={{ background: 'var(--muted)' }}>VERCEL_PROJECT_ID</code>{' '}
-                  to your <code className="rounded px-1 py-0.5" style={{ background: 'var(--muted)' }}>.env.local</code>.
-                  {data._reason && <span className="ml-1 opacity-70">Reason: {data._reason}</span>}
-                </p>
-              </div>
-            </div>
-          )}
-
-          {!data?._placeholder && Object.keys(errors).length > 0 && (
+          {Object.keys(errors).length > 0 && (
             <div
               className="mb-4 flex items-start gap-3 rounded-2xl border p-4"
               style={{
@@ -698,7 +753,7 @@ export default function AnalyticsClient({ adminEmail }: { adminEmail: string }) 
             <>
               <section className="mb-6">
                 <h2 className="eyebrow mb-4">Key Metrics</h2>
-                <div className="grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-2 xl:grid-cols-3">
                   <StatCard
                     icon={<Eye className="h-5 w-5" style={{ color: 'var(--primary)' }} />}
                     label="Total Page Views"
@@ -710,7 +765,7 @@ export default function AnalyticsClient({ adminEmail }: { adminEmail: string }) 
                     icon={<Users className="h-5 w-5" style={{ color: 'oklch(0.75 0.18 220)' }} />}
                     label="Unique Visitors"
                     value={data?.uniqueVisitors ?? null}
-                    sub={`Last ${period === '7d' ? '7' : '30'} days`}
+                    sub={`Last ${period === '7d' ? '7' : '30'} days · by IP`}
                     accent="oklch(0.75 0.18 220)"
                     error={errors.count}
                   />
@@ -722,23 +777,15 @@ export default function AnalyticsClient({ adminEmail }: { adminEmail: string }) 
                     accent="oklch(0.75 0.18 150)"
                     error={errors.trend}
                   />
-                  <StatCard
-                    icon={<Globe className="h-5 w-5" style={{ color: 'oklch(0.75 0.18 30)' }} />}
-                    label="Top Referrers"
-                    value={totalReferredViews}
-                    sub={`${data?.referrers?.length ?? 0} sources`}
-                    accent="oklch(0.75 0.18 30)"
-                    error={errors.referrers}
-                  />
                 </div>
               </section>
 
               <section className="mb-6">
                 <div className="rounded-2xl border p-4 sm:p-5" style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
-                  <div className="mb-4 flex items-center justify-between">
+                  <div className="mb-2 flex items-center justify-between">
                     <h2 className="text-sm font-semibold">Visit Trend</h2>
                     <span className="text-xs hidden sm:inline" style={{ color: 'var(--muted-foreground)' }}>
-                      {period === '7d' ? 'Last 7 days' : 'Last 30 days'} · page views / day
+                      {period === '7d' ? 'Last 7 days' : 'Last 30 days'} · page views / day · hover a bar for details
                     </span>
                   </div>
                   {errors.trend ? (
