@@ -9,6 +9,7 @@
  */
 
 import type { Metadata, Viewport } from 'next'
+import { InstallAppButton } from '@/components/pwa/install-app-button'
 
 export const metadata: Metadata = {
   title: 'Admin — Mohit Bansal Portfolio',
@@ -36,5 +37,17 @@ export const viewport: Viewport = {
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   // Let each admin page apply its own data-theme from localStorage.
   // We only guarantee the minimum required classes here.
-  return <div className="admin-viewport-height overflow-hidden">{children}</div>
+  return (
+    <div className="admin-viewport-height overflow-hidden">
+      {/* Capture the install prompt before hydration — see InstallAppButton. */}
+      <script
+        dangerouslySetInnerHTML={{
+          __html:
+            "window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();window.__pwaInstallPrompt=e});",
+        }}
+      />
+      {children}
+      <InstallAppButton />
+    </div>
+  )
 }
