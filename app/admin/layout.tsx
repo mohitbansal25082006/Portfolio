@@ -14,6 +14,10 @@ export const metadata: Metadata = {
   title: 'Admin — Mohit Bansal Portfolio',
   description: 'Protected admin dashboard.',
   robots: { index: false, follow: false },
+  // Separate installable PWA (scope /admin) with its own badge-marked icons.
+  applicationName: 'MB Admin',
+  manifest: '/admin.webmanifest',
+  appleWebApp: { capable: true, title: 'MB Admin', statusBarStyle: 'black' },
 }
 
 // Mobile viewport configuration for proper rendering on all devices

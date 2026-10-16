@@ -61,8 +61,10 @@ export async function proxy(request: NextRequest) {
     )
   }
 
-  // Only gate paths under /admin
-  if (!pathname.startsWith('/admin')) {
+  // Only gate paths under /admin. Matched by segment, not prefix, so the
+  // admin PWA's public files (/admin.webmanifest, /admin-sw.js) stay
+  // reachable before login — the dashboard can be installed from /admin.
+  if (pathname !== '/admin' && !pathname.startsWith('/admin/')) {
     return NextResponse.next()
   }
 
